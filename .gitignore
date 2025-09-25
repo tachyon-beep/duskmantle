@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# Virtual environments
+.venv/
+.env/
+
+# Editor settings
+.vscode/
+.idea/
+*.swp
+
+# Data & build artifacts
+/dist/
+/build/
+/coverage/
+htmlcov/
+*.log
+
+# Knowledge management volumes
+/data/
+opt/knowledge/var/
+
+# Docker
+*.tar
+*.tar.gz
+
+# macOS/Linux metadata
+.DS_Store
+Thumbs.db
