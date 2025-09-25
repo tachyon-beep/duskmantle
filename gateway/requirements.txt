@@ -1,0 +1,11 @@
+-e ..
+fastapi>=0.110
+uvicorn[standard]>=0.24
+pydantic>=2.6
+pydantic-settings>=2.2
+apscheduler>=3.10
+qdrant-client>=1.7
+neo4j>=5.14
+sentence-transformers>=2.2
+python-dotenv>=1.0
+rich>=13.7

@@ -41,7 +41,7 @@ This plan translates the turnkey single-container design into concrete implement
 - **Exit Criteria:** Release notes published, reference `docker run` command validated, acceptance criteria met.
 
 ## 3. Dependencies & Tooling
-- **Runtime:** Python 3.11+, FastAPI, APScheduler, `qdrant-client`, `neo4j` driver.
+- **Runtime:** Python 3.12+, FastAPI, APScheduler, `qdrant-client`, `neo4j` driver.
 - **Embedding Assets:** `sentence-transformers/all-MiniLM-L6-v2` downloaded during image build; optional GPU support documented.
 - **Build Tooling:** Docker (BuildKit recommended), Makefile or task runner for repeatable builds.
 - **Repository Access:** Users mount repository directories when running container; plan assumes Linux/macOS hosts.

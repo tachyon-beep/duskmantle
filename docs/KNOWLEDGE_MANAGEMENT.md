@@ -23,7 +23,7 @@ The tool pack consists of three cooperative services plus automation:
    - Persistence: volume-mounted `data/` and `logs/` directories.
 
 3. **Knowledge Gateway Service** (custom container)
-   - Written in Python 3.11+.
+  - Written in Python 3.12+.
    - Responsibilities:
      - Ingest/normalize repository artifacts.
      - Generate embeddings via a chosen model (default: `sentence-transformers/all-MiniLM-L6-v2`, configurable).
@@ -157,7 +157,7 @@ Provide a `docker-compose.yml` with services:
 ### Build Context (`gateway/` directory)
 
 - `pyproject.toml` with dependencies: `fastapi`, `uvicorn`, `qdrant-client`, `neo4j`, `pydantic`, `sentence-transformers`, `apscheduler`, `orjson`, `loguru` (or `structlog`).
-- `Dockerfile` (python:3.11-slim) installing system deps (git, build tools for numpy/torch lite if required by embedding model).
+- `Dockerfile` (python:3.12-slim) installing system deps (git, build tools for numpy/torch lite if required by embedding model).
 - `app/` module containing API, ingestion logic, and schema definitions.
 - `tests/` for pipeline unit tests (e.g., verifying metadata extraction and graph merge idempotency).
 

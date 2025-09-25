@@ -10,7 +10,7 @@ This repository packages a turnkey knowledge management stack that bundles the K
 
 ## Quick Start
 1. Clone this repository alongside the project you want to index.
-2. Build the development image:
+2. Build the development image (requires Docker; Python 3.12 is only needed for local library development):
    ```bash
    docker build -t duskmantle/km:dev .
    ```
@@ -31,10 +31,26 @@ This repository packages a turnkey knowledge management stack that bundles the K
 
 ## Repository Layout
 - `docs/` — Specifications, architecture design, implementation plan, and risk mitigation playbook.
-- `gateway/` — (To be implemented) Knowledge Gateway application code, ingestion pipeline, and plugins.
+- `gateway/` — Python 3.12 application modules (API, ingestion, config, plugins).
 - `infra/` — (Planned) Supervisor configs, resource profiles, helper scripts.
-- `tests/` — (Planned) Pytest suites and smoke tests for the turnkey appliance.
+- `tests/` — Pytest suites and smoke tests for the turnkey appliance.
 - `AGENTS.md` — Contributor guide tailored for coding agents and maintainers.
+
+## Local Development
+1. Ensure Python 3.12 is available on your workstation.
+2. Create and activate a virtual environment:
+   ```bash
+   python3.12 -m venv .venv
+   source .venv/bin/activate
+   ```
+3. Install dependencies (editable mode + runtime stack):
+   ```bash
+   pip install -r gateway/requirements.txt
+   ```
+4. Run the smoke tests:
+   ```bash
+   pytest
+   ```
 
 ## Getting Involved
 - Review the core specification in `docs/KNOWLEDGE_MANAGEMENT.md` and the companion design and implementation plan documents.

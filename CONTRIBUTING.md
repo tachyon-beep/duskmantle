@@ -9,7 +9,7 @@ The Duskmantle Knowledge Management appliance is optimized for experienced opera
 5. [`AGENTS.md`](AGENTS.md) — Contributor workflow and coding conventions.
 
 ## Getting Started
-- Use Python 3.11+ and follow the setup steps in the README to build the container locally.
+- Use Python 3.12+ and follow the setup steps in the README to build the container locally.
 - Keep changes scoped; bundle related code, config, and documentation updates together.
 - Add or update tests under `tests/` and run the smoke container tests before submitting.
 
