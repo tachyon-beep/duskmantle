@@ -30,9 +30,9 @@
    - Protect ingestion endpoints with maintainer scope; allow read-only for search/graph.
    - Add rate limiter middleware (e.g., `slowapi`) with env-configured thresholds.
 
-4. **Scheduler & Coverage**
+4. **Scheduler & Coverage** (coverage report completed)
    - Integrate APScheduler in the gateway startup to schedule default ingest & coverage jobs.
-   - Implement `coverage_report.json` generation comparing discovered files vs indexed payloads.
+   - Extend coverage report with scheduling metadata once cron runs are enabled.
    - Ensure scheduler respects `KM_INGEST_DRY_RUN` and repo HEAD gating.
 
 5. **Provenance & Audit Ledger**
