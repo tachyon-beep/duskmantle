@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+IMAGE=${1:-duskmantle/km:dev}
+CONTAINER_NAME=${CONTAINER_NAME:-km-smoke}
+DATA_DIR=$(mktemp -d -t km-smoke-XXXX)
+REPO_MOUNT=${REPO_MOUNT:-$(pwd)}
+
+cleanup() {
+  docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+  rm -rf "$DATA_DIR"
+}
+trap cleanup EXIT
+
+docker build -t "$IMAGE" .
+
+docker run -d --name "$CONTAINER_NAME" \
+  -p 8000:8000 \
+  -p 6333:6333 \
+  -p 7687:7687 \
+  -v "$DATA_DIR":/opt/knowledge/var \
+  -v "$REPO_MOUNT":/workspace/repo \
+  "$IMAGE"
+
+echo "Waiting for gateway readiness..."
+for _ in {1..30}; do
+  if curl -fsS http://localhost:8000/readyz >/dev/null 2>&1; then
+    echo "Gateway ready"
+    docker logs "$CONTAINER_NAME"
+    exit 0
+  fi
+  sleep 2
+  docker ps --filter "name=$CONTAINER_NAME"
+done
+
+echo "Gateway failed to become ready" >&2
+exit 1

@@ -19,4 +19,9 @@ def create_app() -> FastAPI:
         """Return basic health information for the gateway."""
         return {"status": "ok"}
 
+    @app.get("/readyz", tags=["health"])
+    def readyz() -> dict[str, str]:
+        """Return readiness information suitable for container orchestration."""
+        return {"status": "ready"}
+
     return app

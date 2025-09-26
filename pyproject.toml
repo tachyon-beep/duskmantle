@@ -32,6 +32,10 @@ dev = [
   "httpx>=0.27",
 ]
 
+[project.scripts]
+knowledge-gateway = "gateway.__main__:main"
+gateway-ingest = "gateway.ingest.cli:main"
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["gateway", "gateway.*"]

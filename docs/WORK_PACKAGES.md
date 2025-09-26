@@ -22,7 +22,7 @@ This document distills the design and implementation plans into focused work pac
 ## Work Package 3 — Ingestion Pipeline MVP
 - **Scope:** Implement repository discovery, chunking, embedding via sentence-transformers, and Qdrant upserts for documentation-only ingestion. Persist provenance/audit ledgers.
 - **Prerequisites:** WP2 (gateway runtime) and access to mounted repository on host.
-- **Deliverables:** `gateway/ingest` modules with unit tests, `python -m gateway.ingest.cli rebuild --profile local` populating Qdrant inside the container, coverage report stub.
+- **Deliverables:** `gateway/ingest` modules with unit tests, `gateway-ingest rebuild --profile local` populating Qdrant inside the container, coverage report stub.
 - **Early Close Items:**
   - CLI command skeleton, settings loader, and risk mitigation plan prepared.
 - **Remaining Prerequisites:** Implement discovery/chunking, integrate sentence-transformers, connect to Qdrant.

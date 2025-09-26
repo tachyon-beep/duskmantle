@@ -18,6 +18,7 @@ This document tracks the key delivery risks for the turnkey knowledge management
   - Implement startup guard in the entrypoint script that checks `/opt/knowledge/var` is writable and not an in-container tmpfs before launching services.
   - Provide `bin/km-backup` and `bin/km-restore` scripts (tar-based) referenced in the implementation plan.
   - Document explicit `docker run` examples in README that mount a host path and explain upgrade backups.
+- **Status Update:** Entry-point guard implemented via `infra/docker-entrypoint.sh`; backup tooling still pending.
 - **Open Questions:** None at this time.
 
 ## 3. Resource Contention

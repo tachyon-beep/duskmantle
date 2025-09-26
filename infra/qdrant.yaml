@@ -1,0 +1,9 @@
+storage:
+  path: /opt/knowledge/var/qdrant
+  snapshots_path: /opt/knowledge/var/qdrant/snapshots
+service:
+  http_port: 6333
+  grpc_port: 6334
+log_level: INFO
+cluster:
+  enabled: false

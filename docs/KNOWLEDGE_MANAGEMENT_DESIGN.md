@@ -93,7 +93,7 @@ The runtime is a trio of co-located services managed inside the container by a l
 
 ### 5.4 Scheduling Strategy
 - APScheduler triggers default ingestion every 30 minutes from within the container, gating runs on repository HEAD changes.
-- Manual triggers: `docker exec km python -m gateway.ingest.cli rebuild --profile local`.
+- Manual triggers: `docker exec km gateway-ingest rebuild --profile local`.
 - Coverage report generated nightly and stored under `/opt/knowledge/var/reports/coverage_report.json`.
 
 ## 6. Query & Retrieval Workflows
@@ -128,7 +128,7 @@ The runtime is a trio of co-located services managed inside the container by a l
 
 ### 7.3 Resilience & Maintenance
 - Persistence handled by host volume backups (rsync or snapshot tooling).
-- Supervisor monitors child processes; automatic restart on crash with exponential backoff.
+- Supervisor (`supervisord`) monitors Qdrant, Neo4j, and the FastAPI gateway; automatic restart on crash with exponential backoff.
 - For upgrades, users pull the new image, stop existing container, back up `/opt/knowledge/var`, and redeploy. Migration scripts run automatically on startup.
 - Risk mitigations for image footprint, persistence checks, resource tuning, and observability are expanded in `docs/RISK_MITIGATION_PLAN.md`.
 

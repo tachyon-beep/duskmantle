@@ -14,8 +14,9 @@ This repository packages a turnkey knowledge management stack that bundles the K
    ```bash
    docker build -t duskmantle/km:dev .
    ```
-3. Run the appliance, mounting your target repository and a persistent data directory:
+3. Build and run the appliance, mounting your target repository and a persistent data directory:
    ```bash
+   docker build -t duskmantle/km:dev .
    docker run --rm \
      -p 8000:8000 \
      -v $(pwd)/data:/opt/knowledge/var \
@@ -25,7 +26,7 @@ This repository packages a turnkey knowledge management stack that bundles the K
 4. Trigger a manual ingest (optional) in another terminal:
    ```bash
    docker exec $(docker ps -qf ancestor=duskmantle/km:dev) \
-     python -m gateway.ingest.cli rebuild --profile local
+     gateway-ingest rebuild --profile local
    ```
 5. Query the API at `http://localhost:8000/search` and explore graph endpoints under `/graph/...`.
 
@@ -55,6 +56,12 @@ This repository packages a turnkey knowledge management stack that bundles the K
    ```bash
    pytest
    ```
+
+## Container Runtime
+- Entrypoint script: `/opt/knowledge/docker-entrypoint.sh` (invoked automatically) validates the mounted volume and launches Supervisord.
+- Process manager: `supervisord` starts Qdrant (`6333`/`6334`), Neo4j (`7474`/`7687`), and the gateway API (`8000`). Logs live under `/opt/knowledge/var/logs/`.
+- Persistent state: mount a host directory to `/opt/knowledge/var` for Qdrant snapshots, Neo4j data/logs, and audit ledgers.
+- Quick smoke check: `./infra/smoke-test.sh duskmantle/km:dev` builds the image, launches a disposable container, and polls `/readyz`.
 
 ## Getting Involved
 - Review the core specification in `docs/KNOWLEDGE_MANAGEMENT.md` and the companion design and implementation plan documents.

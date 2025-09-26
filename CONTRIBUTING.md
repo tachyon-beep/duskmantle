@@ -11,7 +11,7 @@ The Duskmantle Knowledge Management appliance is optimized for experienced opera
 ## Getting Started
 - Use Python 3.12+ and follow the setup steps in the README (create a virtual env and `pip install -e .[dev]`) to build the container locally.
 - Keep changes scoped; bundle related code, config, and documentation updates together.
-- Add or update tests under `tests/` and run the smoke container tests before submitting.
+- Add or update tests under `tests/` and run the smoke container tests (`./infra/smoke-test.sh`) before submitting.
 
 ## Pull Request Checklist
 - [ ] Conventional Commit-style title (`feat:`, `fix:`, `docs:`...)
