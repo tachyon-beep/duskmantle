@@ -61,8 +61,12 @@ def create_app() -> FastAPI:
         """Return readiness information suitable for container orchestration."""
         return {"status": "ready"}
 
+    metrics_limit = (
+        f"{settings.rate_limit_requests} per {settings.rate_limit_window_seconds} seconds"
+    )
+
     @app.get("/metrics", tags=["observability"])
-    @limiter.limit("60/minute")
+    @limiter.limit(metrics_limit)
     def metrics_endpoint(request: Request) -> Response:  # noqa: ARG001 - request used by limiter
         """Expose Prometheus metrics."""
         return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
