@@ -25,6 +25,7 @@ dependencies = [
   "python-json-logger>=2.0",
   "slowapi>=0.1.7",
   "limits>=3.9",
+  "filelock>=3.12",
 ]
 
 [project.optional-dependencies]

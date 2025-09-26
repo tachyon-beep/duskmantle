@@ -92,6 +92,7 @@ Set these in your environment or an `.env` file before building/running the cont
 - Metrics exposed at `/metrics` (Prometheus format); audit history available at `/audit/history` (maintainer scope).
 - Logs emitted as JSON with `ingest_run_id`, artifact counts, and timing metadata.
 - Rate limiting and bearer-token auth are optional but recommended for multi-user deployments.
+- Optional APScheduler can be enabled via `KM_SCHEDULER_ENABLED=true`; jobs skip automatically when the repository HEAD has not changed or another run is in progress.
 
 ## Getting Involved
 - Review the core specification in `docs/KNOWLEDGE_MANAGEMENT.md` and the companion design and implementation plan documents.
