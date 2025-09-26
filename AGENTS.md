@@ -13,6 +13,7 @@ Format Python with `black` (88 columns) and lint using `ruff`. Enforce type hint
 Use `pytest` with coverage: `pytest --cov=gateway --cov-report=term-missing`. Co-locate unit tests with mirror paths (e.g., `tests/ingest/test_discovery.py`). Add smoke tests that spin up the container, run a small ingest, and probe `/healthz`. Include contract tests that assert Qdrant payload schema and Neo4j relationships match the design docs.
 
 Neo4j auth is disabled by default for local development. Set `KM_NEO4J_AUTH_ENABLED=true` and provide credentials (`KM_NEO4J_USER`/`KM_NEO4J_PASSWORD`) when hardening a deployment.
+- Use `/metrics` and `/audit/history` to validate ingestion health; remember to pass maintainer tokens when auth is enabled.
 
 ## Commit & Pull Request Guidelines
 Follow Conventional Commits (`feat:`, `fix:`, `docs:`). PR descriptions should outline implementation scope, note schema or ingestion impacts, and list manual verification steps (`docker build`, `docker run`, `curl`). Reference any relevant design/plan sections and flag documentation updates required.

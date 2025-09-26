@@ -103,6 +103,7 @@ The runtime is a trio of co-located services managed inside the container by a l
 2. Gateway queries Qdrant for top-k vectors, blending dense similarity with optional BM25 keyword scoring.
 3. For each chunk, the gateway resolves graph context from Neo4j, bundling subsystem dependencies and related documents.
 4. Response returned as JSON for downstream LLM prompting or manual inspection.
+- Responses must always include explicit references to the originating document chunks alongside retrieval, groundedness, and answer quality signals when available so downstream agents can reason about confidence.
 
 ### 6.2 Graph Reasoning Use Cases
 - `GET /graph/subsystem/{name}` surfaces connected subsystems, telemetry channels, and docs.

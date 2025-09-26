@@ -2,16 +2,11 @@ from __future__ import annotations
 
 import argparse
 import logging
-from contextlib import nullcontext
 from pathlib import Path
 
-from neo4j import GraphDatabase
-from qdrant_client import QdrantClient
-
 from gateway.config.settings import get_settings
-from gateway.ingest.neo4j_writer import Neo4jWriter
-from gateway.ingest.pipeline import IngestionConfig, IngestionPipeline
-from gateway.ingest.qdrant_writer import QdrantWriter
+from gateway.observability.logging import configure_logging
+from gateway.ingest.service import execute_ingestion
 
 logger = logging.getLogger(__name__)
 
@@ -50,46 +45,27 @@ def rebuild(*, profile: str, repo: Path | None, dry_run: bool, dummy_embeddings:
     """Execute a full ingestion pass."""
 
     settings = get_settings()
-    repo_root = repo or settings.repo_root
-    dry = dry_run or settings.dry_run
-    use_dummy = dummy_embeddings or settings.ingest_use_dummy_embeddings
-
-    qdrant_writer = None
-    if not dry:
-        qdrant_client = QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
-        qdrant_writer = QdrantWriter(qdrant_client, settings.qdrant_collection)
-
-    neo4j_writer = None
-    driver = None
-    if not dry:
-        driver = GraphDatabase.driver(settings.neo4j_uri, auth=(settings.neo4j_user, settings.neo4j_password))
-        neo4j_writer = Neo4jWriter(driver, database=settings.neo4j_database)
-
-    config = IngestionConfig(
-        repo_root=repo_root,
-        dry_run=dry,
-        chunk_window=settings.ingest_window,
-        chunk_overlap=settings.ingest_overlap,
-        embedding_model=settings.embedding_model,
-        use_dummy_embeddings=use_dummy,
-        environment=profile,
+    result = execute_ingestion(
+        settings=settings,
+        profile=profile,
+        repo_override=repo,
+        dry_run=dry_run,
+        use_dummy_embeddings=dummy_embeddings,
     )
-
-    pipeline = IngestionPipeline(qdrant_writer=qdrant_writer, neo4j_writer=neo4j_writer, config=config)
-
-    try:
-        if neo4j_writer and not dry:
-            neo4j_writer.ensure_constraints()
-        pipeline.run()
-        logger.info("Ingestion run completed for profile=%s", profile)
-    finally:
-        if driver is not None:
-            driver.close()
+    logger.info(
+        "Ingestion run completed",
+        extra={
+            "profile": profile,
+            "run_id": result.run_id,
+            "chunk_count": result.chunk_count,
+            "artifact_counts": result.artifact_counts,
+        },
+    )
 
 
 def main(argv: list[str] | None = None) -> None:
     """Entry point for the CLI."""
-    logging.basicConfig(level=logging.INFO)
+    configure_logging()
     parser = build_parser()
     args = parser.parse_args(argv)
 

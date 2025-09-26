@@ -13,6 +13,7 @@ This plan translates the turnkey single-container design into concrete implement
 - Task 1.4 Implement FastAPI skeleton plus health endpoints, config loader, and CLI entry point.
 - Task 1.5 Build initial ingestion CLI for `docs/` content with chunking, embeddings, Qdrant upserts, and audit ledger.
 - **Exit Criteria:** `docker run` with mounted repo indexes docs successfully; `/healthz` responds; volume layout created under `/opt/knowledge/var`.
+- **Status (Sept 2025):** Complete — image builds with Qdrant/Neo4j, supervisord orchestration, readiness checks, and smoke test script.
 
 ### Phase 2: Full Corpus & Graph Enrichment (Weeks 3-4)
 **Goals:** Cover code/tests, populate Neo4j, enrich API payloads.
@@ -22,6 +23,7 @@ This plan translates the turnkey single-container design into concrete implement
 - Task 2.4 Enhance `/search` to include graph context; expose `/graph/...` endpoints; add contract tests.
 - Task 2.5 Generate nightly coverage report and store under `/opt/knowledge/var/reports/`.
 - **Exit Criteria:** End-to-end ingestion populates both stores; search payloads include subsystem metadata; graph endpoints return expected relationships.
+- **Status (Sept 2025):** Partially complete — ingestion populates Qdrant/Neo4j for docs, code, and tests; graph APIs still pending.
 
 ### Phase 3: Turnkey Hardening (Weeks 5-6)
 **Goals:** Finalize security knobs, observability, scheduling, offline readiness.
@@ -31,6 +33,7 @@ This plan translates the turnkey single-container design into concrete implement
 - Task 3.4 Bundle optional helper scripts (`bin/km-run`, `bin/km-backup`) and example reverse proxy configs.
 - Task 3.5 Create smoke-test workflow that builds the image, runs minimal ingestion, and checks health endpoints.
 - **Exit Criteria:** Container passes smoke tests, supports offline start, metrics/auth configurable via env vars, documentation updated.
+- **Status (Sept 2025):** Not started.
 
 ### Phase 4: Release Packaging & Adoption (Week 7)
 **Goals:** Publish final artifacts and onboarding material for power users.
@@ -39,6 +42,7 @@ This plan translates the turnkey single-container design into concrete implement
 - Task 4.3 Capture minimal support model (FAQ, issue template) aligned with small user base expectations.
 - Task 4.4 Run acceptance demo exercising search, graph queries, re-index, backup/restore.
 - **Exit Criteria:** Release notes published, reference `docker run` command validated, acceptance criteria met.
+- **Status (Sept 2025):** Not started.
 
 ## 3. Dependencies & Tooling
 - **Runtime:** Python 3.12+, FastAPI, APScheduler, `qdrant-client`, `neo4j` driver.

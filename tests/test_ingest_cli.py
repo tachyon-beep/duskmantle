@@ -29,9 +29,14 @@ def test_cli_rebuild_dry_run(sample_repo: Path, monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setenv("KM_REPO_PATH", str(sample_repo))
     monkeypatch.setenv("KM_INGEST_USE_DUMMY", "true")
     monkeypatch.setenv("KM_INGEST_DRY_RUN", "true")
-    with mock.patch("gateway.ingest.cli.QdrantClient") as qdrant_mock, mock.patch(
-        "gateway.ingest.cli.GraphDatabase"
-    ) as neo4j_mock:
+    monkeypatch.setenv("KM_STATE_PATH", str(sample_repo / "state"))
+
+    dummy_result = mock.Mock(
+        run_id="run",
+        chunk_count=0,
+        artifact_counts={},
+    )
+
+    with mock.patch("gateway.ingest.cli.execute_ingestion", return_value=dummy_result) as execute:
         cli.main(["rebuild", "--dry-run", "--dummy-embeddings"])
-        qdrant_mock.assert_not_called()
-        neo4j_mock.driver.assert_not_called()
+        execute.assert_called_once()

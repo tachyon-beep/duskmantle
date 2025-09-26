@@ -74,12 +74,24 @@ Key environment variables (all prefixed with `KM_`):
 | `KM_NEO4J_URI` | `bolt://localhost:7687` | Neo4j Bolt URI |
 | `KM_NEO4J_USER`/`KM_NEO4J_PASSWORD` | `neo4j`/`neo4jadmin` | Neo4j authentication (override for production) |
 | `KM_NEO4J_AUTH_ENABLED` | `false` | Enable to require credentials (`true` for secured deployments) |
+| `KM_STATE_PATH` | `/opt/knowledge/var` | Base directory for audit and coverage artifacts |
 | `KM_EMBEDDING_MODEL` | `sentence-transformers/all-MiniLM-L6-v2` | Embedding model identifier |
 | `KM_INGEST_WINDOW`/`KM_INGEST_OVERLAP` | `1000` / `200` | Chunking parameters |
 | `KM_INGEST_DRY_RUN` | `false` | Disable writes for test runs |
 | `KM_INGEST_USE_DUMMY` | `false` | Force deterministic embeddings (non-prod) |
+| `KM_AUTH_ENABLED` | `false` | Toggle bearer-token checks on API routes |
+| `KM_READER_TOKEN` / `KM_ADMIN_TOKEN` | _unset_ | Tokens for reader/maintainer scopes |
+| `KM_RATE_LIMIT_REQUESTS` / `KM_RATE_LIMIT_WINDOW` | `120` / `60` | Rate limit budget (requests per seconds window) |
+| `KM_SCHEDULER_ENABLED` | `false` | Enable APScheduler ingestion jobs |
+| `KM_SCHEDULER_INTERVAL_MINUTES` | `30` | Interval for scheduled ingestion runs |
+| `KM_COVERAGE_ENABLED` | `true` | Persist coverage reports after ingestion |
 
 Set these in your environment or an `.env` file before building/running the container.
+
+### Observability & Security
+- Metrics exposed at `/metrics` (Prometheus format); audit history available at `/audit/history` (maintainer scope).
+- Logs emitted as JSON with `ingest_run_id`, artifact counts, and timing metadata.
+- Rate limiting and bearer-token auth are optional but recommended for multi-user deployments.
 
 ## Getting Involved
 - Review the core specification in `docs/KNOWLEDGE_MANAGEMENT.md` and the companion design and implementation plan documents.

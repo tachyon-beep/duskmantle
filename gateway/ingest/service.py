@@ -1,0 +1,82 @@
+from __future__ import annotations
+
+import logging
+from pathlib import Path
+
+from neo4j import GraphDatabase
+from qdrant_client import QdrantClient
+
+from gateway.config.settings import AppSettings
+from gateway.ingest.audit import AuditLogger
+from gateway.ingest.coverage import write_coverage_report
+from gateway.ingest.neo4j_writer import Neo4jWriter
+from gateway.ingest.pipeline import IngestionConfig, IngestionPipeline, IngestionResult
+from gateway.ingest.qdrant_writer import QdrantWriter
+
+logger = logging.getLogger(__name__)
+
+
+def execute_ingestion(
+    *,
+    settings: AppSettings,
+    profile: str,
+    repo_override: Path | None = None,
+    dry_run: bool | None = None,
+    use_dummy_embeddings: bool | None = None,
+) -> IngestionResult:
+    """Run ingestion using shared settings and return result."""
+
+    repo_root = repo_override or settings.repo_root
+    dry = settings.dry_run if dry_run is None else dry_run
+    use_dummy = settings.ingest_use_dummy_embeddings if use_dummy_embeddings is None else use_dummy_embeddings
+
+    qdrant_writer = None
+    if not dry:
+        qdrant_client = QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
+        qdrant_writer = QdrantWriter(qdrant_client, settings.qdrant_collection)
+
+    neo4j_writer = None
+    driver = None
+    if not dry:
+        driver = GraphDatabase.driver(settings.neo4j_uri, auth=(settings.neo4j_user, settings.neo4j_password))
+        neo4j_writer = Neo4jWriter(driver, database=settings.neo4j_database)
+
+    audit_logger = None
+    audit_path = None
+    coverage_path = None
+    if not dry:
+        state_path = settings.state_path
+        audit_path = state_path / "audit" / "audit.db"
+        coverage_path = state_path / "reports" / "coverage_report.json"
+        audit_logger = AuditLogger(audit_path)
+
+    config = IngestionConfig(
+        repo_root=repo_root,
+        dry_run=dry,
+        chunk_window=settings.ingest_window,
+        chunk_overlap=settings.ingest_overlap,
+        embedding_model=settings.embedding_model,
+        use_dummy_embeddings=use_dummy,
+        environment=profile,
+        audit_path=audit_path,
+        coverage_path=coverage_path,
+    )
+
+    pipeline = IngestionPipeline(qdrant_writer=qdrant_writer, neo4j_writer=neo4j_writer, config=config)
+
+    try:
+        if neo4j_writer and not dry:
+            neo4j_writer.ensure_constraints()
+        result = pipeline.run()
+        if audit_logger and result.success:
+            audit_logger.record(result)
+        if not dry and settings.coverage_enabled and coverage_path is not None:
+            write_coverage_report(
+                result,
+                sum(result.artifact_counts.values()),
+                output_path=coverage_path,
+            )
+        return result
+    finally:
+        if driver is not None:
+            driver.close()

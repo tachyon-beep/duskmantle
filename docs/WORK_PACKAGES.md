@@ -2,37 +2,37 @@
 
 This document distills the design and implementation plans into focused work packages. Each package summarizes scope, prerequisites, key deliverables, and the ideal sequencing to reach a turnkey single-container release.
 
-## Work Package 1 — Container Runtime Foundation
+## Work Package 1 — Container Runtime Foundation *(Completed)*
 - **Scope:** Build the base Docker image (Python 3.12 slim), embed supervisor (s6 or equivalent), bundle Qdrant/Neo4j binaries, define entrypoint orchestration, and set up persistent volume paths.
 - **Prerequisites:** None (starting point).
 - **Deliverables:** `Dockerfile`, supervisor configs under `infra/`, entrypoint script with health checks, initial container smoke test.
 - **Early Close Items:**
   - Base Python project scaffolding and tests complete (pyproject, gateway package, pytest smoke).
   - Documentation structure established for referencing container commands (README, AGENTS).
-- **Remaining Prerequisites:** Qdrant/Neo4j binaries and supervisor selection.
+- **Outcome:** Docker image ships with Qdrant 1.15.4, Neo4j 5.26.0, supervisord, entrypoint volume guards, and automated smoke test script.
 
-## Work Package 2 — Gateway Core Skeleton
+## Work Package 2 — Gateway Core Skeleton *(Completed)*
 - **Scope:** Flesh out the FastAPI app factory, Uvicorn server harness, configuration loading, and basic routing (`/healthz`, `/readyz`). Wire CLI commands into the container runtime.
 - **Prerequisites:** WP1 (container scaffolding to run the app).
 - **Deliverables:** Functional gateway service inside the container, CLI hooks accessible via `docker exec`, updated tests covering API startup.
 - **Early Close Items:**
   - FastAPI app factory with `/healthz` and CLI scaffolding already implemented and tested.
-- **Remaining Prerequisites:** Container wiring, readiness endpoint, configuration docs inside container context.
+- **Outcome:** `/healthz` and `/readyz` live behind supervisord; configuration loader drives CLI, and container smoke tests rely on the readiness endpoint.
 
-## Work Package 3 — Ingestion Pipeline MVP
+## Work Package 3 — Ingestion Pipeline MVP *(In Progress)*
 - **Scope:** Implement repository discovery, chunking, embedding via sentence-transformers, and Qdrant upserts for documentation-only ingestion. Persist provenance/audit ledgers.
 - **Prerequisites:** WP2 (gateway runtime) and access to mounted repository on host.
 - **Deliverables:** `gateway/ingest` modules with unit tests, `gateway-ingest rebuild --profile local` populating Qdrant inside the container, coverage report stub.
 - **Early Close Items:**
   - CLI command, settings loader, discovery (`gateway/ingest/discovery.py`), chunker (`gateway/ingest/chunking.py`), embedder wrapper, and pipeline orchestrator delivered with dummy-embedding and dry-run support.
-- **Remaining Prerequisites:** Connect to live Qdrant/Neo4j services for integrated acceptance testing and add provenance/coverage reporting.
+- **Remaining Work:** Persist provenance/audit ledger, generate nightly coverage report, and plumb non-dummy embeddings into the container build path.
 
-## Work Package 4 — Graph Model Integration
+## Work Package 4 — Graph Model Integration *(In Progress)*
 - **Scope:** Define Neo4j schema migrations, create node/relationship upserts, connect vector chunks to graph context, and expose `/graph/...` endpoints.
 - **Prerequisites:** WP3 (ingestion producing metadata to project into the graph).
 - **Deliverables:** Neo4j initialization scripts, ingest-to-graph sync, API responses enriched with subsystem/telemetry links, graph-specific tests.
 - **Early Close Items:** Graph schema defined in design docs and implemented via `gateway/ingest/neo4j_writer.py` (constraints, node relationships, chunk links).
-- **Remaining Prerequisites:** Integrate with live Neo4j in container smoke tests and expose graph-backed API endpoints.
+- **Remaining Work:** Expose `/graph/...` API endpoints, add schema migration utilities, and validate ingestion results via automated graph tests.
 
 ## Work Package 5 — Observability & Security Hardening
 - **Scope:** Add metrics endpoint, structured logging, OpenTelemetry stubs, token-based auth with reader/maintainer scopes, rate limiting, and scheduling (APScheduler jobs for periodic ingest/coverage).

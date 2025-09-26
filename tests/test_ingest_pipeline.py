@@ -58,9 +58,11 @@ def test_pipeline_generates_chunks(sample_repo: Path) -> None:
         chunk_overlap=10,
     )
     pipeline = IngestionPipeline(qdrant_writer=qdrant, neo4j_writer=neo4j, config=config)
-    pipeline.run()
+    result = pipeline.run()
 
     assert qdrant.collection_sizes, "collection should be ensured"
     assert sum(qdrant.upsert_payloads) > 0
     assert neo4j.artifacts
     assert neo4j.chunk_ids
+    assert result.chunk_count == len(neo4j.chunk_ids)
+    assert result.artifact_counts["doc"] >= 1
