@@ -63,7 +63,7 @@ def rebuild(*, profile: str, repo: Path | None, dry_run: bool, dummy_embeddings:
     driver = None
     if not dry:
         driver = GraphDatabase.driver(settings.neo4j_uri, auth=(settings.neo4j_user, settings.neo4j_password))
-        neo4j_writer = Neo4jWriter(driver)
+        neo4j_writer = Neo4jWriter(driver, database=settings.neo4j_database)
 
     config = IngestionConfig(
         repo_root=repo_root,

@@ -123,6 +123,7 @@ The runtime is a trio of co-located services managed inside the container by a l
 
 ### 7.2 Security & Access Control
 - Local deployments default to static credentials defined via environment variables (`KM_ADMIN_TOKEN`, `KM_READER_TOKEN`).
+- Neo4j authentication starts disabled (`dbms.security.auth_enabled=false`) for local ease-of-use; set `KM_NEO4J_PASSWORD` and flip the setting when deploying to shared environments.
 - HTTPS termination left to the host environment; documentation provides reverse proxy examples (Caddy, Nginx).
 - Secrets stored in mounted config files; no external secret manager dependency to keep turnkey footprint low.
 

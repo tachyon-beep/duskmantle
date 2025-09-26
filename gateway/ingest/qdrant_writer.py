@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from typing import Iterable
 
 from qdrant_client import QdrantClient
@@ -32,9 +33,10 @@ class QdrantWriter:
         points = []
         for item in chunks:
             payload = {**item.chunk.metadata, "chunk_id": item.chunk.chunk_id}
+            point_id = str(uuid.UUID(item.chunk.content_digest[:32]))
             points.append(
                 qmodels.PointStruct(
-                    id=item.chunk.chunk_id,
+                    id=point_id,
                     vector=item.vector,
                     payload=payload,
                 )

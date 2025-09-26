@@ -14,9 +14,9 @@ This repository packages a turnkey knowledge management stack that bundles the K
    ```bash
    docker build -t duskmantle/km:dev .
    ```
-3. Build and run the appliance, mounting your target repository and a persistent data directory:
+3. Build and run the appliance, mounting your target repository and a persistent data directory (pass `--network=host` if your environment restricts DNS lookups during builds):
    ```bash
-   docker build -t duskmantle/km:dev .
+   docker build --network=host -t duskmantle/km:dev .
    docker run --rm \
      -p 8000:8000 \
      -v $(pwd)/data:/opt/knowledge/var \
@@ -72,7 +72,8 @@ Key environment variables (all prefixed with `KM_`):
 | `KM_QDRANT_URL` | `http://localhost:6333` | Qdrant API endpoint |
 | `KM_QDRANT_COLLECTION` | `esper_knowledge_v1` | Collection name for embeddings |
 | `KM_NEO4J_URI` | `bolt://localhost:7687` | Neo4j Bolt URI |
-| `KM_NEO4J_USER`/`KM_NEO4J_PASSWORD` | `neo4j`/`changeme` | Neo4j authentication |
+| `KM_NEO4J_USER`/`KM_NEO4J_PASSWORD` | `neo4j`/`neo4jadmin` | Neo4j authentication (override for production) |
+| `KM_NEO4J_AUTH_ENABLED` | `false` | Enable to require credentials (`true` for secured deployments) |
 | `KM_EMBEDDING_MODEL` | `sentence-transformers/all-MiniLM-L6-v2` | Embedding model identifier |
 | `KM_INGEST_WINDOW`/`KM_INGEST_OVERLAP` | `1000` / `200` | Chunking parameters |
 | `KM_INGEST_DRY_RUN` | `false` | Disable writes for test runs |

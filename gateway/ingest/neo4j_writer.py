@@ -11,8 +11,9 @@ logger = logging.getLogger(__name__)
 
 
 class Neo4jWriter:
-    def __init__(self, driver: Driver) -> None:
+    def __init__(self, driver: Driver, database: str = "knowledge") -> None:
         self.driver = driver
+        self.database = database
 
     def ensure_constraints(self) -> None:
         cypher_statements = [
@@ -22,13 +23,13 @@ class Neo4jWriter:
             "CREATE CONSTRAINT IF NOT EXISTS FOR (t:TestCase) REQUIRE t.path IS UNIQUE",
             "CREATE CONSTRAINT IF NOT EXISTS FOR (c:Chunk) REQUIRE c.chunk_id IS UNIQUE",
         ]
-        with self.driver.session(database="system") as session:
+        with self.driver.session(database=self.database) as session:
             for stmt in cypher_statements:
                 session.run(stmt)
 
     def sync_artifact(self, artifact: Artifact) -> None:
         label = _artifact_label(artifact)
-        with self.driver.session() as session:
+        with self.driver.session(database=self.database) as session:
             params = {
                 "path": artifact.path.as_posix(),
                 "artifact_type": artifact.artifact_type,
@@ -57,7 +58,7 @@ class Neo4jWriter:
                     )
 
     def sync_chunks(self, chunk_embeddings: Iterable[ChunkEmbedding]) -> None:
-        with self.driver.session() as session:
+        with self.driver.session(database=self.database) as session:
             for item in chunk_embeddings:
                 artifact_type = item.chunk.metadata.get("artifact_type", "code")
                 label = _label_for_type(str(artifact_type))

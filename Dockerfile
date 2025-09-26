@@ -1,16 +1,16 @@
 # syntax=docker/dockerfile:1.7
 
-FROM python:3.12-slim
+FROM python:3.12-bookworm
 
-ARG QDRANT_VERSION=1.7.4
-ARG NEO4J_VERSION=5.28.0
+ARG QDRANT_VERSION=1.15.4
+ARG NEO4J_VERSION=5.26.0
 ENV KM_HOME=/opt/knowledge \
     KM_VAR=/opt/knowledge/var \
     KM_BIN=/opt/knowledge/bin \
     KM_ETC=/opt/knowledge/etc \
     PATH="/opt/knowledge/.venv/bin:/opt/knowledge/bin:${PATH}"
 
-RUN apt-get update \ 
+RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
@@ -19,17 +19,16 @@ RUN apt-get update \
         supervisor \
         openjdk-17-jre-headless \
         procps \
-        tini \ 
+        tini \
     && rm -rf /var/lib/apt/lists/*
 
 # Create base directories
 RUN mkdir -p ${KM_HOME}/var ${KM_BIN} ${KM_ETC} ${KM_HOME}/app
 
 # Download and install Qdrant
-RUN curl -fsSL -o /tmp/qdrant.tar.gz "https://github.com/qdrant/qdrant/releases/download/v${QDRANT_VERSION}/qdrant-${QDRANT_VERSION}-linux-x86_64-musl.tar.gz" \
-    && tar -xzf /tmp/qdrant.tar.gz -C /opt/knowledge \
-    && mv /opt/knowledge/qdrant-${QDRANT_VERSION} /opt/knowledge/qdrant \
-    && ln -sf /opt/knowledge/qdrant/qdrant ${KM_BIN}/qdrant \
+RUN curl -fsSL -o /tmp/qdrant.tar.gz "https://github.com/qdrant/qdrant/releases/download/v${QDRANT_VERSION}/qdrant-x86_64-unknown-linux-musl.tar.gz" \
+    && tar -xzf /tmp/qdrant.tar.gz -C ${KM_BIN} \
+    && chmod +x ${KM_BIN}/qdrant \
     && rm /tmp/qdrant.tar.gz
 
 # Download and install Neo4j

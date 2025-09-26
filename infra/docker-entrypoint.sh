@@ -2,6 +2,7 @@
 set -euo pipefail
 
 KM_HOME=${KM_HOME:-/opt/knowledge}
+KM_BIN=${KM_BIN:-/opt/knowledge/bin}
 KM_VAR=${KM_VAR:-/opt/knowledge/var}
 LOG_DIR="${KM_VAR}/logs"
 RUN_DIR="${KM_VAR}/run"
@@ -18,6 +19,14 @@ fi
 
 if [[ -n "${KM_EXPECTED_UID:-}" && "$(id -u)" != "$KM_EXPECTED_UID" ]]; then
   echo "[entrypoint] WARNING: Container running as UID $(id -u), expected $KM_EXPECTED_UID" >&2
+fi
+
+NEO4J_ADMIN="${KM_BIN}/neo4j-distribution/bin/neo4j-admin"
+NEO4J_AUTH_FILE="${NEO4J_DATA_ROOT}/data/dbms/auth"
+NEO4J_PASSWORD="${KM_NEO4J_PASSWORD:-neo4jadmin}"
+if [[ -x "$NEO4J_ADMIN" && ! -f "$NEO4J_AUTH_FILE" ]]; then
+  echo "[entrypoint] Setting initial Neo4j password"
+  "$NEO4J_ADMIN" dbms set-initial-password "$NEO4J_PASSWORD" || true
 fi
 
 exec /usr/bin/supervisord -c "$KM_HOME/etc/supervisord.conf"
