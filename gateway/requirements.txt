@@ -1,4 +1,4 @@
--e ..
+-e .
 fastapi>=0.110
 uvicorn[standard]>=0.24
 pydantic>=2.6

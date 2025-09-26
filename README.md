@@ -43,11 +43,15 @@ This repository packages a turnkey knowledge management stack that bundles the K
    python3.12 -m venv .venv
    source .venv/bin/activate
    ```
-3. Install dependencies (editable mode + runtime stack):
+3. Install dependencies (runtime + development extras):
+   ```bash
+   pip install -e .[dev]
+   ```
+4. (Optional) Install the slimmer runtime set used by the container build:
    ```bash
    pip install -r gateway/requirements.txt
    ```
-4. Run the smoke tests:
+5. Run the smoke tests:
    ```bash
    pytest
    ```
