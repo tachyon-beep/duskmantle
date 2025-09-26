@@ -24,15 +24,15 @@ This document distills the design and implementation plans into focused work pac
 - **Prerequisites:** WP2 (gateway runtime) and access to mounted repository on host.
 - **Deliverables:** `gateway/ingest` modules with unit tests, `gateway-ingest rebuild --profile local` populating Qdrant inside the container, coverage report stub.
 - **Early Close Items:**
-  - CLI command skeleton, settings loader, and risk mitigation plan prepared.
-- **Remaining Prerequisites:** Implement discovery/chunking, integrate sentence-transformers, connect to Qdrant.
+  - CLI command, settings loader, discovery (`gateway/ingest/discovery.py`), chunker (`gateway/ingest/chunking.py`), embedder wrapper, and pipeline orchestrator delivered with dummy-embedding and dry-run support.
+- **Remaining Prerequisites:** Connect to live Qdrant/Neo4j services for integrated acceptance testing and add provenance/coverage reporting.
 
 ## Work Package 4 — Graph Model Integration
 - **Scope:** Define Neo4j schema migrations, create node/relationship upserts, connect vector chunks to graph context, and expose `/graph/...` endpoints.
 - **Prerequisites:** WP3 (ingestion producing metadata to project into the graph).
 - **Deliverables:** Neo4j initialization scripts, ingest-to-graph sync, API responses enriched with subsystem/telemetry links, graph-specific tests.
-- **Early Close Items:** Graph schema defined in design docs (ready for translation to migrations).
-- **Remaining Prerequisites:** Neo4j container runtime, Cypher migration executor, API wiring.
+- **Early Close Items:** Graph schema defined in design docs and implemented via `gateway/ingest/neo4j_writer.py` (constraints, node relationships, chunk links).
+- **Remaining Prerequisites:** Integrate with live Neo4j in container smoke tests and expose graph-backed API endpoints.
 
 ## Work Package 5 — Observability & Security Hardening
 - **Scope:** Add metrics endpoint, structured logging, OpenTelemetry stubs, token-based auth with reader/maintainer scopes, rate limiting, and scheduling (APScheduler jobs for periodic ingest/coverage).

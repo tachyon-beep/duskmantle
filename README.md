@@ -63,6 +63,23 @@ This repository packages a turnkey knowledge management stack that bundles the K
 - Persistent state: mount a host directory to `/opt/knowledge/var` for Qdrant snapshots, Neo4j data/logs, and audit ledgers.
 - Quick smoke check: `./infra/smoke-test.sh duskmantle/km:dev` builds the image, launches a disposable container, and polls `/readyz`.
 
+## Configuration
+Key environment variables (all prefixed with `KM_`):
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `KM_REPO_PATH` | `/workspace/repo` | Mounted repository to ingest |
+| `KM_QDRANT_URL` | `http://localhost:6333` | Qdrant API endpoint |
+| `KM_QDRANT_COLLECTION` | `esper_knowledge_v1` | Collection name for embeddings |
+| `KM_NEO4J_URI` | `bolt://localhost:7687` | Neo4j Bolt URI |
+| `KM_NEO4J_USER`/`KM_NEO4J_PASSWORD` | `neo4j`/`changeme` | Neo4j authentication |
+| `KM_EMBEDDING_MODEL` | `sentence-transformers/all-MiniLM-L6-v2` | Embedding model identifier |
+| `KM_INGEST_WINDOW`/`KM_INGEST_OVERLAP` | `1000` / `200` | Chunking parameters |
+| `KM_INGEST_DRY_RUN` | `false` | Disable writes for test runs |
+| `KM_INGEST_USE_DUMMY` | `false` | Force deterministic embeddings (non-prod) |
+
+Set these in your environment or an `.env` file before building/running the container.
+
 ## Getting Involved
 - Review the core specification in `docs/KNOWLEDGE_MANAGEMENT.md` and the companion design and implementation plan documents.
 - Follow the practices in `AGENTS.md` for coding style, testing, and workflow expectations.

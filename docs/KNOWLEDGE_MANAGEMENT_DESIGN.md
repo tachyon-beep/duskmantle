@@ -78,22 +78,22 @@ The runtime is a trio of co-located services managed inside the container by a l
 ## 5. Ingestion Pipeline
 
 ### 5.1 Discovery & Classification
-- The container expects the repository to be mounted at `/workspace/repo`. Config file `gateway/config/critical_paths.yaml` maps path prefixes to subsystems.
-- Discovery covers `docs/`, `src/esper/`, `tests/`, `src/esper/leyline/_generated/`, and optional `.codacy/`.
-- Classification heuristics leverage regex libraries pre-bundled in the image.
+- The container expects the repository to be mounted at `/workspace/repo`. Discovery is implemented in `gateway/ingest/discovery.py` and walks `docs/`, `src/esper/`, `tests/`, `src/esper/leyline/_generated/`, and optional `.codacy/` paths.
+- Subsystem inference is derived from path prefixes (e.g., `src/esper/kasmina/` → `Kasmina`) with regex fallbacks for Leyline messages and telemetry tags inside the file content.
+- Git metadata (last commit hash/timestamp) is captured via lightweight `git log` calls when available; failures degrade gracefully to `None`.
 
 ### 5.2 Chunking & Embedding
-- 1,000-character windows with 200-character overlap by default; per-type overrides (e.g., 400 for Python code) stored in `gateway/config/chunking.yaml`.
-- Uses `sentence-transformers/all-MiniLM-L6-v2` shipped offline. Batched inference (batch=64) via CPU; togglable GPU support if container launched with `--gpus`.
+- 1,000-character windows with 200-character overlap by default; runtime chunker implemented in `gateway/ingest/chunking.py` with environment-tunable window/overlap values.
+- Uses `sentence-transformers/all-MiniLM-L6-v2` shipped offline. Batched inference (batch=64) via CPU; togglable GPU support if container launched with `--gpus`. A deterministic dummy embedder supports dry runs and tests.
 
 ### 5.3 Index & Graph Upserts
-- Gateway mediates Qdrant and Neo4j writes sequentially to avoid cross-process coordination complexity.
+- Gateway mediates Qdrant and Neo4j writes sequentially to avoid cross-process coordination complexity. `gateway/ingest/qdrant_writer.py` ensures the collection exists and upserts chunk payloads; `gateway/ingest/neo4j_writer.py` maps artifacts to `SourceFile`, `DesignDoc`, and `TestCase` nodes with `HAS_CHUNK`, `BELONGS_TO`, `DESCRIBES`, and `VALIDATES` relationships.
 - Upserts are idempotent; stale entries detected via digest comparison and removed during cleanup sweeps.
 - Optional `--dry-run` flag allows users to preview ingestion without mutating stores.
 
 ### 5.4 Scheduling Strategy
 - APScheduler triggers default ingestion every 30 minutes from within the container, gating runs on repository HEAD changes.
-- Manual triggers: `docker exec km gateway-ingest rebuild --profile local`.
+- Manual triggers: `gateway-ingest rebuild --profile local` (optionally with `--dry-run` or `--dummy-embeddings` for testing).
 - Coverage report generated nightly and stored under `/opt/knowledge/var/reports/coverage_report.json`.
 
 ## 6. Query & Retrieval Workflows
