@@ -34,6 +34,13 @@ class IngestionConfig:
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     use_dummy_embeddings: bool = False
     environment: str = "local"
+    include_patterns: tuple[str, ...] = (
+        "docs",
+        "src/esper",
+        "tests",
+        "src/esper/leyline/_generated",
+        ".codacy",
+    )
     audit_path: Path | None = None
     coverage_path: Path | None = None
 
@@ -48,6 +55,7 @@ class IngestionResult:
     chunk_count: int = 0
     repo_head: str | None = None
     success: bool = True
+    artifacts: list[dict[str, object]] = field(default_factory=list)
 
 
 class IngestionPipeline:
@@ -76,7 +84,14 @@ class IngestionPipeline:
         )
 
         try:
-            artifacts = list(discover(DiscoveryConfig(repo_root=self.config.repo_root)))
+            artifacts = list(
+                discover(
+                    DiscoveryConfig(
+                        repo_root=self.config.repo_root,
+                        include_patterns=self.config.include_patterns,
+                    )
+                )
+            )
             logger.info(
                 "Discovered artifacts",
                 extra={
@@ -88,6 +103,7 @@ class IngestionPipeline:
 
             chunker = Chunker(window=self.config.chunk_window, overlap=self.config.chunk_overlap)
             chunks: list[Chunk] = []
+            artifact_details: list[dict[str, object]] = []
             for artifact in artifacts:
                 artifact_counts[artifact.artifact_type] = artifact_counts.get(artifact.artifact_type, 0) + 1
                 artifact_chunks = list(chunker.split(artifact))
@@ -96,6 +112,16 @@ class IngestionPipeline:
                 chunks.extend(artifact_chunks)
                 if self.neo4j_writer and not self.config.dry_run:
                     self.neo4j_writer.sync_artifact(artifact)
+                artifact_details.append(
+                    {
+                        "path": artifact.path.as_posix(),
+                        "artifact_type": artifact.artifact_type,
+                        "subsystem": artifact.subsystem,
+                        "chunk_count": len(artifact_chunks),
+                        "git_commit": artifact.git_commit,
+                        "git_timestamp": artifact.git_timestamp,
+                    }
+                )
 
             chunk_count = len(chunks)
             logger.info(
@@ -128,6 +154,7 @@ class IngestionPipeline:
                 chunk_count=chunk_count,
                 repo_head=repo_head,
                 success=True,
+                artifacts=artifact_details,
             )
         finally:
             duration = time.time() - started

@@ -4,18 +4,31 @@ import json
 import time
 from pathlib import Path
 
-from gateway.ingest.pipeline import IngestionResult
+from gateway.ingest.pipeline import IngestionConfig, IngestionResult
 
 
-def write_coverage_report(result: IngestionResult, artifacts_total: int, *, output_path: Path) -> None:
+def write_coverage_report(
+    result: IngestionResult,
+    config: IngestionConfig,
+    *,
+    output_path: Path,
+) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    missing = [detail for detail in result.artifacts if detail.get("chunk_count", 0) == 0]
     payload = {
         "generated_at": time.time(),
-        "run_id": result.run_id,
-        "profile": result.profile,
-        "repo_head": result.repo_head,
-        "artifacts_total": artifacts_total,
-        "artifact_breakdown": result.artifact_counts,
-        "chunk_count": result.chunk_count,
+        "run": {
+            "run_id": result.run_id,
+            "profile": result.profile,
+            "repo_head": result.repo_head,
+        },
+        "include_patterns": list(config.include_patterns),
+        "summary": {
+            "artifact_total": len(result.artifacts),
+            "artifact_breakdown": result.artifact_counts,
+            "chunk_count": result.chunk_count,
+        },
+        "artifacts": result.artifacts,
+        "missing_artifacts": missing,
     }
     output_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")

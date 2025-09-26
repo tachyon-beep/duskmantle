@@ -73,7 +73,7 @@ def execute_ingestion(
         if not dry and settings.coverage_enabled and coverage_path is not None:
             write_coverage_report(
                 result,
-                sum(result.artifact_counts.values()),
+                config,
                 output_path=coverage_path,
             )
         return result
