@@ -82,3 +82,26 @@ Restart the container to pick up restored state.
 - **Tracing**: Enable with `KM_TRACING_ENABLED=true`. Set `KM_TRACING_ENDPOINT` for OTLP export; use `KM_TRACING_CONSOLE_EXPORT=true` to mirror spans locally.
 
 For more detail, consult `docs/OBSERVABILITY_GUIDE.md` and the release playbook in `RELEASE.md`.
+
+## 10. Run the MCP Server (Optional)
+The repository ships with a dedicated MCP server so Codex CLI (and other MCP-aware agents) can interact with the gateway without touching HTTP endpoints directly.
+
+1. Install the project with dev extras if you have not already:
+   ```bash
+   pip install -e .[dev]
+   ```
+2. Launch the server from your host machine (outside of Docker). The defaults assume the API is reachable at `http://localhost:8000`:
+   ```bash
+   KM_GATEWAY_URL=http://localhost:8000 \
+   KM_READER_TOKEN=${KM_READER_TOKEN:-maintainer-token} \
+   gateway-mcp --transport stdio
+   ```
+   - Omit `KM_READER_TOKEN` only when auth is disabled. Supply `KM_ADMIN_TOKEN` as well if you plan to trigger ingest or backups through MCP.
+   - Use `--transport http --port 8822` to expose the server over HTTP/SSE instead of stdio.
+3. In another terminal, validate the surface by running the bundled smoke marker:
+   ```bash
+   pytest -m mcp_smoke
+   ```
+   Successful execution exercises `km-search`, `km-coverage-summary`, and `km-backup-trigger` through the MCP layer and increments the Prometheus metrics `km_mcp_requests_total`, `km_mcp_request_seconds`, and `km_mcp_failures_total`.
+
+For Codex CLI configuration and advanced usage patterns, see `docs/MCP_INTEGRATION.md`.

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import base64
 from dataclasses import dataclass
-from typing import Any, Iterable
+from typing import Any
 
 from neo4j import Driver, Transaction
 from neo4j.graph import Node, Relationship
@@ -58,7 +58,7 @@ class GraphService:
             artifacts: list[dict[str, Any]] = []
             if include_artifacts:
                 artifact_records = session.execute_read(_fetch_artifacts_for_subsystem, name)
-                artifacts = [_serialize_node(record["artifact"]) for record in artifact_records]
+                artifacts = [_serialize_node(node) for node in artifact_records]
 
         return {
             "subsystem": _serialize_node(subsystem_node),
@@ -210,16 +210,17 @@ def _fetch_related_nodes(
         "SKIP $skip LIMIT $limit"
     )
     result = tx.run(query, name=name, skip=skip, limit=limit)
-    return [record.data() for record in result]
+    return [{"relationship": record["relationship"], "node": record["node"]} for record in result]
 
 
-def _fetch_artifacts_for_subsystem(tx: Transaction, name: str) -> Iterable[dict[str, Any]]:
+def _fetch_artifacts_for_subsystem(tx: Transaction, name: str) -> list[Node]:
     query = (
         "MATCH (artifact)-[rel]->(s:Subsystem {name: $name}) "
         "WHERE type(rel) IN ['BELONGS_TO', 'DESCRIBES', 'VALIDATES'] "
         "RETURN artifact ORDER BY artifact.path LIMIT 200"
     )
-    return tx.run(query, name=name)
+    result = tx.run(query, name=name)
+    return [record["artifact"] for record in result]
 
 
 def _fetch_node_by_id(tx: Transaction, label: str, key: str, value: Any) -> Node | None:
@@ -255,7 +256,7 @@ def _fetch_node_relationships(
             "LIMIT $limit"
         )
     result = tx.run(query, value=value, limit=limit)
-    return [record.data() for record in result]
+    return [{"relationship": record["relationship"], "node": record["node"]} for record in result]
 
 
 def _search_entities(tx: Transaction, term: str, limit: int) -> list[dict[str, Any]]:
@@ -277,7 +278,15 @@ def _search_entities(tx: Transaction, term: str, limit: int) -> list[dict[str, A
         "LIMIT $limit"
     )
     result = tx.run(query, term=term, limit=limit)
-    return [record.data() for record in result]
+    return [
+        {
+            "node": record["node"],
+            "label": record["label"],
+            "score": record["score"],
+            "snippet": record.get("snippet"),
+        }
+        for record in result
+    ]
 
 
 # --- Serialization helpers -------------------------------------------------

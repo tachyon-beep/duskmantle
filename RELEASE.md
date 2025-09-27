@@ -31,6 +31,7 @@ scripts/checksums.sh dist dist/IMAGE_SHA256SUMS
 ## 4. Verify
 - Inspect the checksum files and ensure they reference the expected artifacts.
 - Run a smoke test with the new wheel and container (e.g., `pip install dist/release/*.whl`, `./infra/smoke-test.sh duskmantle/km:release`). The script triggers a smoke ingest and validates `/coverage`.
+- Capture acceptance demo outputs by completing `docs/ACCEPTANCE_DEMO_SNAPSHOT.md` (image metadata, ingest stats, API excerpts, backup confirmation, MCP smoke result). Attach or link this snapshot in the release notes draft.
 
 ## 5. Tag & Publish
 1. Commit changelog/version updates: `git commit -am "chore(release): 0.2.0"`.

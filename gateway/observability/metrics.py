@@ -98,3 +98,22 @@ COVERAGE_HISTORY_SNAPSHOTS = Gauge(
     "Number of retained coverage history snapshots",
     labelnames=["profile"],
 )
+
+MCP_REQUESTS_TOTAL = Counter(
+    "km_mcp_requests_total",
+    "MCP tool invocations partitioned by result",
+    labelnames=["tool", "result"],
+)
+
+MCP_REQUEST_SECONDS = Histogram(
+    "km_mcp_request_seconds",
+    "Latency of MCP tool handlers",
+    labelnames=["tool"],
+)
+
+MCP_FAILURES_TOTAL = Counter(
+    "km_mcp_failures_total",
+    "MCP tool failures partitioned by error type",
+    labelnames=["tool", "error"],
+)
+

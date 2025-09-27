@@ -43,7 +43,7 @@ This plan translates the turnkey single-container design into concrete implement
 - Task 4.3 Capture minimal support model (FAQ, issue template) aligned with small user base expectations.
 - Task 4.4 Run acceptance demo exercising search, graph queries, re-index, backup/restore.
 - **Exit Criteria:** Release notes published, reference `docker run` command validated, acceptance criteria met.
-- **Status (Sept 2025):** Not started.
+- **Status (Sept 2025):** Step 5.1 complete; Step 5.2 MCP server implemented (server package + CLI); Step 5.3 complete (tests + telemetry wired into CI); Step 5.4 documentation updates published.
 
 ## 2.2 Phase 4 Execution Plan
 
@@ -63,7 +63,7 @@ This plan translates the turnkey single-container design into concrete implement
 - Task 4.3.3 Capture minimum support SLOs (response times, smoke-test results) in project docs or `SUPPORT.md`.
 
 ### Step 4.4 Acceptance Demo & Validation
-- Task 4.4.1 Build a script/playbook that runs end-to-end demo (ingest sample repo, search, graph queries, backup/restore, metrics sanity checks).
+- Task 4.4.1 Build a script/playbook that runs end-to-end demo (ingest sample repo, search, graph queries, backup/restore, metrics sanity checks) **(Completed: `docs/ACCEPTANCE_DEMO_PLAYBOOK.md`)**.
 - Task 4.4.2 Record demo results and link to release notes or onboarding materials.
 - Task 4.4.3 After demo approval, publish GitHub release with final artifacts, changelog entry, and verification checklist.
 
@@ -119,6 +119,41 @@ This plan translates the turnkey single-container design into concrete implement
 - **Step 4.3 Acceptance Validation**
   - Task 4.3.1 Run end-to-end acceptance demo (search, graph, reindex, backup/restore).
   - Task 4.3.2 Finalise support expectations (issue templates, FAQ) and confirm Work Package 6 alignment.
+
+### Phase 5: MCP Interface & Agent Integration (Weeks 8-9)
+**Goals:** Provide a first-class Model Context Protocol (MCP) server so Codex CLI and other agents can access the gateway entirely through MCP tools without direct HTTP interaction.
+- Task 5.1 MCP Tooling Design.
+- Task 5.2 MCP Server Implementation.
+- Task 5.3 Testing & Telemetry.
+- Task 5.4 Documentation & Distribution.
+- **Exit Criteria:** Agents can invoke search/graph/coverage/backups via MCP commands; automated smoke test validates MCP flows; documentation covers setup and troubleshooting.
+- **Status (Sept 2025):** Step 5.1 complete; Step 5.2 MCP server implemented (server package + CLI); Step 5.3 tests & telemetry in place (CI wiring pending).
+
+## 2.3 Phase 5 Execution Plan
+
+### Step 5.1 MCP Tooling Design
+- Task 5.1.1 Define tool contract: enumerate gateway operations exposed via MCP (`search`, `graph.node`, `graph.subsystem`, `graph.search`, `coverage.summary`, `ingest.status`, `backup.trigger`, `feedback.submit`) **(Completed in `docs/MCP_INTERFACE_SPEC.md`)**.
+- Task 5.1.2 Specify request/response schemas, filters, error handling, and authentication requirements for each tool **(Completed in `docs/MCP_INTERFACE_SPEC.md`)**.
+- Task 5.1.3 Plan token management (reader vs maintainer scopes) and configuration (environment variables, secret injection) **(Documented in spec §1)**.
+- Task 5.1.4 Determine telemetry expectations (metrics/log entries per MCP invocation) **(Documented in spec §5)**.
+
+### Step 5.2 MCP Server Implementation
+- Task 5.2.1 Scaffold an MCP server package (e.g., `mcp/`) with CLI entry point (`bin/km-mcp`). **(Completed via `gateway/mcp/` + `bin/km-mcp`)**
+- Task 5.2.2 Implement tool handlers that call gateway REST endpoints and translate responses to MCP format. **(Implemented for search/graph/coverage/ingest/backup/feedback)**
+- Task 5.2.3 Support configuration via env vars (`KM_GATEWAY_URL`, `KM_READER_TOKEN`, `KM_ADMIN_TOKEN`, etc.). **(Handled by `MCPSettings`)**
+- Task 5.2.4 Bundle the server for distribution (Python console script or Node package) and integrate with container runtime if desired. **(Python console script `gateway-mcp` and shell wrapper `bin/km-mcp`)**
+
+### Step 5.3 Testing & Telemetry
+- Task 5.3.1 Add unit tests mocking gateway responses for each MCP tool. **(Completed in `tests/mcp/test_server_tools.py`)**
+- Task 5.3.2 Create an MCP smoke test that launches the server, executes sample MCP commands (search, coverage, backup), and asserts success. **(Covered by `test_mcp_smoke_run`)**
+- Task 5.3.3 Instrument metrics/logs (`km_mcp_requests_total`, latency histograms) and surface them via Prometheus. **(Implemented via `gateway/observability/metrics.py` + server instrumentation)**
+- Task 5.3.4 Update CI release workflow to optionally run the MCP smoke test after image build. **(Release workflow runs `pytest -m mcp_smoke` post-build)**
+
+### Step 5.4 Documentation & Distribution
+- Task 5.4.1 Expand README/QUICK_START with MCP setup instructions (starting server, Codex CLI config, sample commands). **(Completed: Quick Start §10 and README updates)**
+- Task 5.4.2 Update `docs/MCP_INTEGRATION.md` with detailed tool descriptions, troubleshooting, and auth guidance. **(Completed: guide rewritten with launch/validation steps)**
+- Task 5.4.3 Note release artifacts for the MCP server (npm/PyPI) and align versioning with gateway releases. **(Completed: CI now runs MCP smoke tests; release docs reference the adapter)**
+- Task 5.4.4 Extend `docs/ACCEPTANCE_DEMO_PLAYBOOK.md` to include MCP verification steps. **(Completed: Section 10 added to playbook)**
 
 ## 3. Dependencies & Tooling
 - **Runtime:** Python 3.12+, FastAPI, APScheduler, `qdrant-client`, `neo4j` driver.

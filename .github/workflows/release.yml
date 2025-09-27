@@ -47,6 +47,9 @@ jobs:
       - name: Smoke test container
         run: ./infra/smoke-test.sh duskmantle/km:${{ github.ref_name }}
 
+      - name: Run MCP smoke tests
+        run: pytest -m mcp_smoke --maxfail=1 --disable-warnings
+
       - name: Upload release artifacts
         uses: softprops/action-gh-release@v2
         with:

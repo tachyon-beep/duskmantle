@@ -56,7 +56,8 @@ Prefer the detailed walkthrough in `docs/QUICK_START.md`. Summary:
 - Quick smoke check: `./infra/smoke-test.sh duskmantle/km:dev` builds the image, launches a disposable container, runs a smoke ingest, and verifies `/coverage`.
 - Helper scripts live in `bin/`:
   - `bin/km-run [--detach]` starts the container with sensible defaults; override ports/mounts via `KM_IMAGE`, `KM_DATA_DIR`, `KM_REPO_DIR`, or `KM_DOCKER_RUN_ARGS`.
-  - `bin/km-backup [archive.tgz]` archives the mounted state directory (default `./data`) into `./backups` with a timestamped filename.
+- `bin/km-backup [archive.tgz]` archives the mounted state directory (default `./data`) into `./backups` with a timestamped filename.
+- See `docs/ACCEPTANCE_DEMO_PLAYBOOK.md` for an end-to-end demo checklist that combines build, ingest, search/graph verification, backup/restore, and smoke testing.
 
 ## Release Artifacts
 - GitHub Actions `release.yml` builds wheels, Docker images, runs the smoke test, and drafts a tagged release with artifacts (wheels, tarballs, checksums).
@@ -129,6 +130,7 @@ Set these in your environment or an `.env` file before building/running the cont
 - Logs emitted as JSON with `ingest_run_id`, artifact counts, and timing metadata.
 - Distributed tracing (FastAPI + ingestion pipeline) is available when `KM_TRACING_ENABLED=true`; point `KM_TRACING_ENDPOINT` at your OTLP collector or enable console export for local inspection.
 - Use the bundled CLI to review recent runs: `gateway-ingest audit-history --limit 10` (add `--json` for machine parsing).
+- Expose an MCP surface for Codex CLI and other agents by running `gateway-mcp` (install via `pip install -e .[dev]`). The adapter reads `KM_GATEWAY_URL`, `KM_READER_TOKEN`, and `KM_ADMIN_TOKEN` from the environment and mirrors usage into Prometheus metrics (`km_mcp_requests_total`, `km_mcp_request_seconds`, `km_mcp_failures_total`). Validate locally with `pytest -m mcp_smoke`.
 - Search telemetry and MCP feedback are persisted under `/opt/knowledge/var/feedback/events.log` for ranking model training; each entry records query text, scoring breakdown, optional context, and vote captured from the requesting agent.
 - Inspect the active search weighting with `gateway-search show-weights` or `GET /search/weights` (maintainer scope); slow graph lookups generate `graph_lookup_slow` warnings when they exceed `KM_SEARCH_WARN_GRAPH_MS`.
 - Export training datasets from accumulated feedback with `gateway-search export-training-data` (choose CSV or JSONL, optionally require explicit votes). Outputs land in `/opt/knowledge/var/feedback/datasets/` by default.

@@ -1,0 +1,4 @@
+[mcp_servers.duskmantle]
+command = "./bin/km-mcp"
+args = ["--transport", "stdio"]
+env = { "KM_GATEWAY_URL" = "http://localhost:8000" }

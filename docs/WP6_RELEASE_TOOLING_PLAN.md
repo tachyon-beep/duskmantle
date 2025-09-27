@@ -30,3 +30,7 @@
 - **Step C3: Distribution Logistics**
   - Task C3.1 Document artifact hosting (registry URL, checksum location) and provide copy-paste commands **(README Release Artifacts section)**.
   - Task C3.2 If applicable, publish compressed tarball of the repo for air-gapped environments with instructions **(Documented usage via image tarball)**.
+
+### Step D: Acceptance Demo (Phase 4.4)
+- Task D1 Produce acceptance playbook covering build → ingest → search/graph → backup/restore → smoke test **(Completed: `docs/ACCEPTANCE_DEMO_PLAYBOOK.md`)**.
+- Task D2 Capture demo outputs for release notes and update checklists before final tagging **(Completed: see `docs/ACCEPTANCE_DEMO_SNAPSHOT.md` and RELEASE step 4)**.

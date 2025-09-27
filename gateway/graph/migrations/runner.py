@@ -71,11 +71,10 @@ class MigrationRunner:
     def _apply(self, migration: Migration) -> None:
         logger.info("Applying graph migration %s", migration.id)
         with self.driver.session(database=self.database) as session:
-            with session.begin_transaction() as tx:
-                for statement in migration.statements:
-                    tx.run(statement)
-                tx.run(
-                    "MERGE (m:MigrationHistory {id: $id}) "
-                    "SET m.applied_at = datetime()",
-                    id=migration.id,
-                )
+            for statement in migration.statements:
+                session.run(statement)
+            session.run(
+                "MERGE (m:MigrationHistory {id: $id}) "
+                "SET m.applied_at = datetime()",
+                id=migration.id,
+            )

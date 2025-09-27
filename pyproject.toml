@@ -23,6 +23,8 @@ dependencies = [
   "python-dotenv>=1.0",
   "rich>=13.7",
   "prometheus-client>=0.20",
+  "fastmcp>=2.12",
+  "httpx>=0.28",
   "python-json-logger>=2.0",
   "slowapi>=0.1.7",
   "limits>=3.9",
@@ -40,11 +42,13 @@ dev = [
   "ruff>=0.3",
   "pytest>=8.1",
   "pytest-cov>=4.1",
+  "pytest-asyncio>=0.23",
   "httpx>=0.27",
 ]
 
 [project.scripts]
 knowledge-gateway = "gateway.__main__:main"
+gateway-mcp = "gateway.mcp.cli:main"
 gateway-ingest = "gateway.ingest.cli:main"
 gateway-graph = "gateway.graph.cli:main"
 gateway-search = "gateway.search.cli:main"
@@ -57,7 +61,8 @@ include = ["gateway", "gateway.*"]
 addopts = "-ra"
 testpaths = ["tests"]
 markers = [
-  "neo4j: integration tests that require a running Neo4j instance"
+  "neo4j: integration tests that require a running Neo4j instance",
+  "mcp_smoke: minimal MCP smoke coverage"
 ]
 
 [tool.black]

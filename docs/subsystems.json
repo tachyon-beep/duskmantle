@@ -1,0 +1,38 @@
+{
+  "GatewayCore": {
+    "description": "Core API and ingest pipeline components",
+    "criticality": "high",
+    "paths": [
+      "gateway/api/",
+      "gateway/ingest/",
+      "gateway/search/",
+      "gateway/graph/",
+      "tests/ingest/",
+      "tests/graph/",
+      "tests/search/"
+    ],
+    "dependencies": ["Observability", "ReleaseTooling"]
+  },
+  "Observability": {
+    "description": "Metrics, tracing, dashboards, and observability runbooks",
+    "criticality": "high",
+    "paths": [
+      "docs/OBSERVABILITY_",
+      "docs/DASHBOARD_",
+      "docs/WP5_",
+      "gateway/observability/"
+    ]
+  },
+  "ReleaseTooling": {
+    "description": "Release automation, acceptance demos, and build tooling",
+    "criticality": "medium",
+    "paths": [
+      "docs/WP6_",
+      "docs/ACCEPTANCE_",
+      "docs/ACCEPTANCE_DEMO_SNAPSHOT.md",
+      "RELEASE.md",
+      "scripts/",
+      "infra/"
+    ]
+  }
+}

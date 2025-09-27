@@ -4,9 +4,11 @@ import json
 import logging
 import re
 import subprocess
+from collections.abc import Iterable
 from dataclasses import dataclass
+from fnmatch import fnmatch
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from gateway.ingest.artifacts import Artifact
 
@@ -69,12 +71,21 @@ def discover(config: DiscoveryConfig) -> Iterable[Artifact]:
             continue
 
         artifact_type = _infer_artifact_type(path, repo_root)
-        subsystem = _infer_subsystem(path, repo_root)
+        inferred_subsystem = _infer_subsystem(path, repo_root)
+        catalog_entry = None
+        if inferred_subsystem:
+            catalog_entry = subsystem_catalog.get(inferred_subsystem.lower())
+        if catalog_entry is None:
+            catalog_entry = _match_catalog_entry(path, repo_root, subsystem_catalog)
+
+        if catalog_entry:
+            subsystem_name = catalog_entry["name"]
+            subsystem_meta = catalog_entry["metadata"]
+        else:
+            subsystem_name = inferred_subsystem.capitalize() if inferred_subsystem else None
+            subsystem_meta = {}
+
         git_commit, git_timestamp = _lookup_git_metadata(path, repo_root)
-        normalized_subsystem = subsystem.capitalize() if subsystem else None
-        subsystem_meta = {}
-        if normalized_subsystem:
-            subsystem_meta = subsystem_catalog.get(normalized_subsystem.lower(), {})
 
         extra = {
             "leyline_entities": sorted(set(_LEYLINE_PATTERN.findall(content))),
@@ -86,7 +97,7 @@ def discover(config: DiscoveryConfig) -> Iterable[Artifact]:
         yield Artifact(
             path=path.relative_to(repo_root),
             artifact_type=artifact_type,
-            subsystem=normalized_subsystem,
+            subsystem=subsystem_name,
             content=content,
             git_commit=git_commit,
             git_timestamp=git_timestamp,
@@ -177,18 +188,48 @@ def _load_subsystem_catalog(repo_root: Path) -> dict[str, Any]:
         root / ".metadata" / "subsystems.json",
         root / "docs" / "subsystems.json",
     ]
-    catalog: dict[str, Any] = {}
+    catalog: dict[str, dict[str, Any]] = {}
     for candidate in candidates:
         if candidate.exists():
             try:
                 data = json.loads(candidate.read_text(encoding="utf-8"))
                 if isinstance(data, dict):
-                    catalog = {str(k).lower(): v for k, v in data.items()}
+                    catalog = {
+                        str(key).lower(): {
+                            "name": str(key) if isinstance(key, str) else str(key),
+                            "metadata": value if isinstance(value, dict) else {},
+                        }
+                        for key, value in data.items()
+                    }
                 break
             except (json.JSONDecodeError, OSError):
                 logger.warning("Failed to parse subsystem metadata file %s", candidate)
     _SUBSYSTEM_METADATA_CACHE[root] = catalog
     return catalog
+
+
+def _match_catalog_entry(
+    path: Path, repo_root: Path, catalog: dict[str, dict[str, Any]]
+) -> dict[str, Any] | None:
+    if not catalog:
+        return None
+    rel_posix = path.relative_to(repo_root).as_posix()
+    for entry in catalog.values():
+        metadata = entry.get("metadata", {})
+        patterns = metadata.get("paths") or metadata.get("includes") or []
+        if not isinstance(patterns, (list, tuple, set)):
+            continue
+        for pattern in patterns:
+            if not isinstance(pattern, str):
+                continue
+            cleaned = pattern.strip()
+            if not cleaned:
+                continue
+            prefix_match = rel_posix.startswith(cleaned.rstrip("*/"))
+            glob_match = fnmatch(rel_posix, cleaned)
+            if prefix_match or glob_match:
+                return entry
+    return None
 
 
 def dump_artifacts(artifacts: Iterable[Artifact]) -> str:
