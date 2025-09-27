@@ -1,13 +1,13 @@
 # Project Status Summary
 
 ## Overview
-- **Container Runtime (WP1):** Completed. Docker image bundles Python 3.12 (bookworm), Qdrant 1.15.4, Neo4j 5.26.0, supervisord orchestration, volume guards, and smoke-test harness.
-- **Gateway Core (WP2):** Completed. FastAPI app exposes `/healthz`, `/readyz`, `/metrics`, `/audit/history`; structured JSON logging; rate limiting; bearer-token auth; scheduler hooks.
-- **Ingestion Pipeline (WP3):** Functional but pending provenance/coverage polish. Discovery, chunking, embedding, Qdrant/Neo4j sync and coverage report implemented; ingestion returns rich metadata.
-- **Graph Integration (WP4):** Partial. Neo4j writer adds nodes/edges/constraints; ingestion populates graph. Missing Graph API endpoints, migration tooling, and validation tests.
-- **Observability & Security (WP5):** Partially complete. Metrics/logging/auth/coverage/scheduler guardrails delivered; remaining tasks documented below.
-- **Release Tooling (WP6):** Not started.
-- **Autonomous Analysis Interface (WP7):** Not started.
+- **Container Runtime (WP1):** ✅ Completed (image build, supervisor orchestration, smoke harness).
+- **Gateway Core (WP2):** ✅ Completed (health endpoints, auth/rate limiting, scheduler, logging).
+- **Ingestion Pipeline (WP3):** ✅ Core ingestion/coverage complete; hybrid search tuning remains (see outstanding list).
+- **Graph Integration (WP4):** ✅ Graph APIs, migrations runner, MCP coverage, and live `/graph/*` tests delivered.
+- **Observability & Security (WP5):** ✅ Metrics/logging/auth/scheduler hardening done; keep monitoring doc polish.
+- **Release Tooling (WP6):** ⚙️ In progress (pipeline, docs, acceptance snapshot). Support artefacts still pending.
+- **Autonomous Analysis Interface (WP7):** ⚙️ MCP server shipped; broader agent interface backlog remains.
 
 ## Work Package Breakdown
 
@@ -17,24 +17,25 @@ Nothing outstanding.
 ### WP2 — Gateway Core Skeleton *(Completed)*
 Nothing outstanding.
 
-### WP3 — Ingestion Pipeline MVP *(In Progress)*
+### WP3 — Ingestion Pipeline MVP *(Complete with follow-up backlog)*
 - ✅ Discovery, chunking, embeddings, Qdrant/Neo4j integration, coverage report, metrics instrumentation.
-- 🔸 Outstanding: Persist provenance/audit ledger exposure (API/CLI readout) and finalize coverage reporting for non-dummy embeddings when model bundled. Ensure design spec’s audit logger expectations are fully met.
+- 🔸 Outstanding backlog: provenance CLI polish and **hybrid search enhancements** (dense + lexical fusion, HNSW `M`/`ef_search` tuning, query weighting knobs).
 
-### WP4 — Graph Model Integration *(In Progress)*
-- ✅ Neo4j writer ensures constraints, BELONGS_TO/DESCRIBES/VALIDATES/HAS_CHUNK edges populated during ingestion; `/graph/subsystems`, `/graph/nodes`, `/graph/search`, maintainer-only `/graph/cypher`, schema migration runner/CLI, and `/search` graph-context enrichment are live with tests and dependency overrides.
-- 🔸 Outstanding: Add optional auto-migration hooks and expand validation against live Neo4j instances.
+### WP4 — Graph Model Integration *(Complete)*
+- ✅ Ingestion populates Neo4j with constraints/edges; `/graph/subsystems`, `/graph/nodes`, `/graph/search`, `/graph/cypher`, and `/search` graph-context enrichment are live with contract tests and live `pytest -m neo4j` coverage (container optional in CI via `RUN_NEO4J_SLICE`).
+- 🔸 Follow-up: monitor auto-migration logs; schedule periodic live graph checks in CI when feasible.
 
-### WP5 — Observability & Security Hardening *(In Progress)*
-- ✅ Metrics (`/metrics`), structured logging, rate limiting, bearer-token auth, audit history endpoint, coverage report, scheduler with repo-head gating & locking, documentation updates, OpenTelemetry tracing toggle (`KM_TRACING_ENABLED`), and operator runbook (`docs/OBSERVABILITY_GUIDE.md`).
-- 🔸 Outstanding:
-  - Monitor metric names/log format in docs and consider additional ingestion health checks.
+### WP5 — Observability & Security Hardening *(Complete)*
+- ✅ Metrics (`/metrics`), structured logging, rate limiting, bearer-token auth, audit history endpoint, coverage report, scheduler with repo-head gating/locking, OTel toggle, and observability runbooks.
+- 🔸 Follow-up: continue documentation polish as new metrics are added.
 
-### WP6 — Release Tooling & Documentation *(Not Started)*
-- Docker CI pipeline, backup/restore helpers, checksum generation, troubleshooting guide, release notes.
+### WP6 — Release Tooling & Documentation *(In Progress)*
+- ✅ Build/checksum scripts, release workflow (`release.yml`), Quick Start + troubleshooting updates, acceptance demo playbook/snapshot.
+- 🔸 Outstanding: finalise upgrade/rollback procedure, publish FAQ/issue templates/support expectations, run tagged release dry-run with new workflow.
 
-### WP7 — Autonomous Analysis Interface *(Not Started)*
-- OpenAI client integration, MCP command, prompt orchestration, retrieval quality/groundedness reporting.
+### WP7 — Autonomous Analysis Interface *(Deferred to post-1.0)*
+- ✅ MCP server/CLI/tests/telemetry/docs completed (ship-ready as tooling).
+- 🔸 Deferred: full agent automation stack (prompt orchestration, OpenAI client flows, retrieval QA). Revisit after 1.0 release.
 
 ## Recent Highlights
 - Added UUID-based Qdrant IDs, audit logging, coverage reports.
@@ -61,7 +62,6 @@ Nothing outstanding.
 - Manual auth-enabled smoke test succeeded with password `tRusKAxG2fQKmP-ik3Y0`.
 
 ## Next Priorities
-- WP5: finalize documentation/tracing decisions, optional CLI exposure, ensure metrics/logging guidance complete.
-- WP4: deliver schema migrations and search enrichment leveraging the new graph service.
-- WP6: begin release tooling once WP5 wraps.
-- WP7: plan OpenAI integration after core hardening.
+- Finalise WP6 deliverables: upgrade/rollback guide, support/FAQ artifacts, dry-run tagged release.
+- Address WP3 hybrid search backlog (dense+lexical fusion, HNSW tuning, query knobs) once support docs are in place.
+- Plan WP7 agent enhancements (OpenAI/client orchestration) after release tooling closes.

@@ -149,11 +149,12 @@ This plan translates the turnkey single-container design into concrete implement
 - Task 5.3.3 Instrument metrics/logs (`km_mcp_requests_total`, latency histograms) and surface them via Prometheus. **(Implemented via `gateway/observability/metrics.py` + server instrumentation)**
 - Task 5.3.4 Update CI release workflow to optionally run the MCP smoke test after image build. **(Release workflow runs `pytest -m mcp_smoke` post-build)**
 
-### Step 5.4 Documentation & Distribution
+### Step 5.4 Documentation & Distribution *(Complete for 1.0; broader agent automation deferred post-1.0)*
 - Task 5.4.1 Expand README/QUICK_START with MCP setup instructions (starting server, Codex CLI config, sample commands). **(Completed: Quick Start §10 and README updates)**
 - Task 5.4.2 Update `docs/MCP_INTEGRATION.md` with detailed tool descriptions, troubleshooting, and auth guidance. **(Completed: guide rewritten with launch/validation steps)**
 - Task 5.4.3 Note release artifacts for the MCP server (npm/PyPI) and align versioning with gateway releases. **(Completed: CI now runs MCP smoke tests; release docs reference the adapter)**
 - Task 5.4.4 Extend `docs/ACCEPTANCE_DEMO_PLAYBOOK.md` to include MCP verification steps. **(Completed: Section 10 added to playbook)**
+- Post-1.0 backlog: prompt orchestration, retrieval QA, and OpenAI client integration (captured under future roadmap/WP7).
 
 ## 3. Dependencies & Tooling
 - **Runtime:** Python 3.12+, FastAPI, APScheduler, `qdrant-client`, `neo4j` driver.
@@ -175,6 +176,7 @@ Detailed mitigation activities are tracked in `docs/RISK_MITIGATION_PLAN.md`. Th
 | Host compatibility | Deployment failures | Low | Actions defined with pending compatibility matrix (§6). |
 | Observability coverage | Silent ingestion failures | Medium | Actions defined (§7). |
 | Release distribution integrity | Corrupted deployments | Low | Actions defined (§8). |
+| Hybrid search tuning | Suboptimal retrieval relevance | Medium | Not started — hybrid dense/lexical strategy tuning, HNSW parameter audits, and user-facing query knobs remain on the roadmap. |
 
 ## 5. Tracking & Communication
 - Maintain a lightweight issue list (GitHub Projects) tagged per phase; update weekly.

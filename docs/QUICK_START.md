@@ -83,6 +83,17 @@ Restart the container to pick up restored state.
 
 For more detail, consult `docs/OBSERVABILITY_GUIDE.md` and the release playbook in `RELEASE.md`.
 
+## 11. Upgrades & Rollback
+1. Review the release changelog for schema/config changes.
+2. Back up `/opt/knowledge/var` (`bin/km-backup`). Copy `backups/km-backup-*.tgz` off-host.
+3. Stop the running container (`docker rm -f km-gateway`).
+4. Pull or build the new image (`docker pull duskmantle/km:<tag>` or `scripts/build-image.sh`). Relaunch with the same env vars (`KM_NEO4J_DATABASE=knowledge`, tokens, mounts).
+5. Run ingest if needed (`docker exec km-gateway gateway-ingest rebuild --profile production`).
+6. Validate `/healthz`, `/coverage`, the smoke script, and `pytest -m mcp_smoke`.
+7. For rollback: stop the container, restore the archived backup to `data/`, and start the previous image tag.
+
+See `docs/UPGRADE_ROLLBACK.md` for the detailed checklist.
+
 ## 10. Run the MCP Server (Optional)
 The repository ships with a dedicated MCP server so Codex CLI (and other MCP-aware agents) can interact with the gateway without touching HTTP endpoints directly.
 

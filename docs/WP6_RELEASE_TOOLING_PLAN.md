@@ -24,6 +24,9 @@
 - **Step C1: Quick Start & Troubleshooting**
   - Task C1.1 Write quick-start guide covering prerequisites, `bin/km-run`, and sample ingest commands **(Completed: `docs/QUICK_START.md`)**.
   - Task C1.2 Expand troubleshooting appendix (auth errors, scheduler skips, tracing setup) referencing observability docs **(Updates to README & OBSERVABILITY_GUIDE)**.
+- **Step C1a: Upgrade & Rollback**
+  - Task C1a.1 Document upgrade/rollback checklist in `docs/UPGRADE_ROLLBACK.md` **(Completed)**.
+  - Task C1a.2 Add Quick Start summary linking to the detailed guide **(Completed)**.
 - **Step C2: Release Checklist & Notes**
   - Task C2.1 Define release checklist (build, smoke test, backups, docs review) stored in repo (`RELEASE.md`) **(Checklist refreshed)**.
   - Task C2.2 Template CHANGELOG entries per release and note manual verification steps **(Unreleased heading maintained)**.
