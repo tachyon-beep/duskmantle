@@ -5,6 +5,11 @@ import time
 from pathlib import Path
 
 from gateway.ingest.pipeline import IngestionConfig, IngestionResult
+from gateway.observability.metrics import (
+    COVERAGE_LAST_RUN_STATUS,
+    COVERAGE_LAST_RUN_TIMESTAMP,
+    COVERAGE_MISSING_ARTIFACTS,
+)
 
 
 def write_coverage_report(
@@ -15,8 +20,9 @@ def write_coverage_report(
 ) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     missing = [detail for detail in result.artifacts if detail.get("chunk_count", 0) == 0]
+    generated_at = time.time()
     payload = {
-        "generated_at": time.time(),
+        "generated_at": generated_at,
         "run": {
             "run_id": result.run_id,
             "profile": result.profile,
@@ -32,3 +38,7 @@ def write_coverage_report(
         "missing_artifacts": missing,
     }
     output_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    profile = result.profile
+    COVERAGE_LAST_RUN_STATUS.labels(profile).set(1)
+    COVERAGE_LAST_RUN_TIMESTAMP.labels(profile).set(generated_at)
+    COVERAGE_MISSING_ARTIFACTS.labels(profile).set(len(missing))

@@ -1,0 +1,5 @@
+request_id,timestamp,rank,query,result_count,chunk_id,artifact_path,artifact_type,subsystem,vector_score,adjusted_score,signal_subsystem_affinity,signal_relationship_count,signal_supporting_bonus,signal_coverage_missing,graph_context_present,feedback_vote,feedback_note,context_json,metadata_request_id,metadata_graph_context_included,metadata_warnings_count
+req-1,2024-09-01T12:00:00Z,1,telemetry latency,2,chunk::a,src/core.py,code,core,0.82,0.95,1.0,2.0,0.3,0.0,1.0,5.0,useful,"{\"task\":\"diagnostics\"}",req-1,1.0,0.0
+req-1,2024-09-01T12:00:00Z,2,telemetry latency,2,chunk::b,src/log.py,code,logging,0.70,0.76,0.5,1.0,0.1,0.0,1.0,3.0,,"{\"task\":\"diagnostics\"}",req-1,1.0,0.0
+req-2,2024-09-02T08:15:00Z,1,observability alerts,2,chunk::c,docs/alerts.md,doc,observability,0.65,0.80,1.0,1.0,0.4,0.0,1.0,4.0,,"{\"task\":\"playbook\"}",req-2,1.0,0.0
+req-2,2024-09-02T08:15:00Z,2,observability alerts,2,chunk::d,src/alerts.py,code,alerts,0.78,0.83,0.5,1.0,0.2,0.0,1.0,3.0,,"{\"task\":\"playbook\"}",req-2,1.0,0.0

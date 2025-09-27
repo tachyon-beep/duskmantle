@@ -103,7 +103,7 @@ Expose an HTTP API (FastAPI recommended) with the following endpoints:
 
 - `POST /ingest/run` — trigger full re-index (requires auth token).
 - `POST /ingest/path` — re-index a specific path.
-- `GET /search/vector` — parameters: `query`, optional filters (`subsystem`, `artifact_type`, `leyline`); returns ranked chunks with metadata.
+- `POST /search` — body includes `query` plus optional `limit`, `include_graph`, and `filters` (`subsystems`, `artifact_types`, `namespaces`, `tags`, `updated_after`, `max_age_days`); returns ranked chunks with vector + graph context and scoring metadata.
 - `GET /search/graph/dependencies` — parameters: `subsystem` or `leyline`; runs Cypher to return relationship chains.
 - `POST /search/hybrid` — combines vector search with graph expansion; accepts `query` and optional `mode` (`downstream`, `upstream`).
 - `GET /health/live`, `GET /health/ready` — container health.

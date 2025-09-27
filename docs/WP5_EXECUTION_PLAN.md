@@ -12,7 +12,10 @@
 - Rate limiting for search/graph endpoints (configurable burst/limit) using Starlette middleware.
 - APScheduler job(s) for periodic ingest and nightly coverage report generation; persisted job state to avoid duplicate runs.
 - Provenance/audit ledger stored under `/opt/knowledge/var/audit/` with API/CLI access.
+- Coverage report return path exposed via `/coverage` for maintainer review.
+- `/healthz` enhanced with coverage freshness, audit ledger, and scheduler diagnostics for operational readiness checks.
 - Documentation updates detailing new env vars, operational guidance, and troubleshooting tips.
+- Observability runbook (`docs/OBSERVABILITY_GUIDE.md`) capturing metrics dashboards, tracing setup, and alerting playbooks.
 - Regression tests covering metrics output, auth gating, scheduler dry-run, and CLI coverage report export.
 
 ## Task Breakdown
@@ -22,8 +25,8 @@
    - Update smoke test to curl `/metrics`.
 
 2. **Structured Logging & Tracing**
-   - Configure standard logger to emit JSON (or key-value) with ingest_run_id plus subsystem/artifact tags.
-   - Optional: wrap pipeline stages with OpenTelemetry spans (config toggle).
+   - Configure standard logger to emit JSON (or key-value) with ingest_run_id plus subsystem/artifact tags. *(Completed — JSON logging shipped in earlier iteration.)*
+   - Optional: wrap pipeline stages with OpenTelemetry spans (config toggle). *(Completed — FastAPI, CLI, and pipeline now emit spans when `KM_TRACING_ENABLED=true` with OTLP support.)*
 
 3. **Auth & Rate Limiting**
    - Implement FastAPI dependencies validating bearer tokens from env (`KM_ADMIN_TOKEN`, `KM_READER_TOKEN`).
@@ -37,15 +40,16 @@
 
 5. **Provenance & Audit Ledger**
    - Persist ingestion runs to SQLite (e.g., `audit.db`) with timestamp, repo HEAD, model, chunk counts.
-   - Expose `/audit/history` and CLI flag to dump recent runs.
+   - Expose `/audit/history` and CLI flag to dump recent runs. *(Completed — `gateway-ingest audit-history` surfaces recent entries with JSON/table output.)*
 
 6. **Documentation & Tests**
    - Update README/AGENTS to explain metrics, auth tokens, scheduler toggles.
    - Extend work packages/implementation plan to mark WP5 progress.
    - Add pytest coverage for new modules and smoke scenario for secured tokens.
+   - Maintain a living observability guide describing metrics, tracing, rate limiting, and troubleshooting workflows.
 
 ## Dependencies & Open Questions
-- Decide on logging format (JSON vs key-value) and whether OpenTelemetry should be optional or always enabled.
+- Decide on logging format (JSON vs key-value) and whether OpenTelemetry should be optional or always enabled. *(Resolved — JSON logging is standard; tracing is opt-in via `KM_TRACING_ENABLED`.)*
 - Confirm storage location & retention policy for audit DB to align with risk plan.
 - Determine default cron frequency (30 minutes) and adjust for testing so scheduler does not thrash.
 - Align rate limiting defaults with prospective agent workloads.

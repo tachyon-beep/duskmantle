@@ -23,7 +23,7 @@ This plan translates the turnkey single-container design into concrete implement
 - Task 2.4 Enhance `/search` to include graph context; expose `/graph/...` endpoints; add contract tests.
 - Task 2.5 Generate nightly coverage report and store under `/opt/knowledge/var/reports/`.
 - **Exit Criteria:** End-to-end ingestion populates both stores; search payloads include subsystem metadata; graph endpoints return expected relationships.
-- **Status (Sept 2025):** Partially complete — ingestion populates Qdrant/Neo4j for docs, code, and tests; graph APIs still pending.
+- **Status (Sept 2025):** Complete — ingestion writes full graph/linkage, coverage reports surface via `/coverage`, and graph/search contract tests exercise the enriched payloads.
 
 ### Phase 3: Turnkey Hardening (Weeks 5-6)
 **Goals:** Finalize security knobs, observability, scheduling, offline readiness.
@@ -32,6 +32,7 @@ This plan translates the turnkey single-container design into concrete implement
 - Task 3.3 Expose Prometheus metrics and structured logging; document log/metric scraping.
 - Task 3.4 Bundle optional helper scripts (`bin/km-run`, `bin/km-backup`) and example reverse proxy configs.
 - Task 3.5 Create smoke-test workflow that builds the image, runs minimal ingestion, and checks health endpoints.
+- Task 3.6 Update the FastAPI app to use lifespan handlers (drop deprecated `on_event`) and extend ingest writer unit coverage (Neo4j/Qdrant) to reduce warning noise and harden regression detection.
 - **Exit Criteria:** Container passes smoke tests, supports offline start, metrics/auth configurable via env vars, documentation updated.
 - **Status (Sept 2025):** Not started.
 
@@ -43,6 +44,36 @@ This plan translates the turnkey single-container design into concrete implement
 - Task 4.4 Run acceptance demo exercising search, graph queries, re-index, backup/restore.
 - **Exit Criteria:** Release notes published, reference `docker run` command validated, acceptance criteria met.
 - **Status (Sept 2025):** Not started.
+
+## 2.1 Detailed Phase Execution Plan
+
+### Phase 3 — Turnkey Hardening
+- **Step 3.1 Scheduler & Coverage Reliability**
+  - Task 3.1.1 Wire APScheduler interval and cron profiles with repo HEAD gating and lockfile tests.
+  - Task 3.1.2 Add integration tests that simulate multiple scheduler ticks and verify coverage report rotation.
+- **Step 3.2 Auth & Access Controls**
+  - Task 3.2.1 Enforce reader/maintainer token scopes across CLI and API entry points.
+  - Task 3.2.2 Document token rotation, env var management, and failure modes.
+- **Step 3.3 Observability Enhancements**
+  - Task 3.3.1 Expand Prometheus metrics (ingest latency, graph cache events) and ensure alerts reference OBSERVABILITY_GUIDE.
+  - Task 3.3.2 Enable optional OTLP tracing pipeline with smoke validation of span export.
+- **Step 3.4 Runtime & Test Hardening**
+  - Task 3.4.1 Replace FastAPI `on_event` usage with lifespan handlers; update unit tests accordingly.
+  - Task 3.4.2 Increase ingest writer coverage, including Qdrant writer idempotency tests.
+- **Step 3.5 Operational Tooling**
+  - Task 3.5.1 Ship helper scripts (`km-run`, `km-backup`) with docs and examples.
+  - Task 3.5.2 Implement container smoke-test workflow (build → run → healthz → ingest dry-run → coverage check).
+
+### Phase 4 — Release Packaging & Adoption
+- **Step 4.1 Release Automation**
+  - Task 4.1.1 Create CI pipeline to build, tag, and publish images/tarballs with checksums.
+  - Task 4.1.2 Capture release metadata in CHANGELOG/RELEASE docs per Conventional Commits.
+- **Step 4.2 Operator Enablement**
+  - Task 4.2.1 Produce quick-start guide, upgrade notes, and troubleshooting appendix.
+  - Task 4.2.2 Provide backup/restore and smoke-test runbooks referencing OBSERVABILITY_GUIDE.
+- **Step 4.3 Acceptance Validation**
+  - Task 4.3.1 Run end-to-end acceptance demo (search, graph, reindex, backup/restore).
+  - Task 4.3.2 Finalise support expectations (issue templates, FAQ) and confirm Work Package 6 alignment.
 
 ## 3. Dependencies & Tooling
 - **Runtime:** Python 3.12+, FastAPI, APScheduler, `qdrant-client`, `neo4j` driver.

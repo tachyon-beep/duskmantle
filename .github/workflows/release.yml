@@ -1,0 +1,61 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install .[dev]
+
+      - name: Run tests
+        run: pytest
+
+      - name: Build wheel
+        run: |
+          python -m pip install build
+          scripts/build-wheel.sh dist/release
+
+      - name: Build docker image
+        run: docker build -t duskmantle/km:${{ github.ref_name }} .
+
+      - name: Save docker image
+        run: docker save duskmantle/km:${{ github.ref_name }} -o dist/duskmantle-km.tar
+
+      - name: Generate checksums
+        run: |
+          scripts/checksums.sh dist/release dist/SHA256SUMS
+          scripts/checksums.sh dist dist/IMAGE_SHA256SUMS
+
+      - name: Smoke test container
+        run: ./infra/smoke-test.sh duskmantle/km:${{ github.ref_name }}
+
+      - name: Upload release artifacts
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          draft: true
+          files: |
+            dist/release/*.whl
+            dist/release/*.tar.gz
+            dist/SHA256SUMS
+            dist/IMAGE_SHA256SUMS
+            dist/duskmantle-km.tar
+            CHANGELOG.md

@@ -4,8 +4,40 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
+
+
+SEARCH_WEIGHT_PROFILES: dict[str, dict[str, float]] = {
+    "default": {
+        "weight_subsystem": 0.28,
+        "weight_relationship": 0.05,
+        "weight_support": 0.09,
+        "weight_coverage_penalty": 0.15,
+        "weight_criticality": 0.12,
+    },
+    "analysis": {
+        "weight_subsystem": 0.38,
+        "weight_relationship": 0.10,
+        "weight_support": 0.08,
+        "weight_coverage_penalty": 0.18,
+        "weight_criticality": 0.18,
+    },
+    "operations": {
+        "weight_subsystem": 0.22,
+        "weight_relationship": 0.08,
+        "weight_support": 0.06,
+        "weight_coverage_penalty": 0.28,
+        "weight_criticality": 0.10,
+    },
+    "docs-heavy": {
+        "weight_subsystem": 0.26,
+        "weight_relationship": 0.04,
+        "weight_support": 0.22,
+        "weight_coverage_penalty": 0.12,
+        "weight_criticality": 0.08,
+    },
+}
 
 
 class AppSettings(BaseSettings):
@@ -39,12 +71,96 @@ class AppSettings(BaseSettings):
     scheduler_interval_minutes: int = Field(30, alias="KM_SCHEDULER_INTERVAL_MINUTES")
     coverage_enabled: bool = Field(True, alias="KM_COVERAGE_ENABLED")
 
+    tracing_enabled: bool = Field(False, alias="KM_TRACING_ENABLED")
+    tracing_endpoint: str | None = Field(None, alias="KM_TRACING_ENDPOINT")
+    tracing_headers: str | None = Field(None, alias="KM_TRACING_HEADERS")
+    tracing_service_name: str = Field(
+        "duskmantle-knowledge-gateway", alias="KM_TRACING_SERVICE_NAME"
+    )
+    tracing_sample_ratio: float = Field(1.0, alias="KM_TRACING_SAMPLE_RATIO")
+    tracing_console_export: bool = Field(False, alias="KM_TRACING_CONSOLE_EXPORT")
+
+    graph_auto_migrate: bool = Field(False, alias="KM_GRAPH_AUTO_MIGRATE")
+
+    search_weight_profile: Literal[
+        "default",
+        "analysis",
+        "operations",
+        "docs-heavy",
+    ] = Field("default", alias="KM_SEARCH_WEIGHT_PROFILE")
+    search_weight_subsystem: float = Field(0.28, alias="KM_SEARCH_W_SUBSYSTEM")
+    search_weight_relationship: float = Field(0.05, alias="KM_SEARCH_W_RELATIONSHIP")
+    search_weight_support: float = Field(0.09, alias="KM_SEARCH_W_SUPPORT")
+    search_weight_coverage_penalty: float = Field(0.15, alias="KM_SEARCH_W_COVERAGE_PENALTY")
+    search_weight_criticality: float = Field(0.12, alias="KM_SEARCH_W_CRITICALITY")
+    search_sort_by_vector: bool = Field(False, alias="KM_SEARCH_SORT_BY_VECTOR")
+    search_scoring_mode: Literal["heuristic", "ml"] = Field(
+        "heuristic", alias="KM_SEARCH_SCORING_MODE"
+    )
+    search_model_path: Path | None = Field(None, alias="KM_SEARCH_MODEL_PATH")
+    search_warn_slow_graph_ms: int = Field(250, alias="KM_SEARCH_WARN_GRAPH_MS")
+
     dry_run: bool = Field(False, alias="KM_INGEST_DRY_RUN")
 
     model_config = {
         "env_file": ".env",
         "extra": "ignore",
     }
+
+    @field_validator("tracing_sample_ratio")
+    @classmethod
+    def _clamp_tracing_ratio(cls, value: float) -> float:
+        """Ensure the tracing sampling ratio stays within [0, 1]."""
+
+        if value < 0:
+            return 0.0
+        if value > 1:
+            return 1.0
+        return value
+
+    @field_validator(
+        "search_weight_subsystem",
+        "search_weight_relationship",
+        "search_weight_support",
+        "search_weight_coverage_penalty",
+        "search_weight_criticality",
+    )
+    @classmethod
+    def _clamp_search_weights(cls, value: float) -> float:
+        """Clamp search weights to [0, 1] for stability."""
+
+        if value < 0:
+            return 0.0
+        if value > 1:
+            return 1.0
+        return value
+
+    def resolved_search_weights(self) -> tuple[str, dict[str, float]]:
+        """Return the active search weight profile name and resolved weights."""
+
+        profile = self.search_weight_profile
+        base = dict(SEARCH_WEIGHT_PROFILES.get(profile, SEARCH_WEIGHT_PROFILES["default"]))
+
+        overrides: dict[str, float] = {}
+        fields_set = getattr(self, "model_fields_set", set())
+
+        if "search_weight_subsystem" in fields_set:
+            overrides["weight_subsystem"] = self.search_weight_subsystem
+        if "search_weight_relationship" in fields_set:
+            overrides["weight_relationship"] = self.search_weight_relationship
+        if "search_weight_support" in fields_set:
+            overrides["weight_support"] = self.search_weight_support
+        if "search_weight_coverage_penalty" in fields_set:
+            overrides["weight_coverage_penalty"] = self.search_weight_coverage_penalty
+        if "search_weight_criticality" in fields_set:
+            overrides["weight_criticality"] = self.search_weight_criticality
+
+        resolved = base.copy()
+        resolved.update(overrides)
+
+        if overrides:
+            return f"{profile}+overrides", resolved
+        return profile, resolved
 
 
 @lru_cache(maxsize=1)

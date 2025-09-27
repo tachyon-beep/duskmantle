@@ -8,6 +8,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Sequence
 
+from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
+
 from gateway.ingest.artifacts import Artifact, Chunk, ChunkEmbedding
 from gateway.ingest.chunking import Chunker
 from gateway.ingest.discovery import DiscoveryConfig, discover
@@ -78,105 +81,159 @@ class IngestionPipeline:
         success = False
         repo_head = _current_repo_head(self.config.repo_root)
 
-        logger.info(
-            "Starting ingestion",
-            extra={"ingest_run_id": run_id, "profile": profile, "repo_head": repo_head},
+        tracer = trace.get_tracer(__name__)
+        ingest_span = tracer.start_span(
+            "ingestion.run",
+            attributes={
+                "km.profile": profile,
+                "km.repo_head": repo_head or "",
+                "km.dry_run": self.config.dry_run,
+                "km.embedding_model": self.config.embedding_model,
+            },
         )
 
-        try:
-            artifacts = list(
-                discover(
-                    DiscoveryConfig(
-                        repo_root=self.config.repo_root,
-                        include_patterns=self.config.include_patterns,
+        with trace.use_span(ingest_span, end_on_exit=True):
+            logger.info(
+                "Starting ingestion",
+                extra={
+                    "ingest_run_id": run_id,
+                    "profile": profile,
+                    "repo_head": repo_head,
+                },
+            )
+
+            try:
+                with tracer.start_as_current_span("ingestion.discover") as discover_span:
+                    artifacts = list(
+                        discover(
+                            DiscoveryConfig(
+                                repo_root=self.config.repo_root,
+                                include_patterns=self.config.include_patterns,
+                            )
+                        )
                     )
-                )
-            )
-            logger.info(
-                "Discovered artifacts",
-                extra={
-                    "ingest_run_id": run_id,
-                    "profile": profile,
-                    "artifact_count": len(artifacts),
-                },
-            )
+                    discover_span.set_attribute("km.ingest.artifact_total", len(artifacts))
 
-            chunker = Chunker(window=self.config.chunk_window, overlap=self.config.chunk_overlap)
-            chunks: list[Chunk] = []
-            artifact_details: list[dict[str, object]] = []
-            for artifact in artifacts:
-                artifact_counts[artifact.artifact_type] = artifact_counts.get(artifact.artifact_type, 0) + 1
-                artifact_chunks = list(chunker.split(artifact))
-                for chunk in artifact_chunks:
-                    chunk.metadata["environment"] = profile
-                chunks.extend(artifact_chunks)
-                if self.neo4j_writer and not self.config.dry_run:
-                    self.neo4j_writer.sync_artifact(artifact)
-                artifact_details.append(
-                    {
-                        "path": artifact.path.as_posix(),
-                        "artifact_type": artifact.artifact_type,
-                        "subsystem": artifact.subsystem,
-                        "chunk_count": len(artifact_chunks),
-                        "git_commit": artifact.git_commit,
-                        "git_timestamp": artifact.git_timestamp,
-                    }
+                logger.info(
+                    "Discovered artifacts",
+                    extra={
+                        "ingest_run_id": run_id,
+                        "profile": profile,
+                        "artifact_count": len(artifacts),
+                    },
                 )
 
-            chunk_count = len(chunks)
-            logger.info(
-                "Generated chunks",
-                extra={
-                    "ingest_run_id": run_id,
-                    "profile": profile,
-                    "chunk_count": chunk_count,
-                },
-            )
+                chunks: list[Chunk] = []
+                artifact_details: list[dict[str, object]] = []
+                chunker = Chunker(window=self.config.chunk_window, overlap=self.config.chunk_overlap)
 
-            embedder = self._build_embedder()
-            if self.qdrant_writer and not self.config.dry_run:
-                self.qdrant_writer.ensure_collection(embedder.dimension)
+                with tracer.start_as_current_span("ingestion.chunk") as chunk_span:
+                    for artifact in artifacts:
+                        artifact_counts[artifact.artifact_type] = artifact_counts.get(artifact.artifact_type, 0) + 1
+                        artifact_chunks = list(chunker.split(artifact))
+                        coverage_ratio = 1.0 if artifact_chunks else 0.0
+                        subsystem_criticality = artifact.extra_metadata.get("subsystem_criticality")
+                        coverage_missing = 1.0 - coverage_ratio
+                        for chunk in artifact_chunks:
+                            chunk.metadata["environment"] = profile
+                            if subsystem_criticality is not None:
+                                chunk.metadata["subsystem_criticality"] = subsystem_criticality
+                            chunk.metadata["coverage_ratio"] = coverage_ratio
+                            chunk.metadata["coverage_missing"] = coverage_missing
+                        chunks.extend(artifact_chunks)
+                        if self.neo4j_writer and not self.config.dry_run:
+                            self.neo4j_writer.sync_artifact(artifact)
+                        artifact_details.append(
+                            {
+                                "path": artifact.path.as_posix(),
+                                "artifact_type": artifact.artifact_type,
+                                "subsystem": artifact.subsystem,
+                                "chunk_count": len(artifact_chunks),
+                                "git_commit": artifact.git_commit,
+                                "git_timestamp": artifact.git_timestamp,
+                                "subsystem_criticality": subsystem_criticality,
+                                "coverage_ratio": coverage_ratio,
+                            }
+                        )
 
-            embeddings = self._embed_chunks(embedder, chunks)
+                    chunk_count = len(chunks)
+                    chunk_span.set_attribute("km.ingest.chunk_total", chunk_count)
+                    chunk_span.set_attribute(
+                        "km.ingest.artifact_kinds",
+                        ",".join(sorted(artifact_counts.keys())) or "",
+                    )
 
-            if self.qdrant_writer and not self.config.dry_run:
-                self.qdrant_writer.upsert_chunks(embeddings)
-            if self.neo4j_writer and not self.config.dry_run:
-                self.neo4j_writer.sync_chunks(embeddings)
+                logger.info(
+                    "Generated chunks",
+                    extra={
+                        "ingest_run_id": run_id,
+                        "profile": profile,
+                        "chunk_count": chunk_count,
+                    },
+                )
 
-            success = True
-            return IngestionResult(
-                run_id=run_id,
-                profile=profile,
-                started_at=started,
-                duration_seconds=time.time() - started,
-                artifact_counts=artifact_counts,
-                chunk_count=chunk_count,
-                repo_head=repo_head,
-                success=True,
-                artifacts=artifact_details,
-            )
-        finally:
-            duration = time.time() - started
-            status_label = "success" if success else "failure"
-            INGEST_DURATION_SECONDS.labels(profile, status_label).observe(duration)
-            if success:
-                for artifact_type, count in artifact_counts.items():
-                    INGEST_ARTIFACTS_TOTAL.labels(profile, artifact_type).inc(count)
-                INGEST_CHUNKS_TOTAL.labels(profile).inc(chunk_count)
-                INGEST_LAST_RUN_STATUS.labels(profile).set(1)
-            else:
-                INGEST_LAST_RUN_STATUS.labels(profile).set(0)
-            INGEST_LAST_RUN_TIMESTAMP.labels(profile).set(time.time())
-            logger.info(
-                "Ingestion completed",
-                extra={
-                    "ingest_run_id": run_id,
-                    "profile": profile,
-                    "duration_seconds": duration,
-                    "success": success,
-                },
-            )
+                embedder = self._build_embedder()
+                if self.qdrant_writer and not self.config.dry_run:
+                    self.qdrant_writer.ensure_collection(embedder.dimension)
+
+                with tracer.start_as_current_span("ingestion.embed") as embed_span:
+                    embeddings = self._embed_chunks(embedder, chunks)
+                    embed_span.set_attribute("km.ingest.embedding_total", len(embeddings))
+
+                with tracer.start_as_current_span("ingestion.persist") as persist_span:
+                    wrote_qdrant = False
+                    wrote_neo4j = False
+                    if self.qdrant_writer and not self.config.dry_run:
+                        self.qdrant_writer.upsert_chunks(embeddings)
+                        wrote_qdrant = True
+                    if self.neo4j_writer and not self.config.dry_run:
+                        self.neo4j_writer.sync_chunks(embeddings)
+                        wrote_neo4j = True
+                    persist_span.set_attribute("km.ingest.persist.qdrant", wrote_qdrant)
+                    persist_span.set_attribute("km.ingest.persist.neo4j", wrote_neo4j)
+
+                success = True
+                return IngestionResult(
+                    run_id=run_id,
+                    profile=profile,
+                    started_at=started,
+                    duration_seconds=time.time() - started,
+                    artifact_counts=artifact_counts,
+                    chunk_count=chunk_count,
+                    repo_head=repo_head,
+                    success=True,
+                    artifacts=artifact_details,
+                )
+            except Exception as exc:  # pragma: no cover - exercised via failure scenarios
+                ingest_span.record_exception(exc)
+                raise
+            finally:
+                duration = time.time() - started
+                status_label = "success" if success else "failure"
+                INGEST_DURATION_SECONDS.labels(profile, status_label).observe(duration)
+                if success:
+                    for artifact_type, count in artifact_counts.items():
+                        INGEST_ARTIFACTS_TOTAL.labels(profile, artifact_type).inc(count)
+                    INGEST_CHUNKS_TOTAL.labels(profile).inc(chunk_count)
+                    INGEST_LAST_RUN_STATUS.labels(profile).set(1)
+                else:
+                    INGEST_LAST_RUN_STATUS.labels(profile).set(0)
+                INGEST_LAST_RUN_TIMESTAMP.labels(profile).set(time.time())
+                ingest_span.set_attribute("km.ingest.duration_seconds", duration)
+                ingest_span.set_attribute("km.ingest.chunk_total", chunk_count)
+                ingest_span.set_attribute("km.ingest.success", success)
+                if not success:
+                    ingest_span.set_status(Status(StatusCode.ERROR, description="ingestion failed"))
+
+                logger.info(
+                    "Ingestion completed",
+                    extra={
+                        "ingest_run_id": run_id,
+                        "profile": profile,
+                        "duration_seconds": duration,
+                        "success": success,
+                    },
+                )
 
     def _build_embedder(self) -> Embedder:
         if self.config.use_dummy_embeddings:

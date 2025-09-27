@@ -19,27 +19,27 @@ This document distills the design and implementation plans into focused work pac
   - FastAPI app factory with `/healthz` and CLI scaffolding already implemented and tested.
 - **Outcome:** `/healthz` and `/readyz` live behind supervisord; configuration loader drives CLI, and container smoke tests rely on the readiness endpoint.
 
-## Work Package 3 — Ingestion Pipeline MVP *(In Progress)*
+## Work Package 3 — Ingestion Pipeline MVP *(Completed)*
 - **Scope:** Implement repository discovery, chunking, embedding via sentence-transformers, and Qdrant upserts for documentation-only ingestion. Persist provenance/audit ledgers.
 - **Prerequisites:** WP2 (gateway runtime) and access to mounted repository on host.
 - **Deliverables:** `gateway/ingest` modules with unit tests, `gateway-ingest rebuild --profile local` populating Qdrant inside the container, coverage report stub.
 - **Early Close Items:**
   - CLI command, settings loader, discovery (`gateway/ingest/discovery.py`), chunker (`gateway/ingest/chunking.py`), embedder wrapper, and pipeline orchestrator delivered with dummy-embedding and dry-run support.
-- **Remaining Work:** Persist provenance/audit ledger, generate nightly coverage report, and plumb non-dummy embeddings into the container build path.
+- **Outcome:** Repository discovery, chunking, embeddings, audit logging, and coverage report generation in place; CLI exposes `gateway-ingest` flows with dummy/real embedding support.
 
-## Work Package 4 — Graph Model Integration *(In Progress)*
+## Work Package 4 — Graph Model Integration *(Completed)*
 - **Scope:** Define Neo4j schema migrations, create node/relationship upserts, connect vector chunks to graph context, and expose `/graph/...` endpoints.
 - **Prerequisites:** WP3 (ingestion producing metadata to project into the graph).
 - **Deliverables:** Neo4j initialization scripts, ingest-to-graph sync, API responses enriched with subsystem/telemetry links, graph-specific tests.
 - **Early Close Items:** Graph schema defined in design docs and implemented via `gateway/ingest/neo4j_writer.py` (constraints, node relationships, chunk links).
-- **Remaining Work:** Expose `/graph/...` API endpoints, add schema migration utilities, and validate ingestion results via automated graph tests.
+- **Outcome:** Neo4j migrations create domain entities, ingestion writer emits subsystem/Leyline/Telemetry relationships, `/graph/*` endpoints and hybrid search tests validate payloads.
 
-## Work Package 5 — Observability & Security Hardening
-- **Scope:** Add metrics endpoint, structured logging, OpenTelemetry stubs, token-based auth with reader/maintainer scopes, rate limiting, and scheduling (APScheduler jobs for periodic ingest/coverage).
+## Work Package 5 — Observability & Security Hardening *(In Progress)*
+- **Scope:** Add metrics endpoint, structured logging, OpenTelemetry spans, token-based auth with reader/maintainer scopes, rate limiting, and scheduling (APScheduler jobs for periodic ingest/coverage).
 - **Prerequisites:** WP2–WP4 (functional gateway and ingestion flows to instrument and secure).
-- **Deliverables:** `/metrics` endpoint, auth middleware, scheduler configuration, documentation of env vars, alert/readiness tests.
-- **Early Close Items:** Risk mitigation plan enumerates auth, observability, and scheduling controls; config module exposes auth mode flag.
-- **Remaining Prerequisites:** Implement metrics exporter, auth middleware, APScheduler jobs, logging enrichers.
+- **Deliverables:** `/metrics` endpoint, auth middleware, scheduler configuration, documentation of env vars, alert/readiness tests, and optional tracing hooks.
+- **Early Close Items:** Metrics, JSON logging, bearer tokens, rate limiting, scheduler guardrails, coverage reports, and OTLP-compatible tracing toggles are implemented and tested.
+- **Remaining Prerequisites:** Tighten `/coverage` integration tests and capture alerting automation examples as the deployment model solidifies.
 
 ## Work Package 6 — Release Tooling & Documentation
 - **Scope:** Produce quick-start scripts, backup/restore utilities, size-budget CI check, smoke-test workflow, and release packaging (image tag, tarball, checksums). Finalize README, troubleshooting, and risk updates.
@@ -70,7 +70,7 @@ This document distills the design and implementation plans into focused work pac
 3. WP3 — Ingestion Pipeline MVP
 4. WP4 — Graph Model Integration
 5. WP5 — Observability & Security Hardening
-6. WP6 — Release Tooling & Documentation
+6. WP6 — Release Tooling & Documentation *(see `docs/WP6_RELEASE_TOOLING_PLAN.md` for detailed milestones)*
 7. WP7 — Autonomous Analysis Interface
 8. Optional extensions in priority order as demanded by adopters
 

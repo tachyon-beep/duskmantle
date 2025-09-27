@@ -4,8 +4,16 @@ import json
 from datetime import datetime
 from pathlib import Path
 
+from fastapi.testclient import TestClient
+
+from gateway.api.app import create_app
 from gateway.ingest.coverage import write_coverage_report
-from gateway.ingest.pipeline import IngestionConfig, IngestionResult
+from gateway.ingest.pipeline import IngestionConfig, IngestionResult, IngestionPipeline
+from gateway.observability.metrics import (
+    COVERAGE_LAST_RUN_STATUS,
+    COVERAGE_LAST_RUN_TIMESTAMP,
+    COVERAGE_MISSING_ARTIFACTS,
+)
 
 
 def test_write_coverage_report(tmp_path: Path) -> None:
@@ -26,6 +34,9 @@ def test_write_coverage_report(tmp_path: Path) -> None:
     )
 
     out = tmp_path / "coverage.json"
+    COVERAGE_LAST_RUN_STATUS.labels("local").set(0)
+    COVERAGE_MISSING_ARTIFACTS.labels("local").set(0)
+    COVERAGE_LAST_RUN_TIMESTAMP.labels("local").set(0)
     write_coverage_report(result, config, output_path=out)
 
     data = json.loads(out.read_text())
@@ -34,3 +45,71 @@ def test_write_coverage_report(tmp_path: Path) -> None:
     assert data["summary"]["chunk_count"] == 3
     assert len(data["artifacts"]) == 2
     assert len(data["missing_artifacts"]) == 1
+
+    assert COVERAGE_LAST_RUN_STATUS.labels("local")._value.get() == 1
+    assert COVERAGE_MISSING_ARTIFACTS.labels("local")._value.get() == 1
+    assert COVERAGE_LAST_RUN_TIMESTAMP.labels("local")._value.get() > 0
+
+
+class StubQdrantWriter:
+    def ensure_collection(self, vector_size: int) -> None:  # pragma: no cover - not used
+        return None
+
+    def upsert_chunks(self, chunks) -> None:  # pragma: no cover - not used
+        list(chunks)
+
+
+class StubNeo4jWriter:
+    def ensure_constraints(self) -> None:  # pragma: no cover - not used
+        return None
+
+    def sync_artifact(self, artifact) -> None:
+        return None
+
+    def sync_chunks(self, chunk_embeddings) -> None:
+        return None
+
+
+def test_coverage_endpoint_after_report_generation(tmp_path: Path, monkeypatch) -> None:
+    repo = tmp_path / "repo"
+    (repo / "docs").mkdir(parents=True)
+    (repo / "docs" / "overview.md").write_text("LeylineSync telemetry doc")
+    # empty file to register as missing coverage
+    (repo / "tests").mkdir()
+    (repo / "tests" / "empty_test.py").write_text("")
+
+    config = IngestionConfig(
+        repo_root=repo,
+        dry_run=True,
+        use_dummy_embeddings=True,
+        chunk_window=64,
+        chunk_overlap=16,
+    )
+    pipeline = IngestionPipeline(
+        qdrant_writer=StubQdrantWriter(),
+        neo4j_writer=StubNeo4jWriter(),
+        config=config,
+    )
+    result = pipeline.run()
+
+    state_path = tmp_path / "state"
+    report_path = state_path / "reports" / "coverage_report.json"
+    write_coverage_report(result, config, output_path=report_path)
+
+    monkeypatch.setenv("KM_AUTH_ENABLED", "true")
+    monkeypatch.setenv("KM_ADMIN_TOKEN", "admin-token")
+    monkeypatch.setenv("KM_STATE_PATH", str(state_path))
+    from gateway.config.settings import get_settings
+
+    get_settings.cache_clear()
+    app = create_app()
+    client = TestClient(app)
+
+    resp = client.get(
+        "/coverage",
+        headers={"Authorization": "Bearer admin-token"},
+    )
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["summary"]["artifact_total"] >= 2
+    assert any(item["chunk_count"] == 0 for item in payload["artifacts"])

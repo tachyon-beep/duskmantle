@@ -28,7 +28,7 @@ This repository packages a turnkey knowledge management stack that bundles the K
    docker exec $(docker ps -qf ancestor=duskmantle/km:dev) \
      gateway-ingest rebuild --profile local
    ```
-5. Query the API at `http://localhost:8000/search` and explore graph endpoints under `/graph/...`.
+5. Query the API at `http://localhost:8000/search` (vector search with graph context per result) and explore graph endpoints under `/graph/...`.
 
 ## Repository Layout
 - `docs/` — Specifications, architecture design, implementation plan, and risk mitigation playbook.
@@ -56,6 +56,11 @@ This repository packages a turnkey knowledge management stack that bundles the K
    ```bash
    pytest
    ```
+6. Apply pending Neo4j migrations when graph schema changes:
+   ```bash
+   gateway-graph migrate
+   ```
+   The packaged container already exports `KM_GRAPH_AUTO_MIGRATE=true`, so migrations run automatically at API startup with detailed logging of pending/Applied IDs. For change-controlled environments, leave the variable unset and invoke the CLI (or a pipeline hook) as part of your deploy.
 
 ## Container Runtime
 - Entrypoint script: `/opt/knowledge/docker-entrypoint.sh` (invoked automatically) validates the mounted volume and launches Supervisord.
@@ -85,14 +90,62 @@ Key environment variables (all prefixed with `KM_`):
 | `KM_SCHEDULER_ENABLED` | `false` | Enable APScheduler ingestion jobs |
 | `KM_SCHEDULER_INTERVAL_MINUTES` | `30` | Interval for scheduled ingestion runs |
 | `KM_COVERAGE_ENABLED` | `true` | Persist coverage reports after ingestion |
+| `KM_GRAPH_AUTO_MIGRATE` | `false`¹ | Run Neo4j schema migrations automatically at startup |
+| `KM_TRACING_ENABLED` | `false` | Enable OpenTelemetry tracing for the API and ingestion jobs |
+| `KM_TRACING_ENDPOINT` | _unset_ | OTLP HTTP collector endpoint (e.g., `http://otel-collector:4318/v1/traces`) |
+| `KM_TRACING_HEADERS` | _unset_ | Comma-separated `key=value` pairs forwarded to the OTLP exporter |
+| `KM_TRACING_SAMPLE_RATIO` | `1.0` | Fraction of requests/jobs sampled into traces (0.0 – 1.0) |
+| `KM_TRACING_SERVICE_NAME` | `duskmantle-knowledge-gateway` | Service name attached to exported spans |
+| `KM_TRACING_CONSOLE_EXPORT` | `false` | Mirror spans to stdout alongside OTLP export (local debugging) |
+| `KM_SEARCH_WEIGHT_PROFILE` | `default` | Named bundle of search weights (`default`, `analysis`, `operations`, `docs-heavy`) |
+| `KM_SEARCH_W_SUBSYSTEM` | `0.28` | Weight applied to subsystem affinity boosts in `/search` scoring (overrides profile) |
+| `KM_SEARCH_W_RELATIONSHIP` | `0.05` | Weight applied per relationship in `/search` scoring (capped at five, overrides profile) |
+| `KM_SEARCH_W_SUPPORT` | `0.09` | Weight applied to supporting artifacts (design docs/tests, overrides profile) |
+| `KM_SEARCH_W_COVERAGE_PENALTY` | `0.15` | Penalty applied in proportion to missing coverage (overrides profile) |
+| `KM_SEARCH_W_CRITICALITY` | `0.12` | Weight applied to subsystem criticality score (graph fallback when chunk metadata absent) |
+| `KM_SEARCH_SCORING_MODE` | `heuristic` | Choose `ml` to enable learned ranking coefficients (requires model artifact) |
+| `KM_SEARCH_MODEL_PATH` | _unset_ | Absolute path to model JSON when `KM_SEARCH_SCORING_MODE=ml` (defaults to `state_path/feedback/models/model.json`) |
+| `KM_SEARCH_WARN_GRAPH_MS` | `250` | Emit a warning log when a single graph enrichment exceeds this latency (milliseconds) |
 
 Set these in your environment or an `.env` file before building/running the container.
 
+¹ The bundled container runtime exports `KM_GRAPH_AUTO_MIGRATE=true`. Production templates should set it to `false` and call `gateway-graph migrate` (or an equivalent pipeline step) during deployment. See `infra/examples/production.env` for a starter override file.
+
 ### Observability & Security
 - Metrics exposed at `/metrics` (Prometheus format); audit history available at `/audit/history` (maintainer scope).
+- Coverage reports downloadable via `/coverage` (maintainer scope) or from `/opt/knowledge/var/reports/coverage_report.json`.
 - Logs emitted as JSON with `ingest_run_id`, artifact counts, and timing metadata.
+- Distributed tracing (FastAPI + ingestion pipeline) is available when `KM_TRACING_ENABLED=true`; point `KM_TRACING_ENDPOINT` at your OTLP collector or enable console export for local inspection.
+- Use the bundled CLI to review recent runs: `gateway-ingest audit-history --limit 10` (add `--json` for machine parsing).
+- Search telemetry and MCP feedback are persisted under `/opt/knowledge/var/feedback/events.log` for ranking model training; each entry records query text, scoring breakdown, optional context, and vote captured from the requesting agent.
+- Inspect the active search weighting with `gateway-search show-weights` or `GET /search/weights` (maintainer scope); slow graph lookups generate `graph_lookup_slow` warnings when they exceed `KM_SEARCH_WARN_GRAPH_MS`.
+- Export training datasets from accumulated feedback with `gateway-search export-training-data` (choose CSV or JSONL, optionally require explicit votes). Outputs land in `/opt/knowledge/var/feedback/datasets/` by default.
+- Fit a first-pass ranking model with `gateway-search train-model <dataset.csv>` to produce JSON artifacts under `/opt/knowledge/var/feedback/models/`. The trainer solves a linear regression across captured signals and reports simple metrics (MSE, R²).
+- Apply retention or sanitisation with `gateway-search prune-feedback --max-age-days 30` before exporting, and redact sensitive columns via `gateway-search redact-dataset datasets/training.csv --drop-query --drop-context`.
+- Benchmark trained models using `gateway-search evaluate-model datasets/validation.csv model.json` to generate MSE/R²/NDCG metrics before promoting to inference.
+- Run `gateway-graph migrate` after schema changes or rely on the bundled default (`KM_GRAPH_AUTO_MIGRATE=true`) to apply migrations automatically. Startup logs now report pending IDs before execution and completion status afterwards; failures are emitted with stack traces but do not block boot.
+- `/healthz` surfaces coverage freshness, audit ledger status, and scheduler state alongside the overall result; `/readyz` remains a simple readiness probe.
+- Graph context is exposed via `/graph/subsystems/{name}`, `/graph/nodes/{id}`, `/graph/search`, and maintainer-only `/graph/cypher` (read-only Cypher) for deeper analysis.
+- `/search` responses include a `scoring` breakdown (`vector_score`, `adjusted_score`, per-signal contributions such as `path_depth`, `subsystem_criticality`, and `freshness_days`). Set `KM_SEARCH_WEIGHT_PROFILE` (`default`, `analysis`, `operations`, `docs-heavy`) to load preset weighting bundles; any `KM_SEARCH_W_*` variables override the bundle. Use `KM_SEARCH_SORT_BY_VECTOR=true` to bypass graph boosts during troubleshooting.
+- Observability includes search-specific metrics: `km_search_graph_cache_events_total` (cache hits/misses/errors), `km_search_graph_lookup_seconds` (Neo4j lookup latency), and `km_search_adjusted_minus_vector` (ranking deltas). Add these to dashboards to spot graph regressions or ranking drift.
+- To enable learned ranking, set `KM_SEARCH_SCORING_MODE=ml` and point `KM_SEARCH_MODEL_PATH` at a JSON artifact produced by `gateway-search train-model`; responses will include per-feature contributions under `scoring.model` along with the active `metadata.scoring_mode`.
+- Optional subsystem metadata: provide `docs/subsystems.json` (e.g., `{ "Kasmina": { "criticality": "high" } }`) or `.metadata/subsystems.json` to annotate criticality used by scoring heuristics.
 - Rate limiting and bearer-token auth are optional but recommended for multi-user deployments.
 - Optional APScheduler can be enabled via `KM_SCHEDULER_ENABLED=true`; jobs skip automatically when the repository HEAD has not changed or another run is in progress.
+- See `docs/OBSERVABILITY_GUIDE.md` for detailed dashboards, alerting examples, and troubleshooting playbooks covering the full telemetry stack.
+- Integration validation: run `pytest -m neo4j` with `NEO4J_TEST_URI`/credentials set to confirm graph topology against a live Neo4j instance.
+  ```bash
+  docker run -d --rm --name neo4j-test -p 7687:7687 -e NEO4J_AUTH=neo4j/secret neo4j:5
+  NEO4J_TEST_URI=bolt://localhost:7687 NEO4J_TEST_PASSWORD=secret pytest -m neo4j
+  ```
+
+### Machine-Learned Ranking Workflow
+1. **Collect feedback:** ensure MCP-driven searches supply a `feedback` payload; inspect `/opt/knowledge/var/feedback/events.log` for JSONL events (each row includes `request_id`, `scoring`, and votes).
+2. **Prune & redact (optional):** limit history with `gateway-search prune-feedback --max-age-days 30` and scrub sensitive fields using `gateway-search redact-dataset <dataset> --drop-query --drop-context --drop-note`.
+3. **Export training/validation sets:** `gateway-search export-training-data --require-vote --output feedback/datasets/training.csv` (repeat for a holdout dataset if desired).
+4. **Train coefficients:** `gateway-search train-model feedback/datasets/training.csv --output feedback/models/model.json` stores weights and intercept alongside training metrics.
+5. **Evaluate before rollout:** `gateway-search evaluate-model feedback/datasets/validation.csv feedback/models/model.json` prints MSE/R²/NDCG/Spearman so you can compare against heuristics.
+6. **Enable in runtime:** set `KM_SEARCH_SCORING_MODE=ml` and (optionally) `KM_SEARCH_MODEL_PATH` to the artifact path. Restart the gateway; `/search` responses now report the active mode and feature contributions under `scoring.model`. Failures to load the artifact automatically fall back to heuristic scoring with a warning in logs.
 
 ## Getting Involved
 - Review the core specification in `docs/KNOWLEDGE_MANAGEMENT.md` and the companion design and implementation plan documents.
@@ -101,7 +154,9 @@ Set these in your environment or an `.env` file before building/running the cont
 
 ## Roadmap References
 - Architecture decisions: `docs/KNOWLEDGE_MANAGEMENT_DESIGN.md`
+- Graph API surface: `docs/GRAPH_API_DESIGN.md`
 - Implementation phases & milestones: `docs/KNOWLEDGE_MANAGEMENT_IMPLEMENTATION_PLAN.md`
 - Risk tracking and mitigations: `docs/RISK_MITIGATION_PLAN.md`
+- Search ranking roadmap: `docs/SEARCH_SCORING_PLAN.md`
 
 A CHANGELOG and release notes will ship once the first containerized milestone lands.

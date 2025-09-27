@@ -1,0 +1,30 @@
+{
+  "model_type": "linear_regression",
+  "created_at": "2024-09-10T00:00:00Z",
+  "feature_names": [
+    "vector_score",
+    "signal_subsystem_affinity",
+    "signal_relationship_count",
+    "signal_supporting_bonus",
+    "signal_coverage_missing",
+    "graph_context_present",
+    "metadata_graph_context_included",
+    "metadata_warnings_count"
+  ],
+  "coefficients": [
+    -0.3159196007607983,
+    1.816766626431303,
+    1.0789798968160035,
+    0.2527356800578899,
+    0.0,
+    0.4028356454985295,
+    0.40283564549853065,
+    0.0
+  ],
+  "intercept": 0.4028356454985311,
+  "metrics": {
+    "mse": 1.2917597322994068e-29,
+    "r2": 1.0
+  },
+  "training_rows": 4
+}

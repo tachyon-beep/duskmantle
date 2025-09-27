@@ -1,0 +1,78 @@
+name: Observability Checks
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  nightly-health:
+    runs-on: ubuntu-latest
+    env:
+      KM_ADMIN_TOKEN: maintainer-token
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install .
+
+      - name: Build container image
+        run: docker build -t duskmantle/km:${{ github.sha }} .
+
+      - name: Launch container
+        run: |
+          mkdir -p observability-data
+          docker run -d --name km-observability \
+            -e KM_ADMIN_TOKEN=$KM_ADMIN_TOKEN \
+            -v "$(pwd)"/observability-data:/opt/knowledge/var \
+            -v "$(pwd)":/workspace/repo \
+            -p 8000:8000 \
+            duskmantle/km:${{ github.sha }}
+
+      - name: Wait for readiness
+        run: |
+          for i in {1..40}; do
+            if curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/readyz | grep -q "200"; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Gateway not ready" >&2
+          docker logs km-observability
+          exit 1
+      
+      - name: Check health endpoint
+        run: |
+          curl -sSf http://localhost:8000/healthz | jq '.status' | grep -q '"ok"'
+
+      - name: Check metrics endpoint
+        run: |
+          curl -sSf -H "Authorization: Bearer $KM_ADMIN_TOKEN" http://localhost:8000/metrics > metrics.txt
+          grep -q 'km_ingest_last_run_status' metrics.txt
+
+      - name: Check coverage endpoint
+        run: |
+          status=$(curl -s -o coverage.json -w "%{http_code}" -H "Authorization: Bearer $KM_ADMIN_TOKEN" http://localhost:8000/coverage || true)
+          if [ "$status" = "200" ]; then
+            jq '.summary' coverage.json
+          else
+            echo "coverage endpoint returned $status (skipping validation)"
+          fi
+
+      - name: Tear down
+        if: always()
+        run: |
+          docker logs km-observability || true
+          docker rm -f km-observability || true
+          rm -rf observability-data

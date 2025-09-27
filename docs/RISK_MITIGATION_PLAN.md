@@ -61,9 +61,10 @@ This document tracks the key delivery risks for the turnkey knowledge management
 - **Risk:** Ingestion issues might go unnoticed without robust observability.
 - **Status:** Mitigation actionable.
 - **Approved Actions:**
-  - Expose `/metrics` with Prometheus counters and histograms; bundle default alert thresholds in documentation.
-  - Log end-of-run summaries with processed file counts and failure indicators; ensure logs route to stdout.
-  - Include optional `KM_ALERT_WEBHOOK` integration placeholder (left unimplemented until requirements clarified).
+- Expose `/metrics` with Prometheus counters and histograms; bundle default alert thresholds in documentation.
+- Log end-of-run summaries with processed file counts and failure indicators; ensure logs route to stdout.
+- Publish and maintain an operator-focused observability guide (`docs/OBSERVABILITY_GUIDE.md`) covering alerts, tracing, and troubleshooting steps.
+- Include optional `KM_ALERT_WEBHOOK` integration placeholder (left unimplemented until requirements clarified).
 - **Open Questions:** Choice of alerting integrations for specific users remains TBD.
 
 ## 8. Release Distribution Integrity

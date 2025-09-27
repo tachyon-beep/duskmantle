@@ -6,7 +6,7 @@ import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
 
 from gateway.ingest.artifacts import Artifact
 
@@ -43,12 +43,17 @@ class DiscoveryConfig:
     )
 
 
+_SUBSYSTEM_METADATA_CACHE: dict[Path, dict[str, Any]] = {}
+
+
 def discover(config: DiscoveryConfig) -> Iterable[Artifact]:
     """Yield textual artifacts from the repository."""
 
     repo_root = config.repo_root
     if not repo_root.exists():
         raise FileNotFoundError(f"Repository root {repo_root} does not exist")
+
+    subsystem_catalog = _load_subsystem_catalog(repo_root)
 
     for path in repo_root.rglob("*"):
         if not path.is_file():
@@ -66,15 +71,22 @@ def discover(config: DiscoveryConfig) -> Iterable[Artifact]:
         artifact_type = _infer_artifact_type(path, repo_root)
         subsystem = _infer_subsystem(path, repo_root)
         git_commit, git_timestamp = _lookup_git_metadata(path, repo_root)
+        normalized_subsystem = subsystem.capitalize() if subsystem else None
+        subsystem_meta = {}
+        if normalized_subsystem:
+            subsystem_meta = subsystem_catalog.get(normalized_subsystem.lower(), {})
+
         extra = {
             "leyline_entities": sorted(set(_LEYLINE_PATTERN.findall(content))),
             "telemetry_signals": sorted(set(_TELEMETRY_PATTERN.findall(content))),
+            "subsystem_metadata": subsystem_meta,
+            "subsystem_criticality": subsystem_meta.get("criticality"),
         }
 
         yield Artifact(
             path=path.relative_to(repo_root),
             artifact_type=artifact_type,
-            subsystem=subsystem,
+            subsystem=normalized_subsystem,
             content=content,
             git_commit=git_commit,
             git_timestamp=git_timestamp,
@@ -154,6 +166,29 @@ def _lookup_git_metadata(path: Path, repo_root: Path) -> tuple[str | None, int |
     except (subprocess.CalledProcessError, FileNotFoundError, ValueError):
         logger.debug("Git metadata unavailable for %s", rel)
         return None, None
+
+
+def _load_subsystem_catalog(repo_root: Path) -> dict[str, Any]:
+    root = repo_root.resolve()
+    if root in _SUBSYSTEM_METADATA_CACHE:
+        return _SUBSYSTEM_METADATA_CACHE[root]
+
+    candidates = [
+        root / ".metadata" / "subsystems.json",
+        root / "docs" / "subsystems.json",
+    ]
+    catalog: dict[str, Any] = {}
+    for candidate in candidates:
+        if candidate.exists():
+            try:
+                data = json.loads(candidate.read_text(encoding="utf-8"))
+                if isinstance(data, dict):
+                    catalog = {str(k).lower(): v for k, v in data.items()}
+                break
+            except (json.JSONDecodeError, OSError):
+                logger.warning("Failed to parse subsystem metadata file %s", candidate)
+    _SUBSYSTEM_METADATA_CACHE[root] = catalog
+    return catalog
 
 
 def dump_artifacts(artifacts: Iterable[Artifact]) -> str:

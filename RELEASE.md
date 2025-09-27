@@ -1,0 +1,47 @@
+# Release Playbook
+
+This checklist produces a reproducible wheel, Docker image, and checksum manifest for Duskmantle. Complete these steps from a clean `main` branch.
+
+## 1. Prepare
+1. Ensure the working tree is clean: `git status`.
+2. Run the full test suite: `.venv/bin/pytest`.
+3. Update `pyproject.toml` version and add release notes to `CHANGELOG.md` under a new heading (e.g., `## 0.2.0 - 2024-09-10`).
+
+## 2. Build Artifacts
+```bash
+# build Python wheel into dist/release
+scripts/build-wheel.sh dist/release
+
+# optionally build a source distribution
+python -m pip install build
+python -m build --sdist --outdir dist/release
+
+# build container image (tag manually as needed)
+docker build -t duskmantle/km:release .
+```
+
+## 3. Generate Checksums
+```bash
+scripts/checksums.sh dist/release dist/SHA256SUMS
+# For container image tarball (optional)
+docker save duskmantle/km:release -o dist/duskmantle-km.tar
+scripts/checksums.sh dist dist/image.SHA256SUMS
+```
+
+## 4. Verify
+- Inspect the checksum files and ensure they reference the expected artifacts.
+- Run a smoke test with the new wheel and container (e.g., `pip install dist/release/*.whl`, `./infra/smoke-test.sh duskmantle/km:release`).
+
+## 5. Tag & Publish
+1. Commit changelog/version updates: `git commit -am "chore(release): 0.2.0"`.
+2. Create an annotated tag: `git tag -a v0.2.0 -m "Duskmantle 0.2.0"`.
+3. Push changes and tag: `git push origin main --tags`.
+4. Attach wheel, sdist, container tar (if created), and checksum files to the GitHub release. Use the changelog entry as release notes.
+
+## 6. Post-Release
+- Update `CHANGELOG.md` with a fresh `## Unreleased` section.
+- Monitor production metrics (`km_ingest_last_run_status`, `uvicorn_requests_total`) for anomalies.
+- Rotate access tokens if required by your security policy.
+
+> Tip: future automation will live in `docs/WP6_RELEASE_TOOLING_PLAN.md`. Keep that plan updated as new tasks complete.
+

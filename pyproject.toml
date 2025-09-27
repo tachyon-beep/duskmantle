@@ -18,6 +18,7 @@ dependencies = [
   "apscheduler>=3.10",
   "qdrant-client>=1.7",
   "neo4j>=5.14",
+  "numpy>=1.26",
   "sentence-transformers>=2.2",
   "python-dotenv>=1.0",
   "rich>=13.7",
@@ -26,6 +27,11 @@ dependencies = [
   "slowapi>=0.1.7",
   "limits>=3.9",
   "filelock>=3.12",
+  "opentelemetry-api>=1.24",
+  "opentelemetry-sdk>=1.24",
+  "opentelemetry-exporter-otlp>=1.24",
+  "opentelemetry-instrumentation-fastapi>=0.46b0",
+  "opentelemetry-instrumentation-requests>=0.46b0",
 ]
 
 [project.optional-dependencies]
@@ -40,6 +46,8 @@ dev = [
 [project.scripts]
 knowledge-gateway = "gateway.__main__:main"
 gateway-ingest = "gateway.ingest.cli:main"
+gateway-graph = "gateway.graph.cli:main"
+gateway-search = "gateway.search.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -48,6 +56,9 @@ include = ["gateway", "gateway.*"]
 [tool.pytest.ini_options]
 addopts = "-ra"
 testpaths = ["tests"]
+markers = [
+  "neo4j: integration tests that require a running Neo4j instance"
+]
 
 [tool.black]
 line-length = 88

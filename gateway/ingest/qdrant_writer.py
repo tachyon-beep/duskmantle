@@ -32,7 +32,7 @@ class QdrantWriter:
     def upsert_chunks(self, chunks: Iterable[ChunkEmbedding]) -> None:
         points = []
         for item in chunks:
-            payload = {**item.chunk.metadata, "chunk_id": item.chunk.chunk_id}
+            payload = {**item.chunk.metadata, "chunk_id": item.chunk.chunk_id, "text": item.chunk.text}
             point_id = str(uuid.UUID(item.chunk.content_digest[:32]))
             points.append(
                 qmodels.PointStruct(
