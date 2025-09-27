@@ -104,6 +104,8 @@ This smoke slice exercises `km-search`, `km-coverage-summary`, `km-backup-trigge
 
 The Prometheus endpoint pre-registers zero-valued counters for every tool; after the smoke run you should see entries like `km_mcp_requests_total{result="success",tool="km-search"}` greater than zero.
 
+Hybrid search metadata now surfaces the dense vs. lexical mix as `metadata.hybrid_weights` (vector and lexical multipliers) along with the active `hnsw_ef_search` value when set.
+
 For full coverage (including error paths) run `pytest tests/mcp/test_server_tools.py`.
 
 ## 5. Observability & Operations

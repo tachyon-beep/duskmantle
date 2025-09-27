@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import Any, Iterable, List, Set, Literal
 
 from qdrant_client import QdrantClient
-from qdrant_client.http.models import ScoredPoint
+from qdrant_client.http.models import ScoredPoint, SearchParams
 
 from gateway.graph.service import GraphService, GraphServiceError
 from gateway.ingest.embedding import Embedder
@@ -50,6 +50,9 @@ class SearchService:
         weight_support: float = 0.10,
         weight_coverage_penalty: float = 0.15,
         weight_criticality: float = 0.12,
+        vector_weight: float = 1.0,
+        lexical_weight: float = 0.25,
+        hnsw_ef_search: int | None = None,
         scoring_mode: Literal["heuristic", "ml"] = "heuristic",
         model_artifact: Any | None = None,
         weight_profile: str = "custom",
@@ -65,6 +68,11 @@ class SearchService:
         self.weight_support = weight_support
         self.weight_coverage_penalty = weight_coverage_penalty
         self.weight_criticality = weight_criticality
+        self.vector_weight, self.lexical_weight = _normalise_hybrid_weights(
+            vector_weight,
+            lexical_weight,
+        )
+        self.hnsw_ef_search = int(hnsw_ef_search) if hnsw_ef_search and hnsw_ef_search > 0 else None
         self.weight_profile = weight_profile
         self.slow_graph_warn_seconds = max(0.0, slow_graph_warn_seconds)
         self.scoring_mode = scoring_mode if model_artifact is not None else "heuristic"
@@ -82,6 +90,8 @@ class SearchService:
             "weight_support": self.weight_support,
             "weight_coverage_penalty": self.weight_coverage_penalty,
             "weight_criticality": self.weight_criticality,
+            "vector_weight": self.vector_weight,
+            "lexical_weight": self.lexical_weight,
         }
 
         if self._model_artifact is not None:
@@ -106,12 +116,18 @@ class SearchService:
     ) -> SearchResponse:
         limit = max(1, min(limit, self.max_limit))
         vector = self.embedder.encode([query])[0]
+        search_params = (
+            SearchParams(hnsw_ef=self.hnsw_ef_search)
+            if self.hnsw_ef_search is not None
+            else None
+        )
         try:
             hits: Iterable[ScoredPoint] = self.qdrant_client.search(
                 collection_name=self.collection_name,
                 query_vector=vector,
                 with_payload=True,
                 limit=limit,
+                search_params=search_params,
             )
         except Exception as exc:  # pragma: no cover - network errors handled upstream
             logger.error("Search query failed: %s", exc)
@@ -200,6 +216,14 @@ class SearchService:
                 "git_timestamp": payload.get("git_timestamp"),
             }
 
+            lexical_score = _lexical_score(query, chunk)
+            scoring = _base_scoring(
+                vector_score=point.score,
+                lexical_score=lexical_score,
+                vector_weight=self.vector_weight,
+                lexical_weight=self.lexical_weight,
+            )
+
             artifact_type = (payload.get("artifact_type") or "").lower()
             if allowed_types and artifact_type not in allowed_types:
                 continue
@@ -225,7 +249,6 @@ class SearchService:
                 subsystem_value and subsystem_value in allowed_subsystems
             )
 
-            scoring = _base_scoring(point.score)
             graph_context_internal: dict[str, Any] | None = None
             path_depth_value: float | None = None
             cache_entry: dict[str, Any] | None = None
@@ -368,7 +391,11 @@ class SearchService:
 
             if include_graph and graph_context_internal is not None:
                 scoring = _compute_scoring(
+                    base_scoring=scoring,
                     vector_score=point.score,
+                    lexical_score=lexical_score,
+                    vector_weight=self.vector_weight,
+                    lexical_weight=self.lexical_weight,
                     query_tokens=query_tokens,
                     chunk=chunk,
                     graph_context=graph_context_internal,
@@ -388,9 +415,11 @@ class SearchService:
             )
 
             try:
-                delta = float(scoring.get("adjusted_score", 0.0)) - float(
-                    scoring.get("vector_score", 0.0)
+                base_components = (
+                    float(scoring.get("weighted_vector_score", scoring.get("vector_score", 0.0) or 0.0))
+                    + float(scoring.get("weighted_lexical_score", scoring.get("lexical_score", 0.0) or 0.0))
                 )
+                delta = float(scoring.get("adjusted_score", 0.0)) - base_components
                 SEARCH_SCORE_DELTA.observe(delta)
             except (TypeError, ValueError):  # pragma: no cover - defensive guard
                 pass
@@ -446,7 +475,13 @@ class SearchService:
             "scoring_mode": self.scoring_mode,
             "weight_profile": self.weight_profile,
             "weights": self._weight_snapshot,
+            "hybrid_weights": {
+                "vector": self.vector_weight,
+                "lexical": self.lexical_weight,
+            },
         }
+        if self.hnsw_ef_search is not None:
+            metadata["hnsw_ef_search"] = self.hnsw_ef_search
         if filters_applied:
             metadata["filters_applied"] = filters_applied
         return SearchResponse(query=query, results=results, metadata=metadata)
@@ -461,6 +496,13 @@ class SearchService:
         signals = scoring.get("signals", {})
         features: dict[str, float] = {
             "vector_score": float(scoring.get("vector_score", 0.0) or 0.0),
+            "lexical_score": float(scoring.get("lexical_score", 0.0) or 0.0),
+            "weighted_vector_score": float(
+                scoring.get("weighted_vector_score", scoring.get("vector_score", 0.0) or 0.0)
+            ),
+            "weighted_lexical_score": float(
+                scoring.get("weighted_lexical_score", scoring.get("lexical_score", 0.0) or 0.0)
+            ),
             "signal_subsystem_affinity": float(signals.get("subsystem_affinity", 0.0) or 0.0),
             "signal_relationship_count": float(signals.get("relationship_count", 0.0) or 0.0),
             "signal_supporting_bonus": float(signals.get("supporting_bonus", 0.0) or 0.0),
@@ -556,17 +598,82 @@ def _detect_query_subsystems(query: str) -> Set[str]:
     return tokens
 
 
-def _base_scoring(vector_score: float) -> dict[str, Any]:
+def _normalise_hybrid_weights(vector_weight: float, lexical_weight: float) -> tuple[float, float]:
+    vector = max(0.0, float(vector_weight))
+    lexical = max(0.0, float(lexical_weight))
+    if vector == 0.0 and lexical == 0.0:
+        vector = 1.0
+    return vector, lexical
+
+
+_TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_]+")
+
+
+def _lexical_score(query: str, chunk: dict[str, Any]) -> float:
+    query_terms = {_token for _token in _TOKEN_PATTERN.findall(query.lower()) if _token}
+    if not query_terms:
+        return 0.0
+
+    doc_tokens: set[str] = set()
+    text = chunk.get("text") or ""
+    doc_tokens.update(_TOKEN_PATTERN.findall(text.lower()))
+    artifact_path = chunk.get("artifact_path") or ""
+    doc_tokens.update(_TOKEN_PATTERN.findall(str(artifact_path).lower()))
+    tags = chunk.get("tags")
+    if isinstance(tags, (list, tuple)):
+        doc_tokens.update(
+            _TOKEN_PATTERN.findall(" ".join(str(tag).lower() for tag in tags))
+        )
+    elif isinstance(tags, str):
+        doc_tokens.update(_TOKEN_PATTERN.findall(tags.lower()))
+
+    doc_tokens = {token for token in doc_tokens if token}
+    if not doc_tokens:
+        return 0.0
+
+    matches = 0.0
+    for term in query_terms:
+        if term in doc_tokens:
+            matches += 1.0
+        else:
+            # Partial overlap bonus
+            if any(term in token or token in term for token in doc_tokens):
+                matches += 0.5
+
+    score = matches / len(query_terms)
+    return max(0.0, min(1.0, score))
+
+
+def _base_scoring(
+    vector_score: float,
+    lexical_score: float,
+    vector_weight: float,
+    lexical_weight: float,
+) -> dict[str, Any]:
+    weighted_vector = vector_weight * vector_score
+    weighted_lexical = lexical_weight * lexical_score
+    base_adjusted = weighted_vector + weighted_lexical
     return {
         "vector_score": vector_score,
-        "adjusted_score": vector_score,
-        "signals": {},
+        "lexical_score": lexical_score,
+        "weighted_vector_score": weighted_vector,
+        "weighted_lexical_score": weighted_lexical,
+        "adjusted_score": base_adjusted,
+        "signals": {
+            "lexical_score": lexical_score,
+            "weighted_vector_component": weighted_vector,
+            "weighted_lexical_component": weighted_lexical,
+        },
     }
 
 
 def _compute_scoring(
     *,
+    base_scoring: dict[str, Any],
     vector_score: float,
+    lexical_score: float,
+    vector_weight: float,
+    lexical_weight: float,
     query_tokens: Set[str],
     chunk: dict[str, Any],
     graph_context: dict[str, Any],
@@ -576,6 +683,14 @@ def _compute_scoring(
     weight_coverage_penalty: float,
     weight_criticality: float,
 ) -> dict[str, Any]:
+    scoring = base_scoring
+    signals = scoring.setdefault("signals", {})
+    signals.setdefault("lexical_score", lexical_score)
+    if "weighted_vector_component" not in signals:
+        signals["weighted_vector_component"] = vector_weight * vector_score
+    if "weighted_lexical_component" not in signals:
+        signals["weighted_lexical_component"] = lexical_weight * lexical_score
+
     subsystem = (chunk.get("subsystem") or "").lower()
     subsystem_affinity = 0.0
     if subsystem:
@@ -607,8 +722,13 @@ def _compute_scoring(
         criticality_value = _extract_subsystem_criticality(graph_context)
     criticality_score = _normalise_criticality(criticality_value)
 
+    base_adjusted_score = scoring.get(
+        "adjusted_score",
+        (vector_weight * vector_score) + (lexical_weight * lexical_score),
+    )
+
     adjusted_score = (
-        vector_score
+        base_adjusted_score
         + weight_subsystem * subsystem_affinity
         + weight_relationship * min(relationship_count, 5)
         + weight_support * supporting_bonus
@@ -616,8 +736,7 @@ def _compute_scoring(
         - coverage_penalty
     )
 
-    scoring = _base_scoring(vector_score)
-    signals = scoring["signals"]
+    signals = scoring.setdefault("signals", {})
     signals.update(
         {
             "subsystem_affinity": subsystem_affinity,

@@ -101,6 +101,9 @@ class AppSettings(BaseSettings):
     )
     search_model_path: Path | None = Field(None, alias="KM_SEARCH_MODEL_PATH")
     search_warn_slow_graph_ms: int = Field(250, alias="KM_SEARCH_WARN_GRAPH_MS")
+    search_vector_weight: float = Field(1.0, alias="KM_SEARCH_VECTOR_WEIGHT")
+    search_lexical_weight: float = Field(0.25, alias="KM_SEARCH_LEXICAL_WEIGHT")
+    search_hnsw_ef_search: int | None = Field(128, alias="KM_SEARCH_HNSW_EF_SEARCH")
 
     dry_run: bool = Field(False, alias="KM_INGEST_DRY_RUN")
 
@@ -126,6 +129,8 @@ class AppSettings(BaseSettings):
         "search_weight_support",
         "search_weight_coverage_penalty",
         "search_weight_criticality",
+        "search_vector_weight",
+        "search_lexical_weight",
     )
     @classmethod
     def _clamp_search_weights(cls, value: float) -> float:
@@ -136,6 +141,15 @@ class AppSettings(BaseSettings):
         if value > 1:
             return 1.0
         return value
+
+    @field_validator("search_hnsw_ef_search")
+    @classmethod
+    def _sanitize_hnsw_ef(cls, value: int | None) -> int | None:
+        if value is None:
+            return None
+        if value <= 0:
+            return None
+        return int(value)
 
     def resolved_search_weights(self) -> tuple[str, dict[str, float]]:
         """Return the active search weight profile name and resolved weights."""

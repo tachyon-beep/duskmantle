@@ -31,4 +31,4 @@ labels: bug
 - Backup/restore performed before issue? (yes/no)
 - Any custom MCP configuration?
 
-> Support is community-driven. Please search existing issues before filing and include as much detail as possible. Attach your `docs/ACCEPTANCE_DEMO_SNAPSHOT.md` if available.
+> Support is community-driven. Search existing issues before filing and include as much detail as possible. Attach your current `docs/ACCEPTANCE_DEMO_SNAPSHOT.md` when the issue touches ingestion, search, or graph flows.

@@ -80,6 +80,7 @@ Restart the container to pick up restored state.
 - **403 Forbidden**: Invalid token or insufficient scope. Use the maintainer token for ingestion, coverage, and `/graph/cypher`.
 - **Scheduler Skips**: Inspect `km_scheduler_runs_total` metrics (`skipped_head`, `skipped_lock`, `skipped_auth`) for root cause.
 - **Tracing**: Enable with `KM_TRACING_ENABLED=true`. Set `KM_TRACING_ENDPOINT` for OTLP export; use `KM_TRACING_CONSOLE_EXPORT=true` to mirror spans locally.
+- **Hybrid search tuning**: Adjust dense vs. lexical weighting with `KM_SEARCH_VECTOR_WEIGHT` / `KM_SEARCH_LEXICAL_WEIGHT` (defaults 1.0 / 0.25). Increase `KM_SEARCH_HNSW_EF_SEARCH` for higher recall at the cost of latency.
 
 For more detail, consult `docs/OBSERVABILITY_GUIDE.md` and the release playbook in `RELEASE.md`.
 

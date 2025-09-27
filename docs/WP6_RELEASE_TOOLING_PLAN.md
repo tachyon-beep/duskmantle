@@ -37,3 +37,4 @@
 ### Step D: Acceptance Demo (Phase 4.4)
 - Task D1 Produce acceptance playbook covering build → ingest → search/graph → backup/restore → smoke test **(Completed: `docs/ACCEPTANCE_DEMO_PLAYBOOK.md`)**.
 - Task D2 Capture demo outputs for release notes and update checklists before final tagging **(Completed: see `docs/ACCEPTANCE_DEMO_SNAPSHOT.md` and RELEASE step 4)**.
+- **Dry-run status (2025-09-28):** Wheel + image artifacts built (`duskmantle_knowledge_gateway-0.1.0-py3-none-any.whl`, `duskmantle/km:v0.1.0-test`), checksums generated (`dist/SHA256SUMS`, `dist/IMAGE_SHA256SUMS`), readiness smoke validated via `infra/smoke-test.sh`, and MCP smoke marker (`pytest -m mcp_smoke`) passed locally. Tagged release workflow is ready for a real `v*` push.

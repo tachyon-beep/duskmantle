@@ -1,7 +1,7 @@
 # FAQ
 
 ### How is support provided?
-Support is community-driven via GitHub Issues. For bugs, fill out `.github/ISSUE_TEMPLATE/bug_report.md` with `/healthz`, `/metrics`, and MCP smoke output. Feature requests follow `.github/ISSUE_TEMPLATE/feature_request.md`.
+Support is community-driven and limited to GitHub Issues—no email, chat, or commercial channels exist. Use the bug/feature templates in `.github/ISSUE_TEMPLATE/` after searching for similar reports. Include `/healthz`, relevant `/metrics`, MCP smoke output, logs, and (when possible) your latest `docs/ACCEPTANCE_DEMO_SNAPSHOT.md` so maintainers can reproduce quickly.
 
 ### How do I upgrade safely?
 See `docs/UPGRADE_ROLLBACK.md` for the full checklist (backup, stop container, pull new image, relaunch with `KM_NEO4J_DATABASE=knowledge`, validate). Quick Start §11 gives a summary.

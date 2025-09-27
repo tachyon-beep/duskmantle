@@ -104,6 +104,7 @@ Expose an HTTP API (FastAPI recommended) with the following endpoints:
 - `POST /ingest/run` — trigger full re-index (requires auth token).
 - `POST /ingest/path` — re-index a specific path.
 - `POST /search` — body includes `query` plus optional `limit`, `include_graph`, and `filters` (`subsystems`, `artifact_types`, `namespaces`, `tags`, `updated_after`, `max_age_days`); returns ranked chunks with vector + graph context and scoring metadata.
+- Hybrid ranking combines dense embeddings with lexical overlap; tune via environment (`KM_SEARCH_VECTOR_WEIGHT`, `KM_SEARCH_LEXICAL_WEIGHT`) and adjust Qdrant recall with `KM_SEARCH_HNSW_EF_SEARCH`.
 - `GET /search/graph/dependencies` — parameters: `subsystem` or `leyline`; runs Cypher to return relationship chains.
 - `POST /search/hybrid` — combines vector search with graph expansion; accepts `query` and optional `mode` (`downstream`, `upstream`).
 - `GET /health/live`, `GET /health/ready` — container health.

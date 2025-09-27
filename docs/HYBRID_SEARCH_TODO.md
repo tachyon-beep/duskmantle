@@ -1,4 +1,4 @@
-- Evaluate tf-idf fallback for queries with sparse signals
-- Tune HNSW ef_search and M for Qdrant collection
-- Expose query knobs via API (vector_weight, lexical_weight, normalization)
-
+- Validate default weights (`KM_SEARCH_VECTOR_WEIGHT`, `KM_SEARCH_LEXICAL_WEIGHT`) against real query logs (nDCG / recall) and adjust as needed.
+  - 2025-09-27: Baseline queries (`ingestion pipeline`, `coverage report`, `neo4j migration`, `MCP tooling`, `smoke test`, `hybrid search`, `backup restore`) show average weighted vector contribution 0.4588 vs lexical 0.2411 with defaults (1.0 / 0.25). No adjustment required now; revisit once production telemetry (nDCG, recall@k) is available.
+- Benchmark Qdrant latency/recall trade-offs when tuning `KM_SEARCH_HNSW_EF_SEARCH`.
+- Explore BM25 or phrase-based fallback for extremely sparse queries (post-1.0 investigation).

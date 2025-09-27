@@ -17,9 +17,9 @@ Nothing outstanding.
 ### WP2 — Gateway Core Skeleton *(Completed)*
 Nothing outstanding.
 
-### WP3 — Ingestion Pipeline MVP *(Complete with follow-up backlog)*
+### WP3 — Ingestion Pipeline MVP *(Complete with minor follow-up)*
 - ✅ Discovery, chunking, embeddings, Qdrant/Neo4j integration, coverage report, metrics instrumentation.
-- 🔸 Outstanding backlog: provenance CLI polish and **hybrid search enhancements** (dense + lexical fusion, HNSW `M`/`ef_search` tuning, query weighting knobs).
+- 🔸 Follow-up: provenance CLI polish/audit report formatting (optional) and ongoing evaluation of hybrid search defaults in production telemetry.
 
 ### WP4 — Graph Model Integration *(Complete)*
 - ✅ Ingestion populates Neo4j with constraints/edges; `/graph/subsystems`, `/graph/nodes`, `/graph/search`, `/graph/cypher`, and `/search` graph-context enrichment are live with contract tests and live `pytest -m neo4j` coverage (container optional in CI via `RUN_NEO4J_SLICE`).
@@ -31,7 +31,8 @@ Nothing outstanding.
 
 ### WP6 — Release Tooling & Documentation *(In Progress)*
 - ✅ Build/checksum scripts, release workflow (`release.yml`), Quick Start + troubleshooting updates, acceptance demo playbook/snapshot.
-- 🔸 Outstanding: finalise upgrade/rollback procedure, publish FAQ/issue templates/support expectations, run tagged release dry-run with new workflow.
+- ✅ Release dry-run executed locally (wheel + image build, checksum generation, `infra/smoke-test.sh`, and `pytest -m mcp_smoke` on tag `duskmantle/km:v0.1.0-test`).
+- 🔸 Outstanding: finalise upgrade/rollback procedure, publish FAQ/issue templates/support expectations before tagging 1.0.
 
 ### WP7 — Autonomous Analysis Interface *(Deferred to post-1.0)*
 - ✅ MCP server/CLI/tests/telemetry/docs completed (ship-ready as tooling).
@@ -45,6 +46,7 @@ Nothing outstanding.
 - `/healthz` now reports coverage freshness, audit ledger accessibility, and scheduler status with supporting metrics gauges.
 - Graph endpoints (`/graph/subsystems`, `/graph/nodes`, `/graph/search`, `/graph/cypher`) now available with read-only Cypher support.
 - `/search` now returns enriched graph context per result, publishes the active weight profile + resolved weights, and supports preset bundles via `KM_SEARCH_WEIGHT_PROFILE` alongside existing overrides.
+- Hybrid search combines dense embeddings with lexical overlap; tune via `KM_SEARCH_VECTOR_WEIGHT` / `KM_SEARCH_LEXICAL_WEIGHT` and `KM_SEARCH_HNSW_EF_SEARCH`.
 - Graph-derived signals now include shortest-path depth (computed via Neo4j and cached per request) and improved freshness fallbacks, reducing duplicate graph queries during high-volume searches.
 - Graph auto-migration instrumentation exposes `km_graph_migration_last_status` and `km_graph_migration_last_timestamp` to catch failed or stale migrations instantly.
 - Neo4j validation harness grew assertions for constraints/relationships and now runs nightly via CI (`Neo4j Integration Tests`) to exercise end-to-end ingest + search replay against a live database.
@@ -63,5 +65,5 @@ Nothing outstanding.
 
 ## Next Priorities
 - Finalise WP6 deliverables: upgrade/rollback guide, support/FAQ artifacts, dry-run tagged release.
-- Address WP3 hybrid search backlog (dense+lexical fusion, HNSW tuning, query knobs) once support docs are in place.
+- Monitor hybrid search performance (baseline 2025-09-27 queries show vector/lexical mix 0.46 vs 0.24; continue gathering production telemetry before tuning) and continue provenance tooling polish.
 - Plan WP7 agent enhancements (OpenAI/client orchestration) after release tooling closes.

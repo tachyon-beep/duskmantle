@@ -11,5 +11,6 @@
 - Related issue(s):
 - Docs updated? (link to README / Quick Start / docs changes)
 - Release impact (upgrade guide updates? metrics changes?)
+- Acceptance snapshot refreshed? (link to new `docs/ACCEPTANCE_DEMO_SNAPSHOT.md` entry)
 
 > Reminder: include `/healthz`, `/metrics`, and MCP smoke results when the change touches runtime behaviour.

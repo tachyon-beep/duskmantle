@@ -176,7 +176,7 @@ Detailed mitigation activities are tracked in `docs/RISK_MITIGATION_PLAN.md`. Th
 | Host compatibility | Deployment failures | Low | Actions defined with pending compatibility matrix (§6). |
 | Observability coverage | Silent ingestion failures | Medium | Actions defined (§7). |
 | Release distribution integrity | Corrupted deployments | Low | Actions defined (§8). |
-| Hybrid search tuning | Suboptimal retrieval relevance | Medium | Not started — hybrid dense/lexical strategy tuning, HNSW parameter audits, and user-facing query knobs remain on the roadmap. |
+| Hybrid search tuning | Suboptimal retrieval relevance | Medium | Mitigated for 1.0 — dense + lexical scoring knobs (`KM_SEARCH_VECTOR_WEIGHT`/`KM_SEARCH_LEXICAL_WEIGHT`) and `KM_SEARCH_HNSW_EF_SEARCH` shipped; continue monitoring relevance metrics post-release. |
 
 ## 5. Tracking & Communication
 - Maintain a lightweight issue list (GitHub Projects) tagged per phase; update weekly.

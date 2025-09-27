@@ -102,6 +102,9 @@ Key environment variables (all prefixed with `KM_`):
 | `KM_SEARCH_W_SUPPORT` | `0.09` | Weight applied to supporting artifacts (design docs/tests, overrides profile) |
 | `KM_SEARCH_W_COVERAGE_PENALTY` | `0.15` | Penalty applied in proportion to missing coverage (overrides profile) |
 | `KM_SEARCH_W_CRITICALITY` | `0.12` | Weight applied to subsystem criticality score (graph fallback when chunk metadata absent) |
+| `KM_SEARCH_VECTOR_WEIGHT` | `1.0` | Multiplier applied to vector similarity when combining hybrid scores |
+| `KM_SEARCH_LEXICAL_WEIGHT` | `0.25` | Multiplier applied to lexical overlap boosts in hybrid scoring |
+| `KM_SEARCH_HNSW_EF_SEARCH` | `128` | Overrides the Qdrant HNSW `ef` parameter for query-time recall tuning (set empty to use Qdrant default) |
 | `KM_SEARCH_SCORING_MODE` | `heuristic` | Choose `ml` to enable learned ranking coefficients (requires model artifact) |
 | `KM_SEARCH_MODEL_PATH` | _unset_ | Absolute path to model JSON when `KM_SEARCH_SCORING_MODE=ml` (defaults to `state_path/feedback/models/model.json`) |
 | `KM_SEARCH_WARN_GRAPH_MS` | `250` | Emit a warning log when a single graph enrichment exceeds this latency (milliseconds) |
@@ -132,7 +135,7 @@ Set these in your environment or an `.env` file before building/running the cont
 - Use the bundled CLI to review recent runs: `gateway-ingest audit-history --limit 10` (add `--json` for machine parsing).
 - Expose an MCP surface for Codex CLI and other agents by running `gateway-mcp` (install via `pip install -e .[dev]`). The adapter reads `KM_GATEWAY_URL`, `KM_READER_TOKEN`, and `KM_ADMIN_TOKEN` from the environment and mirrors usage into Prometheus metrics (`km_mcp_requests_total`, `km_mcp_request_seconds`, `km_mcp_failures_total`). Validate locally with `pytest -m mcp_smoke`.
 - When you need MCP access inside the containerized gateway, use `./bin/km-mcp-container`; it execs `gateway-mcp` within the running `km-gateway` container and preserves helper paths like `/workspace/repo/bin/km-backup`.
-- **Hybrid search roadmap:** combining dense and lexical retrieval with tuned HNSW parameters and user-facing knobs remains on the roadmap; see `docs/KNOWLEDGE_MANAGEMENT_IMPLEMENTATION_PLAN.md` for the open action.
+- Hybrid search now blends dense vectors with lexical overlap; tune the mixture via `KM_SEARCH_VECTOR_WEIGHT` / `KM_SEARCH_LEXICAL_WEIGHT` and adjust recall with `KM_SEARCH_HNSW_EF_SEARCH`.
 - Upgrade/rollback instructions live in `docs/UPGRADE_ROLLBACK.md`; in short, backup via `bin/km-backup`, stop the container, pull/build the new tag, launch with `KM_NEO4J_DATABASE=knowledge`, re-run ingest if needed, and validate with `/healthz` + smoke scripts. Rollback restores the archived tarball and restarts the prior image.
 - Search telemetry and MCP feedback are persisted under `/opt/knowledge/var/feedback/events.log` for ranking model training; each entry records query text, scoring breakdown, optional context, and vote captured from the requesting agent.
 - Inspect the active search weighting with `gateway-search show-weights` or `GET /search/weights` (maintainer scope); slow graph lookups generate `graph_lookup_slow` warnings when they exceed `KM_SEARCH_WARN_GRAPH_MS`.
@@ -163,6 +166,12 @@ Set these in your environment or an `.env` file before building/running the cont
 4. **Train coefficients:** `gateway-search train-model feedback/datasets/training.csv --output feedback/models/model.json` stores weights and intercept alongside training metrics.
 5. **Evaluate before rollout:** `gateway-search evaluate-model feedback/datasets/validation.csv feedback/models/model.json` prints MSE/R²/NDCG/Spearman so you can compare against heuristics.
 6. **Enable in runtime:** set `KM_SEARCH_SCORING_MODE=ml` and (optionally) `KM_SEARCH_MODEL_PATH` to the artifact path. Restart the gateway; `/search` responses now report the active mode and feature contributions under `scoring.model`. Failures to load the artifact automatically fall back to heuristic scoring with a warning in logs.
+
+## Support & Community
+- Support is community-driven and limited to GitHub Issues; no email, chat, or commercial channels are offered.
+- Before filing, review `FAQ.md` and search existing issues. Choose the appropriate template (bug or feature) so triage stays consistent.
+- Every bug report should include `/healthz`, relevant `/metrics`, recent logs, MCP smoke output, and (when available) your latest `docs/ACCEPTANCE_DEMO_SNAPSHOT.md`.
+- Feature requests should be scoped, actionable, and linked to design docs or roadmap entries when possible.
 
 ## Getting Involved
 - Review the core specification in `docs/KNOWLEDGE_MANAGEMENT.md` and the companion design and implementation plan documents.

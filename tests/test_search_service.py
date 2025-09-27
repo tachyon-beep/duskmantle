@@ -30,8 +30,10 @@ class FakePoint:
 class FakeQdrantClient:
     def __init__(self, points: list[FakePoint]):
         self._points = points
+        self.last_kwargs: dict[str, Any] = {}
 
     def search(self, **kwargs):  # noqa: ANN001 - interface matches Qdrant client
+        self.last_kwargs = kwargs
         return self._points
 
 
@@ -130,8 +132,10 @@ def test_search_service_enriches_with_graph(sample_points, graph_response) -> No
     assert response.metadata["scoring_mode"] == "heuristic"
     assert response.metadata["weight_profile"] == "custom"
     assert "weights" in response.metadata
+    assert "hybrid_weights" in response.metadata
     assert result.scoring["mode"] == "heuristic"
     assert result.scoring["adjusted_score"] > result.scoring["vector_score"]
+    assert "lexical_score" in result.scoring
     signals = result.scoring["signals"]
     assert signals["relationship_count"] >= 1
     assert "coverage_ratio" in signals
@@ -155,11 +159,17 @@ def test_search_service_handles_missing_graph(sample_points) -> None:
     )
     assert response.results[0].graph_context is None
     assert response.metadata["graph_context_included"] is False
-    assert response.results[0].scoring["adjusted_score"] == response.results[0].scoring["vector_score"]
+    scoring = response.results[0].scoring
+    base_component = (
+        scoring.get("weighted_vector_score", scoring.get("vector_score", 0.0))
+        + scoring.get("weighted_lexical_score", 0.0)
+    )
+    assert scoring["adjusted_score"] == pytest.approx(base_component)
     assert response.metadata["scoring_mode"] == "heuristic"
     assert response.metadata["weight_profile"] == "custom"
-    assert response.results[0].scoring["mode"] == "heuristic"
-    signals = response.results[0].scoring["signals"]
+    assert scoring["mode"] == "heuristic"
+    assert "lexical_score" in scoring
+    signals = scoring["signals"]
     assert "coverage_ratio" in signals
     assert "path_depth" in signals
 
@@ -207,6 +217,72 @@ class CountingGraphService(GraphService):  # type: ignore[misc]
 
     def run_cypher(self, query: str, parameters: dict[str, Any] | None) -> dict[str, Any]:  # pragma: no cover
         raise NotImplementedError
+
+
+def test_search_hnsw_search_params(sample_points) -> None:
+    client = FakeQdrantClient(sample_points)
+    search_service = SearchService(
+        qdrant_client=client,
+        collection_name="collection",
+        embedder=FakeEmbedder(),
+        hnsw_ef_search=256,
+    )
+
+    response = search_service.search(
+        query="core",
+        limit=1,
+        include_graph=False,
+        graph_service=None,
+    )
+
+    search_params = client.last_kwargs.get("search_params")
+    assert search_params is not None
+    assert getattr(search_params, "hnsw_ef", None) == 256
+    assert response.metadata.get("hnsw_ef_search") == 256
+
+
+def test_lexical_score_affects_ranking() -> None:
+    points = [
+        FakePoint(
+            {
+                "chunk_id": "foo::0",
+                "path": "docs/foo.md",
+                "artifact_type": "doc",
+                "subsystem": "core",
+                "text": "foo details",
+            },
+            0.6,
+        ),
+        FakePoint(
+            {
+                "chunk_id": "bar::0",
+                "path": "docs/bar.md",
+                "artifact_type": "doc",
+                "subsystem": "core",
+                "text": "unrelated content",
+            },
+            0.6,
+        ),
+    ]
+
+    search_service = SearchService(
+        qdrant_client=FakeQdrantClient(points),
+        collection_name="collection",
+        embedder=FakeEmbedder(),
+        lexical_weight=0.5,
+    )
+
+    response = search_service.search(
+        query="foo",
+        limit=2,
+        include_graph=False,
+        graph_service=None,
+    )
+
+    assert response.results[0].chunk["chunk_id"] == "foo::0"
+    top_scoring = response.results[0].scoring
+    assert top_scoring["lexical_score"] > 0.0
+    assert top_scoring["adjusted_score"] > response.results[1].scoring["adjusted_score"]
 
 
 def test_search_service_orders_by_adjusted_score() -> None:

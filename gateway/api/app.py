@@ -220,10 +220,15 @@ def create_app() -> FastAPI:
                 return None
             request.app.state.search_embedder = embedder
         weight_profile, resolved_weights = settings.resolved_search_weights()
+        vector_weight = settings.search_vector_weight
+        lexical_weight = settings.search_lexical_weight
         return SearchService(
             qdrant_client=qclient,
             collection_name=settings.qdrant_collection,
             embedder=embedder,
+        vector_weight=vector_weight,
+        lexical_weight=lexical_weight,
+        hnsw_ef_search=settings.search_hnsw_ef_search,
         weight_subsystem=resolved_weights["weight_subsystem"],
         weight_relationship=resolved_weights["weight_relationship"],
         weight_support=resolved_weights["weight_support"],

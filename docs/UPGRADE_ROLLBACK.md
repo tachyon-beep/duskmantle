@@ -17,6 +17,7 @@ This document explains how to safely upgrade the Duskmantle knowledge gateway co
    ```
    Copy the archive (`backups/km-backup-YYYYMMDDTHHMMSS.tgz`) to a safe location.
 4. **Note current config:** record `KM_*` env vars, `.codex` MCP entries, and `bin/km-run` overrides.
+5. **Capture the current acceptance snapshot:** run the quick checks from `docs/ACCEPTANCE_DEMO_PLAYBOOK.md` (at minimum `/healthz`, `/coverage`, and a sample `/search`) and refresh `docs/ACCEPTANCE_DEMO_SNAPSHOT.md` so you know the pre-upgrade baseline.
 
 ## 2. Upgrade Procedure
 1. **Stop the running container:**
@@ -42,7 +43,12 @@ This document explains how to safely upgrade the Duskmantle knowledge gateway co
    ```bash
    docker exec km-gateway gateway-ingest rebuild --profile production
    ```
-5. **Validate:** re-run `/healthz`, `/coverage`, smoke test (`./infra/smoke-test.sh duskmantle/km:<new-tag>`), and MCP smoke (`pytest -m mcp_smoke`).
+5. **Validate:**
+   - `/healthz` and `/readyz` respond with `status: ok`.
+   - `/coverage` reflects expected artifact/chunk totals.
+   - `./infra/smoke-test.sh duskmantle/km:<new-tag>` completes without errors.
+   - `KM_GATEWAY_URL=http://localhost:8000 pytest -m mcp_smoke --maxfail=1 --disable-warnings` passes.
+   - Update `docs/ACCEPTANCE_DEMO_SNAPSHOT.md` with the new run details.
 
 ## 3. Rollback Procedure
 1. **Stop the upgraded container:** `docker rm -f km-gateway`.
@@ -55,10 +61,10 @@ This document explains how to safely upgrade the Duskmantle knowledge gateway co
    ```bash
    KM_IMAGE=duskmantle/km:<old-tag> bin/km-run --detach
    ```
-4. **Verify health and recent metrics** as in the upgrade step.
+4. **Verify health and recent metrics** just like the upgrade validation (`/healthz`, `/coverage`, smoke test, MCP smoke) and capture the rollback snapshot in `docs/ACCEPTANCE_DEMO_SNAPSHOT.md`.
 
 ## 4. Notes
 - Keep at least two backup snapshots; prune older archives after verifying new versions.
 - For schema changes, follow release notes: some versions may require `gateway-graph migrate` or manual config updates.
-- MCP configs: update `.codex/config.toml` if command paths changed.
-- Support is community-driven via GitHub Issues (MIT-licensed). Include `/healthz`, logs, and MCP smoke output when filing bugs.
+- MCP configs: update `.codex/config.toml` if command paths changed or new tools were introduced.
+- Support is community-driven via GitHub Issues. When requesting help, attach the latest `docs/ACCEPTANCE_DEMO_SNAPSHOT.md`, `/healthz`, `/metrics`, key logs, and MCP smoke output.
