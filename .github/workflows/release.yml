@@ -11,6 +11,8 @@ permissions:
 jobs:
   build-and-package:
     runs-on: ubuntu-latest
+    env:
+      RUN_NEO4J_SLICE: ${{ vars.RUN_NEO4J_SLICE || 'false' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -49,6 +51,22 @@ jobs:
 
       - name: Run MCP smoke tests
         run: pytest -m mcp_smoke --maxfail=1 --disable-warnings
+
+      - name: Optional Neo4j integration slice
+        if: env.RUN_NEO4J_SLICE == 'true'
+        env:
+          KM_NEO4J_DATABASE: knowledge
+        run: |
+          set -euo pipefail
+          docker run --rm -d --name km-gateway-ci -p 8000:8000 -p 7687:7687 duskmantle/km:${{ github.ref_name }}
+          trap 'docker rm -f km-gateway-ci >/dev/null 2>&1 || true' EXIT
+          for i in {1..60}; do
+            if curl -fsS http://localhost:8000/readyz >/dev/null; then
+              break
+            fi
+            sleep 5
+          done
+          pytest tests/test_graph_api.py -m neo4j
 
       - name: Upload release artifacts
         uses: softprops/action-gh-release@v2

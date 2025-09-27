@@ -296,6 +296,32 @@ async def test_mcp_smoke_run(monkeypatch, mcp_server):
         async def coverage_summary(self):
             return {"artifacts": 1}
 
+        async def graph_node(self, node_id, *, relationships, limit):
+            return {
+                "node": {"id": node_id, "labels": ["DesignDoc"], "properties": {"path": "docs/demo.md"}},
+                "relationships": [
+                    {
+                        "type": "HAS_CHUNK",
+                        "direction": "OUT",
+                        "target": {
+                            "id": "Chunk:docs/demo.md::0",
+                            "labels": ["Chunk"],
+                            "properties": {"chunk_id": "docs/demo.md::0"},
+                        },
+                    }
+                ],
+            }
+
+        async def graph_subsystem(self, name, *, depth, include_artifacts, cursor, limit):
+            return {
+                "subsystem": {"id": f"Subsystem:{name}", "labels": ["Subsystem"], "properties": {"name": name}},
+                "related": {"nodes": [], "cursor": None},
+                "artifacts": [],
+            }
+
+        async def graph_search(self, term, *, limit):
+            return {"results": [{"id": "Subsystem:demo", "label": "Subsystem", "score": 0.5, "snippet": term}]}
+
     state.client = StubClient()
 
     async def stub_trigger_backup(settings):
@@ -309,10 +335,27 @@ async def test_mcp_smoke_run(monkeypatch, mcp_server):
     coverage_result = await coverage_tool.run({"context": None})
     backup_tool = await server.get_tool("km-backup-trigger")
     backup_result = await backup_tool.run({"context": None})
+    node_tool = await server.get_tool("km-graph-node")
+    node_result = await node_tool.run({"node_id": "DesignDoc:docs/demo.md", "relationships": "outgoing", "limit": 5, "context": None})
+    subsystem_tool = await server.get_tool("km-graph-subsystem")
+    subsystem_result = await subsystem_tool.run({"name": "Demo", "depth": 1, "context": None})
+    graph_search_tool = await server.get_tool("km-graph-search")
+    graph_search_result = await graph_search_tool.run({"term": "demo", "limit": 5, "context": None})
 
     assert search_result.content is not None
     assert coverage_result.content is not None
     assert backup_result.content is not None
+    assert node_result.content is not None
+    assert subsystem_result.content is not None
+    assert graph_search_result.content is not None
     assert _counter_value(MCP_REQUESTS_TOTAL, "km-search", "success") >= 1
     assert _counter_value(MCP_REQUESTS_TOTAL, "km-coverage-summary", "success") >= 1
     assert _counter_value(MCP_REQUESTS_TOTAL, "km-backup-trigger", "success") >= 1
+    assert _counter_value(MCP_REQUESTS_TOTAL, "km-graph-node", "success") >= 1
+    assert _counter_value(MCP_REQUESTS_TOTAL, "km-graph-subsystem", "success") >= 1
+    assert _counter_value(MCP_REQUESTS_TOTAL, "km-graph-search", "success") >= 1
+
+    metrics_blob = generate_latest().decode()
+    assert 'km_mcp_requests_total{result="success",tool="km-search"}' in metrics_blob
+    assert 'km_mcp_requests_total{result="success",tool="km-graph-node"}' in metrics_blob
+    assert 'km_mcp_requests_total{result="success",tool="km-graph-subsystem"}' in metrics_blob

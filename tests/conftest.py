@@ -42,7 +42,10 @@ class _NullDriver:
 
 
 @pytest.fixture(autouse=True)
-def disable_real_graph_driver(monkeypatch: pytest.MonkeyPatch) -> None:
+def disable_real_graph_driver(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest) -> None:
+    if request.node.get_closest_marker("neo4j"):
+        return
+
     def _fake_driver(*args, **kwargs):
         return _NullDriver()
 

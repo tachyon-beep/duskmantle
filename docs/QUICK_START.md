@@ -94,14 +94,16 @@ The repository ships with a dedicated MCP server so Codex CLI (and other MCP-awa
    ```bash
    KM_GATEWAY_URL=http://localhost:8000 \
    KM_READER_TOKEN=${KM_READER_TOKEN:-maintainer-token} \
-   gateway-mcp --transport stdio
+   KM_ADMIN_TOKEN=${KM_ADMIN_TOKEN:-maintainer-token} \
+   ./bin/km-mcp --transport stdio
    ```
    - Omit `KM_READER_TOKEN` only when auth is disabled. Supply `KM_ADMIN_TOKEN` as well if you plan to trigger ingest or backups through MCP.
    - Use `--transport http --port 8822` to expose the server over HTTP/SSE instead of stdio.
+   - To run the adapter inside the container context (so helpers like `/workspace/repo/bin/km-backup` are available), use `./bin/km-mcp-container` instead of `./bin/km-mcp`. Set `KM_MCP_BACKUP_SCRIPT=/workspace/repo/bin/km-backup` and `KM_MCP_REPO_ROOT=/workspace/repo` if you need custom paths.
 3. In another terminal, validate the surface by running the bundled smoke marker:
    ```bash
    pytest -m mcp_smoke
    ```
-   Successful execution exercises `km-search`, `km-coverage-summary`, and `km-backup-trigger` through the MCP layer and increments the Prometheus metrics `km_mcp_requests_total`, `km_mcp_request_seconds`, and `km_mcp_failures_total`.
+   Successful execution exercises `km-search`, `km-coverage-summary`, `km-backup-trigger`, `km-graph-node`, `km-graph-subsystem`, and `km-graph-search` through the MCP layer and increments the Prometheus metrics `km_mcp_requests_total`, `km_mcp_request_seconds`, and `km_mcp_failures_total`.
 
-For Codex CLI configuration and advanced usage patterns, see `docs/MCP_INTEGRATION.md`.
+For Codex CLI configuration, container tips (including `KM_NEO4J_DATABASE=knowledge`), and advanced usage patterns, see `docs/MCP_INTEGRATION.md`.

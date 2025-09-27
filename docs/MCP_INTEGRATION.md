@@ -5,6 +5,7 @@ The Duskmantle gateway now exposes a first-class Model Context Protocol (MCP) su
 ## 1. Prerequisites
 - Python 3.12 with the project installed locally (`pip install -e .[dev]`). The dev extras bring in FastMCP and `pytest-asyncio` for smoke tests.
 - A running gateway instance (local container via `bin/km-run` or remote deployment) reachable at the URL you provide to the MCP adapter.
+  - When using the turnkey container, export `KM_NEO4J_DATABASE=knowledge` before launching or invoking ingestion so graph queries succeed.
 - Tokens if authentication is enabled:
   - `KM_READER_TOKEN` for read-only operations (search/graph/coverage).
   - `KM_ADMIN_TOKEN` for maintainer operations (ingest trigger, backups, feedback submission).
@@ -39,17 +40,35 @@ gateway-mcp --transport stdio
   - `km-backup-trigger`
   - `km-feedback-submit`
 
-## 3. Configure Codex CLI (Example)
-Add a stanza to `~/.codex/config.toml` that points at the local adapter. Codex CLI will spawn `gateway-mcp` on demand when tools require it.
+## 3. Configure Codex CLI (Examples)
+Codex CLI looks for MCP definitions in `.codex/config.toml` (project) or `~/.codex/config.toml` (user). Use one of the following setups:
+
+### Local repository (stdio transport)
+Launch the adapter from the checkout:
 
 ```toml
-# ~/.codex/config.toml
 [mcp_servers.duskmantle]
-command = "gateway-mcp"
+command = "./bin/km-mcp"
 args = ["--transport", "stdio"]
-# Provide tokens/endpoints when auth is enabled
-env = { "KM_GATEWAY_URL" = "http://localhost:8000", "KM_READER_TOKEN" = "maintainer-token", "KM_ADMIN_TOKEN" = "maintainer-token" }
+env = { "KM_GATEWAY_URL" = "http://localhost:8000", "KM_ADMIN_TOKEN" = "maintainer-token" }
 ```
+
+### Container-scoped adapter
+Exec the server inside the running `km-gateway` container so agents see the in-container environment:
+
+```toml
+[mcp_servers.duskmantle_container]
+command = "./bin/km-mcp-container"
+args = []
+env = {
+  "KM_GATEWAY_URL" = "http://localhost:8000",
+  "KM_ADMIN_TOKEN" = "maintainer-token",
+  "KM_MCP_BACKUP_SCRIPT" = "/workspace/repo/bin/km-backup",
+  "KM_MCP_REPO_ROOT" = "/workspace/repo"
+}
+```
+
+Set `KM_MCP_CONTAINER` if your container uses a different name than `km-gateway`.
 
 Restart Codex CLI after editing the config. List available MCP servers with `/sys mcp list` and invoke tools via `/sys mcp run duskmantle km-search --query "ingestion pipeline"`.
 
@@ -78,10 +97,12 @@ Use the dedicated Pytest marker to confirm the adapter works end-to-end:
 pytest -m mcp_smoke --maxfail=1 --disable-warnings
 ```
 
-This smoke slice exercises `km-search`, `km-coverage-summary`, and `km-backup-trigger`, recording metrics under:
+This smoke slice exercises `km-search`, `km-coverage-summary`, `km-backup-trigger`, `km-graph-node`, `km-graph-subsystem`, and `km-graph-search`, recording metrics under:
 - `km_mcp_requests_total{tool,result}`
 - `km_mcp_request_seconds_bucket{tool}`
 - `km_mcp_failures_total{tool,error}`
+
+The Prometheus endpoint pre-registers zero-valued counters for every tool; after the smoke run you should see entries like `km_mcp_requests_total{result="success",tool="km-search"}` greater than zero.
 
 For full coverage (including error paths) run `pytest tests/mcp/test_server_tools.py`.
 

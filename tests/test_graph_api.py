@@ -133,6 +133,36 @@ def test_graph_node_accepts_slash_encoded_ids(app: FastAPI) -> None:
     assert service.last_node_id == "DesignDoc:docs/design.md"
 
 
+@pytest.mark.neo4j
+def test_graph_node_endpoint_live(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("KM_NEO4J_DATABASE", "knowledge")
+    from gateway.config.settings import get_settings
+
+    get_settings.cache_clear()
+    app = create_app()
+    client = TestClient(app)
+    response = client.get("/graph/nodes/DesignDoc%3Adocs%2FKNOWLEDGE_MANAGEMENT_IMPLEMENTATION_PLAN.md")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["node"]["id"] == "DesignDoc:docs/KNOWLEDGE_MANAGEMENT_IMPLEMENTATION_PLAN.md"
+    assert any(rel["type"] == "HAS_CHUNK" for rel in payload["relationships"])
+
+
+@pytest.mark.neo4j
+def test_graph_search_endpoint_live(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("KM_NEO4J_DATABASE", "knowledge")
+    from gateway.config.settings import get_settings
+
+    get_settings.cache_clear()
+    app = create_app()
+    client = TestClient(app)
+    response = client.get("/graph/search", params={"q": "docs", "limit": 5})
+    assert response.status_code == 200
+    results = response.json()["results"]
+    assert results, "expected graph search to return results"
+    assert any(item["label"] == "DesignDoc" for item in results)
+
+
 def test_graph_search_endpoint(app: FastAPI) -> None:
     client = TestClient(app)
     response = client.get("/graph/search", params={"q": "tele"})
