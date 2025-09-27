@@ -34,7 +34,7 @@ This plan translates the turnkey single-container design into concrete implement
 - Task 3.5 Create smoke-test workflow that builds the image, runs minimal ingestion, and checks health endpoints.
 - Task 3.6 Update the FastAPI app to use lifespan handlers (drop deprecated `on_event`) and extend ingest writer unit coverage (Neo4j/Qdrant) to reduce warning noise and harden regression detection.
 - **Exit Criteria:** Container passes smoke tests, supports offline start, metrics/auth configurable via env vars, documentation updated.
-- **Status (Sept 2025):** Not started.
+- **Status (Sept 2025):** Complete — scheduler reliability, auth hardening, observability, lifespan migration, writer coverage, and operational tooling delivered.
 
 ### Phase 4: Release Packaging & Adoption (Week 7)
 **Goals:** Publish final artifacts and onboarding material for power users.
@@ -45,21 +45,66 @@ This plan translates the turnkey single-container design into concrete implement
 - **Exit Criteria:** Release notes published, reference `docker run` command validated, acceptance criteria met.
 - **Status (Sept 2025):** Not started.
 
+## 2.2 Phase 4 Execution Plan
+
+### Step 4.1 Artifact Production & Verification
+- Task 4.1.1 Finalize version tagging strategy (SemVer mapping, prerelease conventions) and document in `RELEASE.md`.
+- Task 4.1.2 Configure CI to publish Docker images/tarballs and wheels on tags (ensure `release.yml` uploads final artifacts, not draft-only).
+- Task 4.1.3 Validate checksum workflow (`scripts/checksums.sh`, `dist/IMAGE_SHA256SUMS`) and provide verification commands in release notes.
+
+### Step 4.2 Operator Enablement & Documentation
+- Task 4.2.1 Expand `docs/QUICK_START.md` with upgrade and rollback procedures (backup/restore, config changes, token rotation).
+- Task 4.2.2 Create troubleshooting appendix (auth errors, scheduler skips, tracing failures, smoke-test triage) referencing observability metrics.
+- Task 4.2.3 Update README/AGENTS with release pipeline overview, artifact download commands, and support expectations.
+
+### Step 4.3 Support Model & Adoption
+- Task 4.3.1 Draft FAQ and issue templates (common questions, log collection steps, reproducible bug checklist).
+- Task 4.3.2 Define communication cadence (release announcements, changelog updates) and backlog triage policy.
+- Task 4.3.3 Capture minimum support SLOs (response times, smoke-test results) in project docs or `SUPPORT.md`.
+
+### Step 4.4 Acceptance Demo & Validation
+- Task 4.4.1 Build a script/playbook that runs end-to-end demo (ingest sample repo, search, graph queries, backup/restore, metrics sanity checks).
+- Task 4.4.2 Record demo results and link to release notes or onboarding materials.
+- Task 4.4.3 After demo approval, publish GitHub release with final artifacts, changelog entry, and verification checklist.
+
 ## 2.1 Detailed Phase Execution Plan
 
 ### Phase 3 — Turnkey Hardening
 - **Step 3.1 Scheduler & Coverage Reliability**
-  - Task 3.1.1 Wire APScheduler interval and cron profiles with repo HEAD gating and lockfile tests.
-  - Task 3.1.2 Add integration tests that simulate multiple scheduler ticks and verify coverage report rotation.
+  - Task 3.1.1 Scheduler Interval Management
+    - Subtask 3.1.1.a Implement configuration for interval/cron profiles with repo HEAD gating.
+    - Subtask 3.1.1.b Add lockfile contention tests ensuring concurrent triggers skip gracefully.
+    - Subtask 3.1.1.c Document scheduler tuning knobs (interval, cron, dummy embeddings) in README/AGENTS.
+  - Task 3.1.2 Coverage Report Rotation
+    - Subtask 3.1.2.a Extend coverage writer to maintain multiple snapshots and prune old reports.
+    - Subtask 3.1.2.b Add integration tests simulating consecutive scheduler runs verifying rotation/metrics.
+    - Subtask 3.1.2.c Update observability guide with coverage health checks and alert thresholds.
 - **Step 3.2 Auth & Access Controls**
-  - Task 3.2.1 Enforce reader/maintainer token scopes across CLI and API entry points.
-  - Task 3.2.2 Document token rotation, env var management, and failure modes.
+  - Task 3.2.1 Scope Enforcement
+    - Subtask 3.2.1.a Align API dependencies to enforce `reader`/`maintainer` scopes consistently (CLI + HTTP).
+    - Subtask 3.2.1.b Add regression tests covering missing/invalid tokens per endpoint.
+    - Subtask 3.2.1.c Ensure scheduler/ingest CLIs respect maintainer scope when invoked remotely.
+  - Task 3.2.2 Token Operations & Documentation
+    - Subtask 3.2.2.a Document token rotation, storage, and env var management in README/AGENTS.
+    - Subtask 3.2.2.b Describe failure modes (401 vs 403) and troubleshooting steps in OBSERVABILITY_GUIDE.
+    - Subtask 3.2.2.c Provide sample scripts or commands for token regeneration and verification.
 - **Step 3.3 Observability Enhancements**
-  - Task 3.3.1 Expand Prometheus metrics (ingest latency, graph cache events) and ensure alerts reference OBSERVABILITY_GUIDE.
-  - Task 3.3.2 Enable optional OTLP tracing pipeline with smoke validation of span export.
+  - Task 3.3.1 Metrics & Alerting
+    - Subtask 3.3.1.a Introduce scheduler run counters/gauges (success, skipped, failure) and wire logging hooks.
+    - Subtask 3.3.1.b Add unit tests validating metric increments for scheduler outcomes and coverage history writes.
+    - Subtask 3.3.1.c Refresh OBSERVABILITY_GUIDE alerts to reference new metrics and provide example Prometheus rules.
+  - Task 3.3.2 Tracing Pipeline Validation
+    - Subtask 3.3.2.a Support OTLP exporter configuration (endpoint/headers) with console fallback and add smoke tests covering both modes.
+    - Subtask 3.3.2.b Document tracing setup, including sample curl checks and failure diagnostics, in README/OBSERVABILITY_GUIDE.
 - **Step 3.4 Runtime & Test Hardening**
-  - Task 3.4.1 Replace FastAPI `on_event` usage with lifespan handlers; update unit tests accordingly.
-  - Task 3.4.2 Increase ingest writer coverage, including Qdrant writer idempotency tests.
+  - Task 3.4.1 FastAPI Lifespan Migration
+    - Subtask 3.4.1.a Replace `@app.on_event` usage with lifespan context managers (startup/shutdown) and ensure services teardown cleanly.
+    - Subtask 3.4.1.b Update tests to accommodate lifespan (TestClient usage, tracing fixtures).
+    - Subtask 3.4.1.c Document the lifespan migration and note deprecation removal in README/AGENTS.
+  - Task 3.4.2 Ingestion Writer Coverage
+    - Subtask 3.4.2.a Add tests for Qdrant writer idempotency (collection ensure, payload dedupe) and failure handling.
+    - Subtask 3.4.2.b Extend Neo4j writer tests to cover config file nodes and telemetry relationships.
+    - Subtask 3.4.2.c Ensure pipeline-level tests assert writer interactions (mock injection) and update coverage thresholds accordingly.
 - **Step 3.5 Operational Tooling**
   - Task 3.5.1 Ship helper scripts (`km-run`, `km-backup`) with docs and examples.
   - Task 3.5.2 Implement container smoke-test workflow (build → run → healthz → ingest dry-run → coverage check).

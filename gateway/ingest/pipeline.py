@@ -46,6 +46,7 @@ class IngestionConfig:
     )
     audit_path: Path | None = None
     coverage_path: Path | None = None
+    coverage_history_limit: int = 5
 
 
 @dataclass(slots=True)

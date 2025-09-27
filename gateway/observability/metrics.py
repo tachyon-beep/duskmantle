@@ -81,3 +81,20 @@ GRAPH_MIGRATION_LAST_TIMESTAMP = Gauge(
     "km_graph_migration_last_timestamp",
     "Unix timestamp of the last graph migration attempt",
 )
+
+SCHEDULER_RUNS_TOTAL = Counter(
+    "km_scheduler_runs_total",
+    "Scheduled ingestion job outcomes partitioned by result",
+    labelnames=["result"],
+)
+
+SCHEDULER_LAST_SUCCESS_TIMESTAMP = Gauge(
+    "km_scheduler_last_success_timestamp",
+    "Unix timestamp of the last successful scheduled ingestion run",
+)
+
+COVERAGE_HISTORY_SNAPSHOTS = Gauge(
+    "km_coverage_history_snapshots",
+    "Number of retained coverage history snapshots",
+    labelnames=["profile"],
+)

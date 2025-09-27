@@ -33,3 +33,12 @@ done
 
 echo "Gateway failed to become ready" >&2
 exit 1
+
+echo "Running ingestion smoke pass..."
+docker exec "$CONTAINER_NAME" gateway-ingest rebuild --profile smoke --dummy-embeddings
+
+echo "Validating coverage report..."
+docker exec "$CONTAINER_NAME" test -f /opt/knowledge/var/reports/coverage_report.json
+docker exec "$CONTAINER_NAME" curl -fsS http://localhost:8000/coverage >/dev/null
+
+echo "Gateway smoke test completed successfully"

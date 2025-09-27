@@ -4,13 +4,19 @@ import logging
 import subprocess
 from contextlib import suppress
 from pathlib import Path
+import time
 
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from filelock import FileLock, Timeout
 
 from gateway.config.settings import AppSettings
 from gateway.ingest.service import execute_ingestion
+from gateway.observability.metrics import (
+    SCHEDULER_LAST_SUCCESS_TIMESTAMP,
+    SCHEDULER_RUNS_TOTAL,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -28,16 +34,25 @@ class IngestionScheduler:
     def start(self) -> None:
         if self._started or not self.settings.scheduler_enabled:
             return
-        interval = max(1, self.settings.scheduler_interval_minutes)
+        if self.settings.auth_enabled and not self.settings.maintainer_token:
+            logger.error(
+                "Scheduler disabled: maintainer token required when auth is enabled",
+                extra={"setting": "KM_ADMIN_TOKEN"},
+            )
+            SCHEDULER_RUNS_TOTAL.labels(result="skipped_auth").inc()
+            return
+        trigger_config = self.settings.scheduler_trigger_config()
+        trigger = _build_trigger(trigger_config)
         self.scheduler.add_job(
             self._run_ingestion,
-            IntervalTrigger(minutes=interval),
+            trigger,
             id="ingest",
             replace_existing=True,
         )
+        trigger_summary = _describe_trigger(trigger_config)
         self.scheduler.start()
         self._started = True
-        logger.info("Scheduler started", extra={"interval_minutes": interval})
+        logger.info("Scheduler started", extra={"trigger": trigger_summary})
 
     def shutdown(self) -> None:
         if self._started:
@@ -52,6 +67,7 @@ class IngestionScheduler:
                 lock.acquire(timeout=0)
             except Timeout:
                 logger.info("Scheduled ingestion skipped: another run is active")
+                SCHEDULER_RUNS_TOTAL.labels(result="skipped_lock").inc()
                 return
 
             last_head = self._read_last_head()
@@ -65,6 +81,7 @@ class IngestionScheduler:
                     "Scheduled ingestion skipped: repository unchanged",
                     extra={"repo_head": current_head},
                 )
+                SCHEDULER_RUNS_TOTAL.labels(result="skipped_head").inc()
                 return
 
             result = execute_ingestion(
@@ -85,8 +102,14 @@ class IngestionScheduler:
                     "chunk_count": result.chunk_count,
                 },
             )
+            if result.success:
+                SCHEDULER_RUNS_TOTAL.labels(result="success").inc()
+                SCHEDULER_LAST_SUCCESS_TIMESTAMP.set(time.time())
+            else:
+                SCHEDULER_RUNS_TOTAL.labels(result="failure").inc()
         except Exception as exc:  # pragma: no cover - defensive
             logger.exception("Scheduled ingestion failed", extra={"error": str(exc)})
+            SCHEDULER_RUNS_TOTAL.labels(result="failure").inc()
         finally:
             with suppress(Exception):
                 lock.release()
@@ -115,3 +138,25 @@ def _current_repo_head(repo_root: Path) -> str | None:
         )
     except Exception:
         return None
+
+
+def _build_trigger(config: dict[str, object]):
+    trigger_type = config.get("type")
+    if trigger_type == "cron":
+        expression = str(config.get("expression", "")).strip()
+        if not expression:
+            raise ValueError("scheduler_cron expression cannot be empty when provided")
+        return CronTrigger.from_crontab(expression, timezone="UTC")
+    if trigger_type == "interval":
+        minutes = int(config.get("minutes", 1))
+        minutes = max(1, minutes)
+        return IntervalTrigger(minutes=minutes)
+    raise ValueError(f"Unsupported scheduler trigger type: {trigger_type}")
+
+
+def _describe_trigger(config: dict[str, object]) -> str:
+    if config.get("type") == "cron":
+        return f"cron:{config.get('expression')}"
+    if config.get("type") == "interval":
+        return f"interval:{config.get('minutes')}m"
+    return "unknown"

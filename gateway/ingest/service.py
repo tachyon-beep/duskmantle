@@ -60,6 +60,7 @@ def execute_ingestion(
         environment=profile,
         audit_path=audit_path,
         coverage_path=coverage_path,
+        coverage_history_limit=settings.coverage_history_limit,
     )
 
     pipeline = IngestionPipeline(qdrant_writer=qdrant_writer, neo4j_writer=neo4j_writer, config=config)
@@ -75,6 +76,7 @@ def execute_ingestion(
                 result,
                 config,
                 output_path=coverage_path,
+                history_limit=settings.coverage_history_limit,
             )
         return result
     finally:

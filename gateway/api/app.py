@@ -4,7 +4,7 @@ import json
 import logging
 import sqlite3
 import time
-from contextlib import suppress
+from contextlib import asynccontextmanager, suppress
 from datetime import datetime, timezone
 
 from fastapi import Body, Depends, FastAPI, HTTPException, Request, Response
@@ -62,11 +62,27 @@ def create_app() -> FastAPI:
         ],
     )
 
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        scheduler = IngestionScheduler(settings)
+        scheduler.start()
+        app.state.scheduler = scheduler
+        try:
+            yield
+        finally:  # pragma: no cover - exercised via integration tests
+            with suppress(Exception):
+                scheduler.shutdown()
+            driver = getattr(app.state, "graph_driver", None)
+            if driver:
+                with suppress(Exception):
+                    driver.close()
+
     app = FastAPI(
         title="Duskmantle Knowledge Gateway",
         version=get_version(),
         docs_url="/docs",
         redoc_url="/redoc",
+        lifespan=lifespan,
     )
 
     configure_tracing(app, settings)
@@ -165,24 +181,9 @@ def create_app() -> FastAPI:
     app.state.search_model_artifact = model_artifact
 
     app.state.limiter = limiter
-    app.state.scheduler = None
     app.add_middleware(SlowAPIMiddleware)
     app.add_exception_handler(RateLimitExceeded, _rate_limit_handler)
-
-    @app.on_event("startup")
-    async def _startup() -> None:  # pragma: no cover - exercised in integration tests
-        scheduler = IngestionScheduler(settings)
-        scheduler.start()
-        app.state.scheduler = scheduler
-
-    @app.on_event("shutdown")
-    async def _shutdown() -> None:  # pragma: no cover - exercised in integration tests
-        scheduler = getattr(app.state, "scheduler", None)
-        if scheduler:
-            scheduler.shutdown()
-        driver = getattr(app.state, "graph_driver", None)
-        if driver:
-            driver.close()
+    app.state.scheduler = None
 
     @app.get("/healthz", tags=["health"])
     def healthz() -> dict[str, object]:
@@ -435,7 +436,7 @@ def create_app() -> FastAPI:
             }
         )
 
-    @app.get("/graph/subsystems/{name}", tags=["graph"])
+    @app.get("/graph/subsystems/{name}", dependencies=[Depends(require_reader)], tags=["graph"])
     @limiter.limit(metrics_limit)
     def graph_subsystem(
         name: str,
@@ -461,7 +462,7 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return JSONResponse(payload)
 
-    @app.get("/graph/nodes/{node_id}", tags=["graph"])
+    @app.get("/graph/nodes/{node_id}", dependencies=[Depends(require_reader)], tags=["graph"])
     @limiter.limit(metrics_limit)
     def graph_node(
         node_id: str,
@@ -486,7 +487,7 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return JSONResponse(payload)
 
-    @app.get("/graph/search", tags=["graph"])
+    @app.get("/graph/search", dependencies=[Depends(require_reader)], tags=["graph"])
     @limiter.limit(metrics_limit)
     def graph_search(
         request: Request,  # noqa: ARG001

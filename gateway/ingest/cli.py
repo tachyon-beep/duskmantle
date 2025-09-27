@@ -18,6 +18,11 @@ logger = logging.getLogger(__name__)
 console = Console()
 
 
+def _ensure_maintainer_scope(settings: AppSettings) -> None:
+    if settings.auth_enabled and not settings.maintainer_token:
+        raise SystemExit("Maintainer token (KM_ADMIN_TOKEN) required when auth is enabled")
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Create an argument parser for the ingestion CLI."""
     parser = argparse.ArgumentParser(description="Knowledge gateway ingestion commands")
@@ -76,6 +81,7 @@ def rebuild(
 
     if settings is None:
         settings = get_settings()
+    _ensure_maintainer_scope(settings)
     result = execute_ingestion(
         settings=settings,
         profile=profile,
@@ -104,6 +110,7 @@ def audit_history(
 
     if settings is None:
         settings = get_settings()
+    _ensure_maintainer_scope(settings)
     audit_path = settings.state_path / "audit" / "audit.db"
     logger = AuditLogger(audit_path)
     entries = logger.recent(limit=limit)

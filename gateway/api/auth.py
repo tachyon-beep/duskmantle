@@ -17,11 +17,26 @@ def require_scope(scope: str):
             return
         if credentials is None:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing credentials")
+
         token = credentials.credentials
-        expected = settings.maintainer_token if scope == "maintainer" else settings.reader_token
-        if expected is None:
+        allowed_tokens: list[str] = []
+
+        maintainer_token = settings.maintainer_token or ""
+        reader_token = settings.reader_token or ""
+
+        if scope == "maintainer":
+            if maintainer_token:
+                allowed_tokens.append(maintainer_token)
+        else:  # reader scope accepts maintainer as superset
+            if reader_token:
+                allowed_tokens.append(reader_token)
+            if maintainer_token:
+                allowed_tokens.append(maintainer_token)
+
+        if not allowed_tokens:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Auth not configured for scope")
-        if token != expected:
+
+        if token not in allowed_tokens:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid credentials")
 
     return dependency

@@ -152,3 +152,46 @@ def test_graph_cypher_requires_maintainer_token(monkeypatch: pytest.MonkeyPatch)
     )
     assert resp.status_code == 200
     assert resp.json()["data"][0]["row"] == ["ok"]
+
+
+def test_graph_reader_scope(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("KM_AUTH_ENABLED", "true")
+    monkeypatch.setenv("KM_READER_TOKEN", "reader-token")
+    monkeypatch.setenv("KM_ADMIN_TOKEN", "admin-token")
+    from gateway.config.settings import get_settings
+
+    get_settings.cache_clear()
+    app = create_app()
+    dummy_service = DummyGraphService(
+        {
+            "subsystem": {
+                "subsystem": {"id": "Subsystem:kasmina", "properties": {"name": "kasmina"}},
+                "related": {"nodes": [], "cursor": None},
+                "artifacts": [],
+            },
+            "node": {
+                "node": {"id": "Subsystem:kasmina", "properties": {"name": "kasmina"}},
+                "relationships": [],
+            },
+        }
+    )
+    app.dependency_overrides[app.state.graph_service_dependency] = lambda: dummy_service
+    client = TestClient(app)
+
+    assert client.get("/graph/subsystems/kasmina").status_code == 401
+    assert client.get(
+        "/graph/subsystems/kasmina",
+        headers={"Authorization": "Bearer nope"},
+    ).status_code == 403
+
+    ok_reader = client.get(
+        "/graph/subsystems/kasmina",
+        headers={"Authorization": "Bearer reader-token"},
+    )
+    assert ok_reader.status_code == 200
+
+    ok_admin = client.get(
+        "/graph/subsystems/kasmina",
+        headers={"Authorization": "Bearer admin-token"},
+    )
+    assert ok_admin.status_code == 200

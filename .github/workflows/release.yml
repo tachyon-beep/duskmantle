@@ -34,7 +34,7 @@ jobs:
           scripts/build-wheel.sh dist/release
 
       - name: Build docker image
-        run: docker build -t duskmantle/km:${{ github.ref_name }} .
+        run: scripts/build-image.sh duskmantle/km:${{ github.ref_name }}
 
       - name: Save docker image
         run: docker save duskmantle/km:${{ github.ref_name }} -o dist/duskmantle-km.tar

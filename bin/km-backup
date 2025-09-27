@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage: km-backup [output.tgz]
+
+Create a compressed backup of the knowledge gateway state directory.
+
+Environment overrides:
+  KM_BACKUP_SOURCE    Source directory to archive (default: ./data)
+  KM_BACKUP_DEST      Destination directory for backups (default: ./backups)
+
+When no positional argument is supplied the archive name defaults to
+  km-backup-<timestamp>.tgz within KM_BACKUP_DEST.
+EOF
+}
+
+if [[ ${1:-} == "--help" ]]; then
+  usage
+  exit 0
+fi
+
+SOURCE=${KM_BACKUP_SOURCE:-$(pwd)/data}
+DEST_DIR=${KM_BACKUP_DEST:-$(pwd)/backups}
+
+if [[ ! -d "$SOURCE" ]]; then
+  echo "Source directory not found: $SOURCE" >&2
+  exit 1
+fi
+
+mkdir -p "$DEST_DIR"
+
+if [[ $# -ge 1 ]]; then
+  ARCHIVE_PATH=$1
+else
+  timestamp=$(date +%Y%m%dT%H%M%S)
+  ARCHIVE_PATH="$DEST_DIR/km-backup-$timestamp.tgz"
+fi
+
+tar -czf "$ARCHIVE_PATH" -C "$SOURCE" .
+echo "Backup written to $ARCHIVE_PATH"

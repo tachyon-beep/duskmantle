@@ -100,6 +100,27 @@ def test_search_requires_reader_token(monkeypatch, tmp_path):
     assert resp.status_code == 200
 
 
+def test_search_allows_maintainer_token(monkeypatch, tmp_path):
+    monkeypatch.setenv("KM_AUTH_ENABLED", "true")
+    monkeypatch.setenv("KM_READER_TOKEN", "reader-token")
+    monkeypatch.setenv("KM_ADMIN_TOKEN", "admin-token")
+    monkeypatch.setenv("KM_STATE_PATH", str(tmp_path))
+    from gateway.config.settings import get_settings
+
+    get_settings.cache_clear()
+    app = create_app()
+    service = DummySearchService()
+    app.dependency_overrides[app.state.search_service_dependency] = lambda: service
+    client = TestClient(app)
+
+    resp = client.post(
+        "/search",
+        json={"query": "telemetry"},
+        headers={"Authorization": "Bearer admin-token"},
+    )
+    assert resp.status_code == 200
+
+
 def test_search_feedback_logged(monkeypatch, tmp_path):
     monkeypatch.setenv("KM_AUTH_ENABLED", "false")
     monkeypatch.setenv("KM_STATE_PATH", str(tmp_path))

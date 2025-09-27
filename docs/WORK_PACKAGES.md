@@ -46,7 +46,8 @@ This document distills the design and implementation plans into focused work pac
 - **Prerequisites:** WP1–WP5 completed.
 - **Deliverables:** CI pipeline definitions, `bin/` helper scripts, published release artifacts, updated docs (quick start, troubleshooting, CHANGELOG kickoff).
 - **Early Close Items:** README/CONTRIBUTING scaffolding, risk plan, work packages doc in place.
-- **Remaining Prerequisites:** Docker build/test workflows, release scripts, checksum generation.
+- **Remaining Prerequisites:** Docker build/test workflows, release scripts, checksum generation, CHANGELOG scaffolding.
+- **Detailed Plan:** See `docs/WP6_RELEASE_TOOLING_PLAN.md` for phase/step/task breakdown aligned with Phase 4 execution.
 
 ## Work Package 7 — Autonomous Analysis Interface
 - **Scope:** Integrate an OpenAI ChatGPT-5 (or equivalent) client that exposes an MCP-style command for autonomous deep dives. The gateway should accept requests such as “analyze subsystem X,” fetch relevant code and design chunks, and coordinate with the frontier AI using a stored API key.

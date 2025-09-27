@@ -45,6 +45,29 @@ def test_cli_rebuild_dry_run(sample_repo: Path, monkeypatch: pytest.MonkeyPatch)
         execute.assert_called_once()
 
 
+def test_cli_rebuild_requires_maintainer_token(sample_repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("KM_REPO_PATH", str(sample_repo))
+    monkeypatch.setenv("KM_AUTH_ENABLED", "true")
+    monkeypatch.setenv("KM_STATE_PATH", str(sample_repo / "state"))
+    get_settings.cache_clear()
+
+    with pytest.raises(SystemExit):
+        cli.main(["rebuild"])
+
+
+def test_cli_rebuild_with_maintainer_token(sample_repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("KM_REPO_PATH", str(sample_repo))
+    monkeypatch.setenv("KM_AUTH_ENABLED", "true")
+    monkeypatch.setenv("KM_ADMIN_TOKEN", "secret")
+    monkeypatch.setenv("KM_STATE_PATH", str(sample_repo / "state"))
+    get_settings.cache_clear()
+
+    dummy_result = mock.Mock(run_id="r", chunk_count=0, artifact_counts={})
+    with mock.patch("gateway.ingest.cli.execute_ingestion", return_value=dummy_result) as execute:
+        cli.main(["rebuild", "--dry-run", "--dummy-embeddings"])
+        execute.assert_called_once()
+
+
 def test_cli_audit_history_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     state_path = tmp_path / "state"
     monkeypatch.setenv("KM_STATE_PATH", str(state_path))

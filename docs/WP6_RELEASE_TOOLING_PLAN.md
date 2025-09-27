@@ -1,63 +1,32 @@
-# WP6 Release Tooling & Documentation Plan
+# Work Package 6 — Release Tooling & Documentation
 
-Duskmantle ships as a turnkey container plus Python project. WP6 focuses on providing a reliable release process so operators can reproduce artifacts, verify integrity, and understand changes between versions.
+## Phase Breakdown
 
-## Goals
-1. **Deterministic Builds:** Document commands and scripts that generate the Docker image and Python wheel/sdist with fixed versions.
-2. **Artifact Verification:** Produce checksums/signatures for release bundles.
-3. **Release Notes & Changelog:** Automate changelog drafting from Conventional Commit history and provide a release-notes template.
-4. **Operator Documentation:** Offer a RELEASE.md playbook covering build, test, tag, and publish steps.
+### Phase A: Build & Packaging Automation
+- **Step A1: Docker Build Pipeline**
+  - Task A1.1 Create reusable build script (Makefile or `scripts/` entry) encapsulating build args, BuildKit flags, and version tagging **(Completed via `scripts/build-image.sh`)**.
+  - Task A1.2 Add CI workflow to build the image on push/tag, fail on lints/tests, and produce artifacts **(Release workflow updated)**.
+  - Task A1.3 Capture image metadata (size, layers) and store in CI logs to monitor growth **(Handled by build script logging)**.
+- **Step A2: Artifact Signing & Checksums**
+  - Task A2.1 Extend `scripts/checksums.sh` (or new script) to generate SHA256/TUF hashes for image tarballs and binaries **(SHA256 automation in place)**.
+  - Task A2.2 Publish checksum files alongside artifacts and document verification commands **(Documented in README/RELEASE notes)**.
 
-## Deliverables (Proposed Milestones)
+### Phase B: Operational Tooling
+- **Step B1: Helper Scripts**
+  - Task B1.1 Finalize `bin/km-run` (runtime launcher) with environment overrides and logging guidance **(Completed)**.
+  - Task B1.2 Finalize `bin/km-backup` (state archive) with rotate/prune instructions **(Completed)**.
+  - Task B1.3 Provide restore script or documented commands for unpacking archives back into `KM_STATE_PATH` **(Documented in `docs/QUICK_START.md`)**.
+- **Step B2: Smoke & Regression Tests**
+  - Task B2.1 Upgrade `infra/smoke-test.sh` to run ingest/coverage checks **(Completed)**.
+  - Task B2.2 Wire smoke test into CI workflow post-build; fail the pipeline if ingest/coverage verification fails **(Completed via `release.yml`)**.
 
-### Milestone 1 — Baseline Scripts
-- `scripts/build-wheel.sh`: create wheel/sdist into `dist/` with reproducible flags.
-- `scripts/build-image.sh`: wrap `docker build` with pinned build args and logging.
-- `scripts/checksums.sh`: compute SHA256 hashes for `dist/*` and the container image tarball (`docker save`).
-- Add `make release` task chaining: lint → tests → wheel → image → checksums.
-- Document in `RELEASE.md` ( new file ) the manual release flow.
-
-### Milestone 2 — Changelog Automation
-- Add `scripts/generate-changelog.py` using git + Conventional Commits to assemble markdown by category.
-- Maintain `CHANGELOG.md` with “Unreleased” and versioned sections.
-- Extend pipeline to update changelog during `make release` (with manual review step).
-
-### Milestone 3 — CI Packaging & Publishing
-- GitHub Actions workflow (placeholder `.github/workflows/release.yml`) to:
-  1. Build wheel & container on tags.
-  2. Run `scripts/checksums.sh`.
-  3. Attach assets to the GH release (or publish to registry if configured later).
-- Smoke test built artifacts (run container, execute `gateway-ingest` dry run).
-- Publish release notes using generated markdown.
-
-### Milestone 4 — Extended Docs & Troubleshooting
-- Expand `RELEASE.md` with common issues (e.g., docker login, version bump conflicts).
-- Add section to `docs/OBSERVABILITY_GUIDE.md` summarising release validation signals (critical metrics to watch post-release).
-- Ensure `README.md` references release process and changelog link.
-
-## Immediate Next Steps (Sprint Scope)
-1. **Create scripts skeletons** for build/checksum with unit-ish tests verifying expected output files.
-2. **Add RELEASE.md** with detailed manual steps and explanation of new scripts.
-3. **Draft CHANGELOG.md** with placeholder “Unreleased” section and note that releases will follow Semantic Versioning.
-
-## Dependencies & Considerations
-- Requires Docker and build toolchain available in CI environment.
-- For checksum generation, rely on `sha256sum` (available in Debian base image); fallback to Python script if portability needed.
-- Ensure that the repository version (e.g., `pyproject.toml`) is in sync with git tags; might adopt bumpversion or Poetry version tasks later.
-
-## Open Questions
-- Registry destinations: are we publishing to Docker Hub, GHCR, or an internal registry? For now, scripts log `docker tag` commands without pushing.
-- Signing strategy: should we generate cosign signatures? Defer until requirements clarified.
-- Release cadence: assume manual release triggered by maintainers after WPs complete.
-
-## Remaining Tasks & Estimates
-
-| Task | Description | Estimate | Dependencies |
-|------|-------------|----------|--------------|
-| CI packaging workflow | Add `.github/workflows/release.yml` to build wheel/image, run smoke tests, and upload artifacts on tag pushes. | 1.5 days | Milestone 1 scripts, GitHub secrets for registry (optional). |
-| Automated changelog update | Extend `scripts/generate-changelog.py` to parse Conventional Commits and update `CHANGELOG.md` during release; integrate into `make release`. | 1 day | Changelog skeleton; git tag naming convention. |
-| Docker image signing | Evaluate cosign or similar to sign `duskmantle/km` images; document verification steps. | 1 day (optional) | Decision on signing tool, registry access. |
-| Release smoke automation | Enhance `infra/smoke-test.sh` to accept build artifacts and run post-build checks in CI. | 0.5 day | Existing smoke script. |
-| Documentation polish | Expand `RELEASE.md` with troubleshooting, add release section to `README.md`, link metrics to observe during rollout. | 0.5 day | Feedback from initial release dry run. |
-
-> Estimations assume a single engineer familiar with the repository and available tooling. Adjust as new requirements emerge.
+### Phase C: Documentation & Release Process
+- **Step C1: Quick Start & Troubleshooting**
+  - Task C1.1 Write quick-start guide covering prerequisites, `bin/km-run`, and sample ingest commands **(Completed: `docs/QUICK_START.md`)**.
+  - Task C1.2 Expand troubleshooting appendix (auth errors, scheduler skips, tracing setup) referencing observability docs **(Updates to README & OBSERVABILITY_GUIDE)**.
+- **Step C2: Release Checklist & Notes**
+  - Task C2.1 Define release checklist (build, smoke test, backups, docs review) stored in repo (`RELEASE.md`) **(Checklist refreshed)**.
+  - Task C2.2 Template CHANGELOG entries per release and note manual verification steps **(Unreleased heading maintained)**.
+- **Step C3: Distribution Logistics**
+  - Task C3.1 Document artifact hosting (registry URL, checksum location) and provide copy-paste commands **(README Release Artifacts section)**.
+  - Task C3.2 If applicable, publish compressed tarball of the repo for air-gapped environments with instructions **(Documented usage via image tarball)**.

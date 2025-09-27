@@ -1,0 +1,84 @@
+# Quick Start Guide
+
+This guide walks through launching the Duskmantle knowledge gateway, running a smoke ingest, verifying health endpoints, and creating backups. For detailed architecture and operational runbooks, see `docs/KNOWLEDGE_MANAGEMENT.md` and `docs/OBSERVABILITY_GUIDE.md`.
+
+## 1. Prerequisites
+- Docker 24+ with BuildKit enabled (default in recent releases).
+- Python 3.12 (optional, for local development and CLI usage).
+- At least 4 GB RAM and 5 GB free disk for Neo4j/Qdrant data.
+
+## 2. Build or Pull the Container
+To build from source:
+```bash
+scripts/build-image.sh duskmantle/km:dev
+```
+This script enables BuildKit, prints image metadata, and accepts optional args via `KM_BUILD_ARGS` or `KM_BUILD_PROGRESS`.
+
+Alternatively, pull a published image:
+```bash
+docker pull duskmantle/km:latest
+```
+
+## 3. Launch the Stack
+Use the helper script for consistent mounts and ports:
+```bash
+bin/km-run
+```
+Defaults:
+- Ports: API `8000`, Qdrant `6333`, Neo4j `7687`.
+- Data directory: `./data` mounted to `/opt/knowledge/var`.
+- Repository mount: current directory to `/workspace/repo` (read-only by default).
+
+Override with environment variables (examples):
+```bash
+KM_IMAGE=duskmantle/km:latest KM_DATA_DIR=/var/km-data bin/km-run --detach
+```
+
+Verify readiness:
+```bash
+curl http://localhost:8000/readyz
+```
+
+## 4. Run an Ingest
+Inside the container:
+```bash
+docker exec km-gateway gateway-ingest rebuild --profile local --dummy-embeddings
+```
+For production, omit `--dummy-embeddings` (requires model download).
+
+## 5. Health Checks & Observability
+- `curl http://localhost:8000/healthz` — overall status plus coverage/audit/scheduler details.
+- `curl http://localhost:8000/metrics` — Prometheus metrics (requires `KM_ADMIN_TOKEN` if auth enabled).
+- `curl http://localhost:8000/coverage` — latest coverage report (maintainer scope).
+
+Refer to `docs/OBSERVABILITY_GUIDE.md` for alerting thresholds and troubleshooting (e.g., auth 401/403 diagnostics, scheduler skews).
+
+## 6. Smoke Test Script
+Run the full pipeline locally before publishing:
+```bash
+./infra/smoke-test.sh duskmantle/km:dev
+```
+The script builds the image, launches a disposable container, triggers a smoke ingest, validates `/coverage`, and tears down resources.
+
+## 7. Backups & Restore
+Create a backup (tar.gz) of `/opt/knowledge/var`:
+```bash
+bin/km-backup
+```
+The archive lands in `./backups/km-backup-<timestamp>.tgz`. To restore:
+```bash
+tar -xzf backups/km-backup-<timestamp>.tgz -C data
+```
+Restart the container to pick up restored state.
+
+## 8. Environment & Authentication
+- Set `KM_AUTH_ENABLED=true`, `KM_READER_TOKEN`, and `KM_ADMIN_TOKEN` to secure APIs and CLIs. Maintainer tokens satisfy reader endpoints; reader tokens cannot invoke admin operations.
+- Scheduler and `gateway-ingest` refuse to run without `KM_ADMIN_TOKEN` when auth is enabled.
+
+## 9. Troubleshooting Highlights
+- **401 Unauthorized**: Missing bearer token. Add `-H "Authorization: Bearer $KM_READER_TOKEN"` to requests.
+- **403 Forbidden**: Invalid token or insufficient scope. Use the maintainer token for ingestion, coverage, and `/graph/cypher`.
+- **Scheduler Skips**: Inspect `km_scheduler_runs_total` metrics (`skipped_head`, `skipped_lock`, `skipped_auth`) for root cause.
+- **Tracing**: Enable with `KM_TRACING_ENABLED=true`. Set `KM_TRACING_ENDPOINT` for OTLP export; use `KM_TRACING_CONSOLE_EXPORT=true` to mirror spans locally.
+
+For more detail, consult `docs/OBSERVABILITY_GUIDE.md` and the release playbook in `RELEASE.md`.

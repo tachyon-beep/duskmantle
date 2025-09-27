@@ -9,6 +9,8 @@ from fastapi.testclient import TestClient
 from gateway.api.app import create_app
 from gateway.ingest.coverage import write_coverage_report
 from gateway.ingest.pipeline import IngestionConfig, IngestionResult, IngestionPipeline
+from gateway.observability.metrics import COVERAGE_HISTORY_SNAPSHOTS
+from prometheus_client import REGISTRY
 from gateway.observability.metrics import (
     COVERAGE_LAST_RUN_STATUS,
     COVERAGE_LAST_RUN_TIMESTAMP,
@@ -49,6 +51,7 @@ def test_write_coverage_report(tmp_path: Path) -> None:
     assert COVERAGE_LAST_RUN_STATUS.labels("local")._value.get() == 1
     assert COVERAGE_MISSING_ARTIFACTS.labels("local")._value.get() == 1
     assert COVERAGE_LAST_RUN_TIMESTAMP.labels("local")._value.get() > 0
+    assert COVERAGE_HISTORY_SNAPSHOTS.labels("local")._value.get() == 1
 
 
 class StubQdrantWriter:
@@ -84,6 +87,7 @@ def test_coverage_endpoint_after_report_generation(tmp_path: Path, monkeypatch) 
         use_dummy_embeddings=True,
         chunk_window=64,
         chunk_overlap=16,
+        coverage_history_limit=2,
     )
     pipeline = IngestionPipeline(
         qdrant_writer=StubQdrantWriter(),
@@ -113,3 +117,30 @@ def test_coverage_endpoint_after_report_generation(tmp_path: Path, monkeypatch) 
     payload = resp.json()
     assert payload["summary"]["artifact_total"] >= 2
     assert any(item["chunk_count"] == 0 for item in payload["artifacts"])
+
+
+def test_coverage_history_rotation(tmp_path: Path) -> None:
+    config = IngestionConfig(repo_root=tmp_path, coverage_history_limit=2)
+    out = tmp_path / "reports" / "coverage_report.json"
+
+    for idx in range(4):
+        result = IngestionResult(
+            run_id=f"run{idx}",
+            profile="local",
+            started_at=0.0,
+            duration_seconds=1.0,
+            artifact_counts={},
+            chunk_count=0,
+            repo_head=f"sha{idx}",
+            success=True,
+        )
+        write_coverage_report(result, config, output_path=out)
+
+    history_dir = out.parent / "history"
+    snapshots = sorted(history_dir.glob("coverage_*.json"))
+    assert len(snapshots) == config.coverage_history_limit
+    gauge_value = REGISTRY.get_sample_value(
+        "km_coverage_history_snapshots",
+        {"profile": "local"},
+    )
+    assert gauge_value == float(config.coverage_history_limit)

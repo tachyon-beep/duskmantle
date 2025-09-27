@@ -7,7 +7,7 @@ This guide explains how to operate and monitor the Duskmantle Knowledge Gateway.
 - **Logs:** JSON-structured stdout/stderr streams captured by the container runtime. Each record carries `ingest_run_id`, subsystem, and key counts.
 - **Tracing:** Optional OpenTelemetry spans that capture HTTP requests and ingestion stages. Export spans to an OTLP collector, APM tool, or stdout.
 - **Audit Ledger:** SQLite database under `/opt/knowledge/var/audit/audit.db` with per-run provenance records accessible via `/audit/history`.
-- **Coverage Report:** Accessible via `/coverage` (maintainer scope) or `/opt/knowledge/var/reports/coverage_report.json`, detailing indexed artifacts and gaps.
+- **Coverage Report:** Accessible via `/coverage` (maintainer scope) or `/opt/knowledge/var/reports/coverage_report.json`, detailing indexed artifacts and gaps. Historical snapshots live under `/opt/knowledge/var/reports/history/coverage_*.json` and are pruned to the limit defined by `KM_COVERAGE_HISTORY_LIMIT`.
 
 ## 2. Metrics Reference
 Expose metrics with:
@@ -26,12 +26,15 @@ Key time-series:
 | `km_coverage_last_run_status` | Gauge | `profile` | 1=coverage report written successfully. | Alert when `== 0` for two consecutive scrapes. |
 | `km_coverage_last_run_timestamp` | Gauge | `profile` | Epoch of last coverage report. | Alert when older than max(2× schedule interval, 1h) or >24h when scheduler disabled. |
 | `km_coverage_missing_artifacts_total` | Gauge | `profile` | Count of artifacts with zero chunks in last run. | Alert when count grows between runs. |
+| `km_coverage_history_snapshots` | Gauge | `profile` | Number of retained coverage snapshots under `reports/history/`. | Alert when value drops below configured history limit (e.g., disk cleanup failure). |
 | `km_search_requests_total` | Counter | `status` (`success`,`failure`) | Search API requests partitioned by outcome. | Alert when failure ratio rises above baseline. |
 | `km_search_graph_cache_events_total` | Counter | `status` (`miss`,`hit`,`error`) | Tracks graph context cache utilisation. | Alert when `status="error"` climbs or hit ratio drops suddenly. |
 | `km_search_graph_lookup_seconds` | Histogram | _none_ | Latency of Neo4j lookups for search enrichment. | Alert when P95 exceeds expected threshold (e.g., >250 ms). |
 | `km_search_adjusted_minus_vector` | Histogram | _none_ | Distribution of adjusted minus vector scores per result. | Alert when distribution skews heavily positive/negative (ranking drift). |
 | `km_graph_migration_last_status` | Gauge | _none_ | 1=success, 0=failure, -1=skipped (auto-migrate state). | Alert on 0 or when paired timestamp is stale. |
 | `km_graph_migration_last_timestamp` | Gauge | _none_ | Unix timestamp of last graph migration attempt. | Alert when older than deployment policy while auto-migrate is enabled. |
+| `km_scheduler_runs_total` | Counter | `result` (`success`,`failure`,`skipped_head`,`skipped_lock`,`skipped_auth`) | Scheduled ingestion job outcomes. | Alert if `result="failure"` or `skipped_auth` increments unexpectedly. |
+| `km_scheduler_last_success_timestamp` | Gauge | _none_ | Unix timestamp of last successful scheduled ingestion run. | Alert when stale relative to configured schedule. |
 | `uvicorn_requests_total` (via OTEL / ASGI) | Counter | `method`, `path`, `status_code` | Requires tracing enabled. | Alert on elevated 5xx rates or 429 spikes. |
 
 ### Prometheus Scrape Example
@@ -56,6 +59,7 @@ scrape_configs:
 - **Ranking Drift:** Monitor `km_search_adjusted_minus_vector` moving average; sustained positive deltas may mean graph weighting dominates vectors (or vice versa if negative). Alert when mean delta leaves the [-0.2, 0.2] band.
 - **Rate Limit Hotspot:** `rate(uvicorn_requests_total{status_code="429"}[5m]) > 5` indicates throttling pressure; investigate abusive clients or increase `KM_RATE_LIMIT_REQUESTS`.
 - **High Ingestion Latency:** `histogram_quantile(0.95, sum(rate(km_ingest_duration_seconds_bucket[15m])) by (le)) > <SLO>`.
+- **Scheduler Regression:** Alert when `time() - km_scheduler_last_success_timestamp > 2 * expected_interval` or when `rate(km_scheduler_runs_total{result="failure"}[30m]) > 0`.
 
 ### Health Endpoints
 - `GET /healthz` returns an overall `status` (`ok` or `degraded`) plus detailed checks for `coverage`, `audit`, and `scheduler`.
@@ -150,7 +154,12 @@ jq '.summary' /opt/knowledge/var/reports/coverage_report.json
 2. If using Prometheus, configure bearer token in job config (see §2).
 3. Confirm rate limiting is not throttling your collector (increase `KM_RATE_LIMIT_REQUESTS`).
 
-### 7.5 Coverage Report Missing
+### 7.5 API 401/403 Diagnostics
+1. `401 Unauthorized` indicates missing credentials—ensure the `Authorization: Bearer <token>` header is present. Reader endpoints accept either `KM_READER_TOKEN` or `KM_ADMIN_TOKEN`.
+2. `403 Forbidden` indicates invalid or mis-scoped tokens. Verify the token value matches the configured env var and use the maintainer token for ingestion, coverage, or `/graph/cypher` operations.
+3. Rotate tokens by updating `KM_READER_TOKEN`/`KM_ADMIN_TOKEN` and restarting the container; stale clients should be updated immediately to avoid auth failures.
+
+### 7.6 Coverage Report Missing
 1. Set `KM_COVERAGE_ENABLED=true`.
 2. Confirm ingestion ran successfully (audit + metrics).
 3. Check container logs for permission errors writing to `/opt/knowledge/var/reports`.

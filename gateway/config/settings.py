@@ -69,7 +69,9 @@ class AppSettings(BaseSettings):
     ingest_use_dummy_embeddings: bool = Field(False, alias="KM_INGEST_USE_DUMMY")
     scheduler_enabled: bool = Field(False, alias="KM_SCHEDULER_ENABLED")
     scheduler_interval_minutes: int = Field(30, alias="KM_SCHEDULER_INTERVAL_MINUTES")
+    scheduler_cron: str | None = Field(None, alias="KM_SCHEDULER_CRON")
     coverage_enabled: bool = Field(True, alias="KM_COVERAGE_ENABLED")
+    coverage_history_limit: int = Field(5, alias="KM_COVERAGE_HISTORY_LIMIT")
 
     tracing_enabled: bool = Field(False, alias="KM_TRACING_ENABLED")
     tracing_endpoint: str | None = Field(None, alias="KM_TRACING_ENDPOINT")
@@ -161,6 +163,23 @@ class AppSettings(BaseSettings):
         if overrides:
             return f"{profile}+overrides", resolved
         return profile, resolved
+
+    def scheduler_trigger_config(self) -> dict[str, object]:
+        """Return trigger configuration for the ingestion scheduler."""
+
+        if self.scheduler_cron and self.scheduler_cron.strip():
+            return {"type": "cron", "expression": self.scheduler_cron.strip()}
+        return {
+            "type": "interval",
+            "minutes": max(1, self.scheduler_interval_minutes),
+        }
+
+    @field_validator("coverage_history_limit")
+    @classmethod
+    def _validate_history_limit(cls, value: int) -> int:
+        if value < 1:
+            return 1
+        return value
 
 
 @lru_cache(maxsize=1)

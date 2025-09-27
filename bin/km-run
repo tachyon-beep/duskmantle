@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage: km-run [--detach]
+
+Launch the Duskmantle knowledge gateway container with sensible defaults.
+
+Environment overrides:
+  KM_IMAGE             Docker image tag (default: duskmantle/km:dev)
+  KM_CONTAINER_NAME    Container name (default: km-gateway)
+  KM_DATA_DIR          Host directory for persistent state (default: ./data)
+  KM_REPO_DIR          Host repository mount (default: current working directory)
+  KM_DOCKER_RUN_ARGS   Extra args appended to docker run command
+
+The command exposes ports 8000 (API), 6333 (Qdrant), and 7687 (Neo4j).
+EOF
+}
+
+DETACH=""
+if [[ ${1:-} == "--help" ]]; then
+  usage
+  exit 0
+elif [[ ${1:-} == "--detach" ]]; then
+  DETACH="--detach"
+  shift
+fi
+
+if [[ $# -ne 0 ]]; then
+  usage >&2
+  exit 1
+fi
+
+IMAGE=${KM_IMAGE:-duskmantle/km:dev}
+CONTAINER_NAME=${KM_CONTAINER_NAME:-km-gateway}
+DATA_DIR=${KM_DATA_DIR:-$(pwd)/data}
+REPO_DIR=${KM_REPO_DIR:-$(pwd)}
+
+mkdir -p "$DATA_DIR"
+
+docker run --rm ${DETACH} \
+  --name "$CONTAINER_NAME" \
+  -p 8000:8000 -p 6333:6333 -p 7687:7687 \
+  -v "$DATA_DIR":/opt/knowledge/var \
+  -v "$REPO_DIR":/workspace/repo \
+  ${KM_DOCKER_RUN_ARGS:-} \
+  "$IMAGE"

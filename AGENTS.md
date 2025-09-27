@@ -36,3 +36,6 @@ Follow Conventional Commits (`feat:`, `fix:`, `docs:`). PR descriptions should o
 
 ## Agent Workflow Tips
 Before coding, confirm expectations in the design and implementation-plan docs. Keep changes scoped: update config defaults, ingestion logic, and docs in the same PR when they are materially linked. After each ingest-affecting change, rerun the turnkey smoke test and refresh any sample commands in this guide.
+- When enabling the scheduler, prefer interval tuning for local dev (`KM_SCHEDULER_INTERVAL_MINUTES`) and cron expressions (`KM_SCHEDULER_CRON`) for predictable pipelines; remember runs are skipped when another job holds the ingest lock or the repo HEAD is unchanged.
+- CLI ingestion commands now enforce maintainer scope when auth is enabled—export `KM_ADMIN_TOKEN` before running `gateway-ingest` locally or from automation.
+- Use `bin/km-run` for the canonical container launch command and `bin/km-backup` to snapshot `/opt/knowledge/var` before upgrades or experiments.
