@@ -119,7 +119,7 @@ TOOL_USAGE = {
     },
 }
 
-HELP_DOC_PATH = Path(__file__).resolve().parents[2].parent / "docs" / "MCP_INTERFACE_SPEC.md"
+HELP_DOC_PATH = Path(__file__).resolve().parents[2] / "docs" / "MCP_INTERFACE_SPEC.md"
 
 
 class MCPServerState:
@@ -165,6 +165,7 @@ def build_server(settings: MCPSettings | None = None) -> FastMCP:
         lifespan=state.lifespan(),
     )
     server._duskmantle_state = state
+    _initialise_metric_labels()
 
     @server.tool(name="km-help", description="Return usage notes for Duskmantle MCP tools")
     async def km_help(
@@ -172,9 +173,15 @@ def build_server(settings: MCPSettings | None = None) -> FastMCP:
         include_spec: bool = False,
         context: Context | None = None,
     ) -> dict[str, Any]:
-        usage_payload = _resolve_usage(tool)
-        if include_spec:
-            usage_payload["spec"] = _load_help_document()
+        start = perf_counter()
+        try:
+            usage_payload = _resolve_usage(tool)
+            if include_spec:
+                usage_payload["spec"] = _load_help_document()
+        except Exception as exc:  # pragma: no cover - defensive
+            _record_failure("km-help", exc, start)
+            raise
+        _record_success("km-help", start)
         await _report_info(context, "Returned MCP usage help")
         return usage_payload
 
@@ -482,3 +489,11 @@ def _load_help_document() -> str:
 
 
 __all__ = ["build_server"]
+
+
+def _initialise_metric_labels() -> None:
+    tools = list(TOOL_USAGE.keys()) + ["km-help"]
+    for tool in tools:
+        MCP_REQUESTS_TOTAL.labels(tool, "success").inc(0)
+        MCP_REQUESTS_TOTAL.labels(tool, "error").inc(0)
+        MCP_REQUEST_SECONDS.labels(tool)

@@ -14,6 +14,7 @@ from gateway.graph import GraphNotFoundError
 class DummyGraphService:
     def __init__(self, responses: dict[str, Any]):
         self._responses = responses
+        self.last_node_id: str | None = None
 
     def get_subsystem(self, name: str, **kwargs: Any) -> dict[str, Any]:
         if name == "missing":
@@ -21,6 +22,7 @@ class DummyGraphService:
         return self._responses["subsystem"]
 
     def get_node(self, node_id: str, *, relationships: str, limit: int) -> dict[str, Any]:
+        self.last_node_id = node_id
         if node_id == "Subsystem:missing":
             raise GraphNotFoundError("Node not found")
         return self._responses["node"]
@@ -93,6 +95,7 @@ def app(monkeypatch: pytest.MonkeyPatch) -> FastAPI:
         }
     )
     app.dependency_overrides[app.state.graph_service_dependency] = lambda: dummy_service
+    app.state._dummy_graph_service = dummy_service
     return app
 
 
@@ -120,6 +123,14 @@ def test_graph_node_endpoint(app: FastAPI) -> None:
     data = response.json()
     assert data["node"]["id"] == "Subsystem:telemetry"
     assert data["relationships"][0]["type"] == "IMPLEMENTS"
+
+
+def test_graph_node_accepts_slash_encoded_ids(app: FastAPI) -> None:
+    client = TestClient(app)
+    response = client.get("/graph/nodes/DesignDoc%3Adocs%2Fdesign.md")
+    assert response.status_code == 200
+    service = app.state._dummy_graph_service
+    assert service.last_node_id == "DesignDoc:docs/design.md"
 
 
 def test_graph_search_endpoint(app: FastAPI) -> None:

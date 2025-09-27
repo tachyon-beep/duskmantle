@@ -8,6 +8,7 @@ from gateway.observability.metrics import (
     MCP_REQUEST_SECONDS,
     MCP_REQUESTS_TOTAL,
 )
+from prometheus_client import generate_latest
 
 
 @pytest.fixture(autouse=True)
@@ -60,6 +61,17 @@ async def test_km_help_lists_tools_and_provides_details(monkeypatch, mcp_server)
     assert detail["tool"] == "km-search"
     assert "Required: `query`" in detail["usage"]["details"]
     assert detail["spec"] == "stub spec"
+
+
+@pytest.mark.asyncio
+async def test_metrics_export_includes_tool_labels(monkeypatch, mcp_server):
+    server, _state = mcp_server
+
+    tool = await server.get_tool("km-help")
+    await tool.fn(context=None)
+
+    metrics_data = generate_latest().decode()
+    assert 'km_mcp_requests_total{result="success",tool="km-help"} 1.0' in metrics_data
 
 
 @pytest.mark.asyncio

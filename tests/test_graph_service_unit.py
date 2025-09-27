@@ -103,7 +103,7 @@ def test_get_subsystem_paginates_and_includes_artifacts(monkeypatch: pytest.Monk
         return [{"relationship": relationship, "node": related_node}]
 
     def fake_fetch_artifacts(tx, name: str):
-        return [{"artifact": artifact_node}]
+        return [artifact_node]
 
     monkeypatch.setattr(graph_service, "_fetch_subsystem_node", fake_fetch_subsystem_node)
     monkeypatch.setattr(graph_service, "_fetch_related_nodes", fake_fetch_related_nodes)

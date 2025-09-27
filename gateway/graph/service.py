@@ -293,15 +293,20 @@ def _search_entities(tx: Transaction, term: str, limit: int) -> list[dict[str, A
 
 
 def _serialize_related(record: dict[str, Any], subsystem_node: Node) -> dict[str, Any]:
-    relationship: Relationship = record["relationship"]
+    relationship = record["relationship"]
     node: Node = record["node"]
-    direction = (
-        "OUT"
-        if relationship.start_node.element_id == subsystem_node.element_id
-        else "IN"
-    )
+    if isinstance(relationship, Relationship):
+        direction = (
+            "OUT"
+            if relationship.start_node.element_id == subsystem_node.element_id
+            else "IN"
+        )
+        rel_type = relationship.type
+    else:  # tolerate legacy tuple/dict encodings emitted by Neo4j drivers
+        direction = "OUT"
+        rel_type = getattr(relationship, "type", "UNKNOWN")
     return {
-        "relationship": relationship.type,
+        "relationship": rel_type,
         "direction": direction,
         "target": _serialize_node(node),
     }
@@ -316,16 +321,21 @@ def _serialize_node(node: Node) -> dict[str, Any]:
 
 
 def _serialize_relationship(record: dict[str, Any]) -> dict[str, Any]:
-    relationship: Relationship = record["relationship"]
+    relationship = record["relationship"]
     node: Node = record["node"]
-    if relationship.end_node.element_id == node.element_id:
+    if isinstance(relationship, Relationship):
+        if relationship.end_node.element_id == node.element_id:
+            direction = "OUT"
+        elif relationship.start_node.element_id == node.element_id:
+            direction = "IN"
+        else:  # pragma: no cover - fallback for undirected or unexpected shapes
+            direction = "BOTH"
+        rel_type = relationship.type
+    else:  # pragma: no cover - defensive against legacy tuple encodings
         direction = "OUT"
-    elif relationship.start_node.element_id == node.element_id:
-        direction = "IN"
-    else:  # pragma: no cover - fallback for undirected or unexpected shapes
-        direction = "BOTH"
+        rel_type = getattr(relationship, "type", "UNKNOWN")
     return {
-        "type": relationship.type,
+        "type": rel_type,
         "direction": direction,
         "target": _serialize_node(node),
     }

@@ -462,7 +462,11 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return JSONResponse(payload)
 
-    @app.get("/graph/nodes/{node_id}", dependencies=[Depends(require_reader)], tags=["graph"])
+    @app.get(
+        "/graph/nodes/{node_id:path}",
+        dependencies=[Depends(require_reader)],
+        tags=["graph"],
+    )
     @limiter.limit(metrics_limit)
     def graph_node(
         node_id: str,
