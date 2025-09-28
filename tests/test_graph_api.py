@@ -157,9 +157,6 @@ def test_graph_node_endpoint_live(
     monkeypatch.setenv("KM_NEO4J_URI", uri)
     monkeypatch.setenv("KM_NEO4J_USER", user)
     monkeypatch.setenv("KM_NEO4J_PASSWORD", password)
-    monkeypatch.setenv("KM_NEO4J_URI", uri)
-    monkeypatch.setenv("KM_NEO4J_USER", user)
-    monkeypatch.setenv("KM_NEO4J_PASSWORD", password)
     from gateway.config.settings import get_settings
 
     repo_root = Path(tmp_path) / "repo"
@@ -208,6 +205,9 @@ def test_graph_search_endpoint_live(
         pytest.skip("Set NEO4J_TEST_URI to run Neo4j integration tests")
 
     monkeypatch.setenv("KM_NEO4J_DATABASE", database)
+    monkeypatch.setenv("KM_NEO4J_URI", uri)
+    monkeypatch.setenv("KM_NEO4J_USER", user)
+    monkeypatch.setenv("KM_NEO4J_PASSWORD", password)
     from gateway.config.settings import get_settings
 
     repo_root = Path(tmp_path) / "repo"
