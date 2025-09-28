@@ -42,7 +42,7 @@ Create working directories for state and content:
 mkdir -p .duskmantle/{config,data}
 ```
 
-Copy or symlink the material you want the gateway to index into `.duskmantle/data/`. That path becomes `/workspace/repo` inside the container.
+Copy or symlink the material you want the gateway to index into `.duskmantle/data/`. That path becomes `/workspace/repo` inside the container. Run `bin/km-sweep` whenever you add loose `*.md`, `*.docx`, `*.txt`, `*.doc`, or `*.pdf` files—the helper copies them into `.duskmantle/data/docs/` so the next ingest picks them up.
 
 Use the helper script for consistent mounts and ports:
 

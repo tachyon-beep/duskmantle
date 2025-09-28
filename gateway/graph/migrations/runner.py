@@ -29,7 +29,7 @@ MIGRATIONS: list[Migration] = [
     Migration(
         id="002_domain_entities",
         statements=[
-            "CREATE CONSTRAINT IF NOT EXISTS FOR (m:LeylineMessage) REQUIRE m.name IS UNIQUE",
+            "CREATE CONSTRAINT IF NOT EXISTS FOR (m:IntegrationMessage) REQUIRE m.name IS UNIQUE",
             "CREATE CONSTRAINT IF NOT EXISTS FOR (tc:TelemetryChannel) REQUIRE tc.name IS UNIQUE",
             "CREATE CONSTRAINT IF NOT EXISTS FOR (cfg:ConfigFile) REQUIRE cfg.path IS UNIQUE",
         ],

@@ -117,3 +117,14 @@ MCP_FAILURES_TOTAL = Counter(
     labelnames=["tool", "error"],
 )
 
+MCP_UPLOAD_TOTAL = Counter(
+    "km_mcp_upload_total",
+    "MCP upload tool invocations partitioned by result",
+    labelnames=["result"],
+)
+
+MCP_STORETEXT_TOTAL = Counter(
+    "km_mcp_storetext_total",
+    "MCP storetext tool invocations partitioned by result",
+    labelnames=["result"],
+)

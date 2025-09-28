@@ -163,14 +163,28 @@ Record the following in release notes or a demo log:
    ```
 
    - Provide `KM_READER_TOKEN` if auth is enabled and you want to restrict scope. The demo typically reuses the maintainer token for both.
-3. From the original terminal, run the MCP smoke marker:
+3. From the adapter prompt, exercise the content tools before running automated smoke tests:
+
+   ```
+   > km-upload {"source_path": "./docs/QUICK_START.md", "destination": "docs/demo/", "ingest": true}
+   < stored_path: /workspace/repo/docs/demo/QUICK_START.md ... ingest_triggered: true
+
+   > km-storetext {"title": "Demo Note", "content": "## Summary\n- MCP upload verified", "ingest": true}
+   < relative_path: "docs/demo-note.md" ...
+
+   > km-search {"query": "Demo Note", "limit": 3}
+   < results: [...]
+   ```
+
+   Confirm both commands report `status: success` and that `km_mcp_upload_total` / `km_mcp_storetext_total` increment in Prometheus.
+4. From the original terminal, run the MCP smoke marker:
 
    ```bash
    pytest -m mcp_smoke --maxfail=1 --disable-warnings
    ```
 
    This exercises `km-search`, `km-coverage-summary`, and `km-backup-trigger` over MCP. Confirm the Prometheus metrics `km_mcp_requests_total` and `km_mcp_request_seconds` increment by querying `http://localhost:8000/metrics`.
-4. Stop the adapter (Ctrl+C) once verification completes.
+5. Stop the adapter (Ctrl+C) once verification completes.
 
 ## 11. Cleanup
 

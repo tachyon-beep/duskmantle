@@ -297,7 +297,7 @@ When a migration must be reversed after deployment:
       "subsystems": ["Telemetry", "Analytics"],
       "artifact_types": ["code", "doc"],
       "namespaces": ["src", "docs"],
-      "tags": ["LeylineAlpha", "TelemetrySignal"],
+      "tags": ["IntegrationAlpha", "TelemetrySignal"],
       "updated_after": "2024-09-01T00:00:00Z",
       "max_age_days": 45
     }
@@ -309,7 +309,7 @@ When a migration must be reversed after deployment:
   - `subsystems` is an array of strings (case-insensitive). If chunk metadata lacks a subsystem match, the service falls back to graph context (primary node + neighbour subsystems) when available; otherwise the chunk is excluded.
   - `artifact_types` is an array of strings drawn from the ingestion taxonomy (`code`, `doc`, `test`, `proto`, `config`). Invalid entries result in `422`.
   - `namespaces` is an array of strings matched against each chunk’s derived namespace (top-level directory, with `src/<name>` collapsing to `<name>`). Comparisons are case-insensitive.
-  - `tags` is an array of strings. Each chunk exposes a normalised tag set combining Leyline entities, telemetry signals, and optional subsystem metadata tags; at least one overlap (case-insensitive) is required when the filter is present.
+  - `tags` is an array of strings. Each chunk exposes a normalised tag set combining integration message tags, telemetry signals, and optional subsystem metadata tags; at least one overlap (case-insensitive) is required when the filter is present.
   - `updated_after` accepts an ISO-8601 timestamp (string). Only artifacts whose git or graph timestamp is on/after the supplied value are returned. Timestamps are normalised to UTC internally.
   - `max_age_days` accepts a positive integer. Results older than the specified number of days relative to the request time are dropped. When both `updated_after` and `max_age_days` are provided, the stricter (most recent) cutoff wins.
   - Filters combine via logical AND. Absence of `filters` preserves existing behaviour.

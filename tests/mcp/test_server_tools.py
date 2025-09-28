@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from gateway.mcp.config import MCPSettings
@@ -7,6 +9,8 @@ from gateway.observability.metrics import (
     MCP_FAILURES_TOTAL,
     MCP_REQUEST_SECONDS,
     MCP_REQUESTS_TOTAL,
+    MCP_STORETEXT_TOTAL,
+    MCP_UPLOAD_TOTAL,
 )
 from prometheus_client import generate_latest
 
@@ -16,10 +20,14 @@ def _reset_mcp_metrics():
     MCP_REQUESTS_TOTAL.clear()
     MCP_FAILURES_TOTAL.clear()
     MCP_REQUEST_SECONDS.clear()
+    MCP_UPLOAD_TOTAL.clear()
+    MCP_STORETEXT_TOTAL.clear()
     yield
     MCP_REQUESTS_TOTAL.clear()
     MCP_FAILURES_TOTAL.clear()
     MCP_REQUEST_SECONDS.clear()
+    MCP_UPLOAD_TOTAL.clear()
+    MCP_STORETEXT_TOTAL.clear()
 
 
 @pytest.fixture
@@ -36,6 +44,14 @@ def _counter_value(counter, *labels: str) -> float:
 
 def _histogram_sum(histogram, *labels: str) -> float:
     return histogram.labels(*labels)._sum.get()
+
+
+def _upload_counter(result: str) -> float:
+    return MCP_UPLOAD_TOTAL.labels(result)._value.get()
+
+
+def _storetext_counter(result: str) -> float:
+    return MCP_STORETEXT_TOTAL.labels(result)._value.get()
 
 
 @pytest.mark.asyncio
@@ -282,6 +298,274 @@ async def test_feedback_submit(monkeypatch, mcp_server):
 
     assert payload["echo"]["request_id"] == "req-1"
     assert _counter_value(MCP_REQUESTS_TOTAL, "km-feedback-submit", "success") == 1
+
+
+@pytest.mark.asyncio
+async def test_km_upload_copies_file_and_records_metrics(tmp_path: Path):
+    content_root = tmp_path / "repo"
+    (content_root / "docs").mkdir(parents=True)
+    state_path = tmp_path / "state"
+    settings = MCPSettings(
+        KM_STATE_PATH=str(state_path),
+        KM_CONTENT_ROOT=str(content_root),
+        KM_CONTENT_DOCS_SUBDIR="docs",
+        KM_ADMIN_TOKEN="secret",
+        KM_UPLOAD_DEFAULT_INGEST="false",
+        KM_UPLOAD_DEFAULT_OVERWRITE="false",
+    )
+    server = build_server(settings=settings)
+
+    source = tmp_path / "notes.md"
+    source.write_text("notes")
+
+    tool = await server.get_tool("km-upload")
+    result = await tool.fn(
+        source_path=str(source),
+        destination=None,
+        overwrite=None,
+        ingest=None,
+        context=None,
+    )
+
+    target = content_root / "docs" / "notes.md"
+    assert target.exists()
+    assert result["relative_path"] == "docs/notes.md"
+    assert _counter_value(MCP_REQUESTS_TOTAL, "km-upload", "success") == 1
+    assert _upload_counter("success") == 1
+    audit_file = state_path / "audit" / "mcp_actions.log"
+    assert audit_file.exists()
+    assert '"tool": "km-upload"' in audit_file.read_text()
+
+
+@pytest.mark.asyncio
+async def test_km_upload_missing_source_raises(tmp_path: Path):
+    content_root = tmp_path / "repo"
+    (content_root / "docs").mkdir(parents=True)
+    state_path = tmp_path / "state"
+    settings = MCPSettings(
+        KM_STATE_PATH=str(state_path),
+        KM_CONTENT_ROOT=str(content_root),
+        KM_CONTENT_DOCS_SUBDIR="docs",
+        KM_ADMIN_TOKEN="secret",
+    )
+    server = build_server(settings=settings)
+
+    tool = await server.get_tool("km-upload")
+    with pytest.raises(ValueError):
+        await tool.fn(
+            source_path=str(tmp_path / "missing.md"),
+            destination=None,
+            overwrite=None,
+            ingest=None,
+            context=None,
+        )
+
+    assert _counter_value(MCP_REQUESTS_TOTAL, "km-upload", "error") == 1
+    assert _upload_counter("error") == 1
+
+
+@pytest.mark.asyncio
+async def test_km_upload_requires_admin_token(tmp_path: Path):
+    content_root = tmp_path / "repo"
+    (content_root / "docs").mkdir(parents=True)
+    state_path = tmp_path / "state"
+    settings = MCPSettings(
+        KM_STATE_PATH=str(state_path),
+        KM_CONTENT_ROOT=str(content_root),
+        KM_CONTENT_DOCS_SUBDIR="docs",
+        KM_ADMIN_TOKEN="",
+    )
+    server = build_server(settings=settings)
+
+    source = tmp_path / "note.md"
+    source.write_text("note")
+
+    tool = await server.get_tool("km-upload")
+    with pytest.raises(PermissionError):
+        await tool.fn(
+            source_path=str(source),
+            destination=None,
+            overwrite=None,
+            ingest=None,
+            context=None,
+        )
+
+
+@pytest.mark.asyncio
+async def test_km_upload_triggers_ingest_when_requested(monkeypatch, tmp_path: Path):
+    content_root = tmp_path / "repo"
+    (content_root / "docs").mkdir(parents=True)
+    settings = MCPSettings(
+        KM_CONTENT_ROOT=str(content_root),
+        KM_CONTENT_DOCS_SUBDIR="docs",
+        KM_ADMIN_TOKEN="secret",
+        KM_MCP_DEFAULT_INGEST_PROFILE="demo",
+    )
+    server = build_server(settings=settings)
+
+    source = tmp_path / "demo.txt"
+    source.write_text("demo")
+
+    async def fake_trigger_ingest(*, settings, profile, dry_run, use_dummy_embeddings):
+        assert profile == "demo"
+        return {"success": True, "profile": profile, "run_id": "123"}
+
+    monkeypatch.setattr("gateway.mcp.upload.trigger_ingest", fake_trigger_ingest)
+
+    tool = await server.get_tool("km-upload")
+    result = await tool.fn(
+        source_path=str(source),
+        destination="docs/uploads",
+        overwrite=True,
+        ingest=True,
+        context=None,
+    )
+
+    target = content_root / "docs" / "uploads" / "demo.txt"
+    assert target.exists()
+    assert result["ingest_triggered"] is True
+    assert result["ingest_run"]["success"] is True
+    assert _upload_counter("success") == 1
+
+
+@pytest.mark.asyncio
+async def test_km_storetext_creates_document_with_front_matter(tmp_path: Path):
+    content_root = tmp_path / "repo"
+    (content_root / "docs").mkdir(parents=True)
+    state_path = tmp_path / "state"
+    settings = MCPSettings(
+        KM_STATE_PATH=str(state_path),
+        KM_CONTENT_ROOT=str(content_root),
+        KM_CONTENT_DOCS_SUBDIR="docs",
+        KM_ADMIN_TOKEN="secret",
+    )
+    server = build_server(settings=settings)
+
+    tool = await server.get_tool("km-storetext")
+    result = await tool.fn(
+        content="## Body\nDetails",
+        title="Release Notes",
+        destination=None,
+        subsystem="Deployment",
+        tags=["release", "notes"],
+        metadata={"author": "agent"},
+        overwrite=None,
+        ingest=None,
+        context=None,
+    )
+
+    stored = content_root / result["relative_path"]
+    assert stored.exists()
+    contents = stored.read_text()
+    assert "title: Release Notes" in contents
+    assert "subsystem: Deployment" in contents
+    assert "tags: [release, notes]" in contents
+    assert "author: agent" in contents
+    assert contents.strip().endswith("Details")
+    assert _counter_value(MCP_REQUESTS_TOTAL, "km-storetext", "success") == 1
+    assert _storetext_counter("success") == 1
+    audit_file = state_path / "audit" / "mcp_actions.log"
+    assert audit_file.exists()
+    assert '"tool": "km-storetext"' in audit_file.read_text()
+
+
+@pytest.mark.asyncio
+async def test_km_storetext_requires_content(tmp_path: Path):
+    content_root = tmp_path / "repo"
+    (content_root / "docs").mkdir(parents=True)
+    state_path = tmp_path / "state"
+    settings = MCPSettings(
+        KM_STATE_PATH=str(state_path),
+        KM_CONTENT_ROOT=str(content_root),
+        KM_CONTENT_DOCS_SUBDIR="docs",
+        KM_ADMIN_TOKEN="secret",
+    )
+    server = build_server(settings=settings)
+
+    tool = await server.get_tool("km-storetext")
+    with pytest.raises(ValueError):
+        await tool.fn(
+            content=" ",
+            title=None,
+            destination=None,
+            subsystem=None,
+            tags=None,
+            metadata=None,
+            overwrite=None,
+            ingest=None,
+            context=None,
+        )
+
+    assert _counter_value(MCP_REQUESTS_TOTAL, "km-storetext", "error") == 1
+    assert _storetext_counter("error") == 1
+
+
+@pytest.mark.asyncio
+async def test_km_storetext_triggers_ingest_when_requested(monkeypatch, tmp_path: Path):
+    content_root = tmp_path / "repo"
+    (content_root / "docs").mkdir(parents=True)
+    state_path = tmp_path / "state"
+    settings = MCPSettings(
+        KM_STATE_PATH=str(state_path),
+        KM_CONTENT_ROOT=str(content_root),
+        KM_CONTENT_DOCS_SUBDIR="docs",
+        KM_ADMIN_TOKEN="secret",
+        KM_MCP_DEFAULT_INGEST_PROFILE="demo",
+    )
+    server = build_server(settings=settings)
+
+    async def fake_trigger_ingest(*, settings, profile, dry_run, use_dummy_embeddings):
+        assert profile == "demo"
+        return {"success": True, "profile": profile, "run_id": "abc"}
+
+    monkeypatch.setattr("gateway.mcp.storetext.trigger_ingest", fake_trigger_ingest)
+
+    tool = await server.get_tool("km-storetext")
+    result = await tool.fn(
+        content="Hello world",
+        title="demo",
+        destination="docs/uploads",
+        subsystem=None,
+        tags=None,
+        metadata=None,
+        overwrite=True,
+        ingest=True,
+        context=None,
+    )
+
+    stored = content_root / result["relative_path"]
+    assert stored.exists()
+    assert result["ingest_triggered"] is True
+    assert result["ingest_run"]["success"] is True
+    assert _storetext_counter("success") == 1
+
+
+@pytest.mark.asyncio
+async def test_km_storetext_requires_admin_token(tmp_path: Path):
+    content_root = tmp_path / "repo"
+    (content_root / "docs").mkdir(parents=True)
+    state_path = tmp_path / "state"
+    settings = MCPSettings(
+        KM_STATE_PATH=str(state_path),
+        KM_CONTENT_ROOT=str(content_root),
+        KM_CONTENT_DOCS_SUBDIR="docs",
+        KM_ADMIN_TOKEN="",
+    )
+    server = build_server(settings=settings)
+
+    tool = await server.get_tool("km-storetext")
+    with pytest.raises(PermissionError):
+        await tool.fn(
+            content="Hello",
+            title=None,
+            destination=None,
+            subsystem=None,
+            tags=None,
+            metadata=None,
+            overwrite=None,
+            ingest=None,
+            context=None,
+        )
 
 
 @pytest.mark.asyncio

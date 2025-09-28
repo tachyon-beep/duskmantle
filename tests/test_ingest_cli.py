@@ -22,9 +22,9 @@ def reset_settings_cache() -> None:
 @pytest.fixture()
 def sample_repo(tmp_path: Path) -> Path:
     (tmp_path / "docs").mkdir(parents=True)
-    (tmp_path / "src" / "esper" / "kasmina").mkdir(parents=True)
+    (tmp_path / "src" / "project" / "kasmina").mkdir(parents=True)
     (tmp_path / "docs" / "spec.md").write_text("Sample doc")
-    (tmp_path / "src" / "esper" / "kasmina" / "module.py").write_text("print('hi')")
+    (tmp_path / "src" / "project" / "kasmina" / "module.py").write_text("print('hi')")
     return tmp_path
 
 

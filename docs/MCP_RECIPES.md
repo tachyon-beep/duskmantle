@@ -74,6 +74,8 @@ Typical command flow after connecting:
 | Check ingest health | `km-coverage-summary {}` | Artifact/chunk totals, missing artifacts, last run details. |
 | Trigger a rebuild | `km-ingest-trigger {"profile": "local", "dry_run": true}` | Schedules an ingest after editing `.duskmantle/data`. Drop `dry_run` for production. |
 | Submit feedback | `km-feedback-submit {"request_id": "…", "chunk_id": "…", "vote": 1}` | Records a positive relevance vote. |
+| Upload an existing file | `km-upload {"source_path": "./notes/design.md", "destination": "docs/uploads/"}` | Copies the file into the workspace and reports the stored path. |
+| Capture ad-hoc notes | `km-storetext {"title": "Daily Notes", "content": "- Action items"}` | Persists text as markdown with optional metadata. |
 
 ## 3. Automation Patterns
 
@@ -96,6 +98,25 @@ km-coverage-summary {}
 km-search '{"query":"release checklist","limit":3}'
 # Optional jq filter:
 # km-search '{"query":"release checklist","limit":3}' | jq '.results[] | {id, score}'
+```
+
+### Upload Files and Capture Notes
+
+```bash
+# Copy an existing file into the workspace (no ingest by default)
+km-upload '{"source_path": "./notes/design.md", "destination": "docs/uploads/"}'
+
+# Store fresh text with metadata and trigger ingest immediately
+km-storetext '{
+  "title": "Daily Digest",
+  "content": "## Summary\n- Fixed ingestion retries",
+  "destination": "docs/digests",
+  "tags": ["digest", "status"],
+  "ingest": true
+}'
+
+# Check the resulting ingest status
+km-ingest-status '{"profile": "manual"}'
 ```
 
 ### Smoke-Test the MCP Surface

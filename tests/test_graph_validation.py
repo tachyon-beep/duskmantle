@@ -25,12 +25,12 @@ def test_ingestion_populates_graph(tmp_path: pytest.TempPathFactory) -> None:
 
     repo_root = tmp_path / "repo"
     (repo_root / "docs").mkdir(parents=True)
-    (repo_root / "src" / "esper" / "telemetry").mkdir(parents=True)
+    (repo_root / "src" / "project" / "telemetry").mkdir(parents=True)
 
     sample_doc = repo_root / "docs" / "sample.md"
     sample_doc.write_text("# Sample\nGraph validation doc.\n")
 
-    sample_code = repo_root / "src" / "esper" / "telemetry" / "module.py"
+    sample_code = repo_root / "src" / "project" / "telemetry" / "module.py"
     sample_code.write_text("def handler():\n    return 'ok'\n")
 
     driver = GraphDatabase.driver(uri, auth=(user, password))
@@ -148,12 +148,12 @@ def test_search_replay_against_real_graph(tmp_path: pytest.TempPathFactory) -> N
 
     repo_root = tmp_path / "repo"
     (repo_root / "docs").mkdir(parents=True)
-    (repo_root / "src" / "esper" / "telemetry").mkdir(parents=True)
+    (repo_root / "src" / "project" / "telemetry").mkdir(parents=True)
 
     doc_path = repo_root / "docs" / "sample.md"
     doc_path.write_text("# Sample\nGraph validation doc.\n")
 
-    code_path = repo_root / "src" / "esper" / "telemetry" / "module.py"
+    code_path = repo_root / "src" / "project" / "telemetry" / "module.py"
     code_path.write_text("def handler():\n    return 'ok'\n")
 
     driver = GraphDatabase.driver(uri, auth=(user, password))

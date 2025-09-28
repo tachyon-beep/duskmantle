@@ -38,11 +38,11 @@ class StubNeo4jWriter:
 @pytest.fixture()
 def sample_repo(tmp_path: Path) -> Path:
     (tmp_path / "docs").mkdir(parents=True)
-    (tmp_path / "src" / "esper" / "kasmina").mkdir(parents=True)
+    (tmp_path / "src" / "project" / "kasmina").mkdir(parents=True)
     (tmp_path / "tests").mkdir()
 
     (tmp_path / "docs" / "overview.md").write_text("Kasmina module design.\n")
-    (tmp_path / "src" / "esper" / "kasmina" / "module.py").write_text("def run():\n    return 'ok'\n")
+    (tmp_path / "src" / "project" / "kasmina" / "module.py").write_text("def run():\n    return 'ok'\n")
     (tmp_path / "tests" / "test_module.py").write_text("def test_run():\n    assert True\n")
     return tmp_path
 

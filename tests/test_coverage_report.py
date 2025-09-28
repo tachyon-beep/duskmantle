@@ -76,7 +76,7 @@ class StubNeo4jWriter:
 def test_coverage_endpoint_after_report_generation(tmp_path: Path, monkeypatch) -> None:
     repo = tmp_path / "repo"
     (repo / "docs").mkdir(parents=True)
-    (repo / "docs" / "overview.md").write_text("LeylineSync telemetry doc")
+    (repo / "docs" / "overview.md").write_text("IntegrationSync telemetry doc")
     # empty file to register as missing coverage
     (repo / "tests").mkdir()
     (repo / "tests" / "empty_test.py").write_text("")

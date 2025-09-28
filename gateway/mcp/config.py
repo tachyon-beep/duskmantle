@@ -40,6 +40,26 @@ class MCPSettings(BaseSettings):
         alias="KM_STATE_PATH",
         description="Path containing gateway state files (audit logs, backups, feedback)",
     )
+    content_root: Path = Field(
+        default=Path("/workspace/repo"),
+        alias="KM_CONTENT_ROOT",
+        description="Root directory where MCP upload/storetext helpers write content",
+    )
+    content_docs_subdir: Path = Field(
+        default=Path("docs"),
+        alias="KM_CONTENT_DOCS_SUBDIR",
+        description="Default subdirectory under the content root for text documents",
+    )
+    upload_default_overwrite: bool = Field(
+        default=False,
+        alias="KM_UPLOAD_DEFAULT_OVERWRITE",
+        description="Allow MCP uploads to overwrite existing files by default",
+    )
+    upload_default_ingest: bool = Field(
+        default=False,
+        alias="KM_UPLOAD_DEFAULT_INGEST",
+        description="Trigger an ingest run immediately after MCP uploads by default",
+    )
     ingest_profile_default: str = Field(
         default="manual",
         alias="KM_MCP_DEFAULT_INGEST_PROFILE",

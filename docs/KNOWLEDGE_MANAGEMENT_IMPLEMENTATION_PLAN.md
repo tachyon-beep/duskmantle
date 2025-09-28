@@ -23,7 +23,7 @@ This plan translates the turnkey single-container design into concrete implement
 **Goals:** Cover code/tests, populate Neo4j, enrich API payloads.
 
 - Task 2.1 Implement repository discovery for source/tests based on `critical_paths.yaml` mapping.
-- Task 2.2 Add subsystem classification, Leyline/telemetry tagging, and validation tests.
+- Task 2.2 Add subsystem classification, Integration/telemetry tagging, and validation tests.
 - Task 2.3 Apply Neo4j schema migrations, node/edge upsert logic, and `HAS_CHUNK` linkage.
 - Task 2.4 Enhance `/search` to include graph context; expose `/graph/...` endpoints; add contract tests.
 - Task 2.5 Generate nightly coverage report and store under `/opt/knowledge/var/reports/`.

@@ -79,7 +79,7 @@ def _derive_namespace(path: Path) -> str:
 
 def _build_tags(extra_metadata: dict[str, Any]) -> list[str]:
     tags: set[str] = set()
-    for key in ("leyline_entities", "telemetry_signals", "tags"):
+    for key in ("message_entities", "telemetry_signals", "tags"):
         values = extra_metadata.get(key)
         if isinstance(values, list):
             for value in values:

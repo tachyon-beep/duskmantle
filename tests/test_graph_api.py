@@ -90,9 +90,9 @@ def app(monkeypatch: pytest.MonkeyPatch) -> FastAPI:
                         "type": "IMPLEMENTS",
                         "direction": "OUT",
                         "target": {
-                            "id": "LeylineMessage:LeylineSync",
-                            "labels": ["LeylineMessage"],
-                            "properties": {"name": "LeylineSync"},
+                            "id": "IntegrationMessage:IntegrationSync",
+                            "labels": ["IntegrationMessage"],
+                            "properties": {"name": "IntegrationSync"},
                         },
                     }
                 ],
@@ -212,9 +212,9 @@ def test_graph_search_endpoint_live(
 
     repo_root = Path(tmp_path) / "repo"
     (repo_root / "docs").mkdir(parents=True)
-    (repo_root / "src" / "esper" / "telemetry").mkdir(parents=True)
+    (repo_root / "src" / "project" / "telemetry").mkdir(parents=True)
     (repo_root / "docs" / "sample.md").write_text("# Sample\nGraph validation doc.\n")
-    (repo_root / "src" / "esper" / "telemetry" / "module.py").write_text(
+    (repo_root / "src" / "project" / "telemetry" / "module.py").write_text(
         "def handler():\n    return 'ok'\n"
     )
 

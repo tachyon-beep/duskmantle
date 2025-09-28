@@ -22,7 +22,7 @@ class Neo4jWriter:
             "CREATE CONSTRAINT IF NOT EXISTS FOR (d:DesignDoc) REQUIRE d.path IS UNIQUE",
             "CREATE CONSTRAINT IF NOT EXISTS FOR (t:TestCase) REQUIRE t.path IS UNIQUE",
             "CREATE CONSTRAINT IF NOT EXISTS FOR (c:Chunk) REQUIRE c.chunk_id IS UNIQUE",
-            "CREATE CONSTRAINT IF NOT EXISTS FOR (m:LeylineMessage) REQUIRE m.name IS UNIQUE",
+            "CREATE CONSTRAINT IF NOT EXISTS FOR (m:IntegrationMessage) REQUIRE m.name IS UNIQUE",
             "CREATE CONSTRAINT IF NOT EXISTS FOR (tc:TelemetryChannel) REQUIRE tc.name IS UNIQUE",
             "CREATE CONSTRAINT IF NOT EXISTS FOR (cfg:ConfigFile) REQUIRE cfg.path IS UNIQUE",
         ]
@@ -35,7 +35,7 @@ class Neo4jWriter:
         metadata = artifact.extra_metadata or {}
         subsystem_meta = metadata.get("subsystem_metadata")
         subsystem_properties = _subsystem_properties(subsystem_meta)
-        leyline_entities = _clean_string_list(metadata.get("leyline_entities"))
+        message_entities = _clean_string_list(metadata.get("message_entities"))
         telemetry_signals = _clean_string_list(metadata.get("telemetry_signals"))
         dependencies = _extract_dependencies(subsystem_meta)
 
@@ -100,14 +100,14 @@ class Neo4jWriter:
                             dependencies=filtered_dependencies,
                         )
 
-                if leyline_entities:
+                if message_entities:
                     session.run(
                         "MATCH (s:Subsystem {name: $name})\n"
                         "UNWIND $entities AS entity_name\n"
-                        "MERGE (m:LeylineMessage {name: entity_name})\n"
+                        "MERGE (m:IntegrationMessage {name: entity_name})\n"
                         "MERGE (s)-[:IMPLEMENTS]->(m)",
                         name=subsystem_name,
-                        entities=leyline_entities,
+                        entities=message_entities,
                     )
 
                 if telemetry_signals:
@@ -121,14 +121,14 @@ class Neo4jWriter:
                         signals=telemetry_signals,
                     )
 
-            if label == "SourceFile" and leyline_entities:
+            if label == "SourceFile" and message_entities:
                 session.run(
                     "MATCH (f:SourceFile {path: $path})\n"
                     "UNWIND $entities AS entity_name\n"
-                    "MERGE (m:LeylineMessage {name: entity_name})\n"
+                    "MERGE (m:IntegrationMessage {name: entity_name})\n"
                     "MERGE (f)-[:DECLARES]->(m)",
                     path=artifact.path.as_posix(),
-                    entities=leyline_entities,
+                    entities=message_entities,
                 )
 
     def sync_chunks(self, chunk_embeddings: Iterable[ChunkEmbedding]) -> None:

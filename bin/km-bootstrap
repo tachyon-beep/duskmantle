@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-IMAGE_DEFAULT="ghcr.io/tachyon-beep/duskmantle-km:latest"
+IMAGE_DEFAULT="ghcr.io/tachyon-beep/duskmantle-km:v1.0.0"
 FORCE="false"
 IMAGE="$IMAGE_DEFAULT"
 
@@ -14,7 +14,7 @@ Pull the Duskmantle gateway image, generate secure defaults, and launch it with
 repository workload.
 
 Options:
-  --image IMAGE   Override the container image tag (default: ghcr.io/tachyon-beep/duskmantle-km:latest)
+  --image IMAGE   Override the container image tag (default: ghcr.io/tachyon-beep/duskmantle-km:v1.0.0)
   --force         Regenerate credentials even if .duskmantle/secrets.env exists
   --help          Show this help text
 USAGE
@@ -75,8 +75,13 @@ PY
     printf 'KM_READER_TOKEN=%q\n' "$READER_TOKEN"
     printf 'KM_ADMIN_TOKEN=%q\n' "$ADMIN_TOKEN"
     printf 'KM_NEO4J_PASSWORD=%q\n' "$NEO4J_PASSWORD"
+    printf 'KM_NEO4J_DATABASE=knowledge\n'
     printf 'KM_DATA_DIR=%q\n' "$CONFIG_DIR"
     printf 'KM_REPO_DIR=%q\n' "$DATA_DIR"
+    printf 'KM_CONTENT_ROOT=%q\n' "$DATA_DIR"
+    printf 'KM_CONTENT_DOCS_SUBDIR=docs\n'
+    printf 'KM_UPLOAD_DEFAULT_OVERWRITE=false\n'
+    printf 'KM_UPLOAD_DEFAULT_INGEST=false\n'
   } >"$ENV_FILE"
   echo "Wrote new credentials to $ENV_FILE"
 else
@@ -95,6 +100,24 @@ echo "Stopping existing container if present..."
 docker rm -f "${KM_CONTAINER_NAME:-duskmantle}" >/dev/null 2>&1 || true
 
 echo "Launching gateway..."
+# Compose docker env args (auth, graph, passwords) and append any caller overrides.
+RUN_ENV_ARGS=(
+  "-e" "KM_AUTH_ENABLED=${KM_AUTH_ENABLED}"
+  "-e" "KM_READER_TOKEN=${KM_READER_TOKEN}"
+  "-e" "KM_ADMIN_TOKEN=${KM_ADMIN_TOKEN}"
+  "-e" "KM_NEO4J_PASSWORD=${KM_NEO4J_PASSWORD}"
+  "-e" "KM_NEO4J_DATABASE=${KM_NEO4J_DATABASE:-knowledge}"
+  "-e" "KM_CONTENT_ROOT=/workspace/repo"
+  "-e" "KM_CONTENT_DOCS_SUBDIR=docs"
+  "-e" "KM_UPLOAD_DEFAULT_OVERWRITE=false"
+  "-e" "KM_UPLOAD_DEFAULT_INGEST=false"
+)
+if [[ -n ${KM_DOCKER_RUN_ARGS:-} ]]; then
+  RUN_ENV_ARGS+=( ${KM_DOCKER_RUN_ARGS} )
+fi
+
+export KM_DOCKER_RUN_ARGS="${RUN_ENV_ARGS[*]}"
+
 KM_IMAGE="$KM_IMAGE" bin/km-run --detach
 
 echo "Gateway launched. Secrets stored in $ENV_FILE"

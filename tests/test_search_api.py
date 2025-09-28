@@ -173,7 +173,7 @@ def test_search_filters_passed_to_service(monkeypatch, tmp_path):
                 "subsystems": ["Telemetry", "Analytics "],
                 "artifact_types": ["code", "doc"],
                 "namespaces": ["src", "docs"],
-                "tags": ["LeylineAlpha", "telemetrySignal"],
+                "tags": ["IntegrationAlpha", "telemetrySignal"],
                 "updated_after": "2024-01-01T00:00:00Z",
                 "max_age_days": 14,
             },
@@ -185,7 +185,7 @@ def test_search_filters_passed_to_service(monkeypatch, tmp_path):
     assert filters["subsystems"] == ["Telemetry", "Analytics"]
     assert filters["artifact_types"] == ["code", "doc"]
     assert filters["namespaces"] == ["src", "docs"]
-    assert filters["tags"] == ["LeylineAlpha", "telemetrySignal"]
+    assert filters["tags"] == ["IntegrationAlpha", "telemetrySignal"]
     assert isinstance(filters["updated_after"], datetime)
     assert filters["updated_after"].tzinfo is not None
     assert filters["max_age_days"] == 14

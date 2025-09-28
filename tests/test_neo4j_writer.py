@@ -40,14 +40,14 @@ def _make_writer() -> tuple[Neo4jWriter, RecordingDriver]:
 def test_sync_artifact_creates_domain_relationships():
     writer, driver = _make_writer()
     artifact = Artifact(
-        path=Path("src/esper/nissa/handler.py"),
+        path=Path("src/project/nissa/handler.py"),
         artifact_type="code",
         subsystem="Nissa",
         content="",
         git_commit="abc123",
         git_timestamp=1700000000,
         extra_metadata={
-            "leyline_entities": ["LeylineSync"],
+            "message_entities": ["IntegrationSync"],
             "telemetry_signals": ["TelemetryEvent"],
             "subsystem_metadata": {
                 "description": "Runtime orchestrator",
@@ -74,8 +74,8 @@ def test_sync_artifact_creates_domain_relationships():
     # Dependency edge
     assert any("DEPENDS_ON" in query for query, _ in queries)
 
-    # Leyline message relationships
-    assert "LeylineMessage" in cypher_text and "IMPLEMENTS" in cypher_text
+    # Integration message relationships
+    assert "IntegrationMessage" in cypher_text and "IMPLEMENTS" in cypher_text
     assert "DECLARES" in cypher_text
 
     # Telemetry channel relationship
@@ -85,7 +85,7 @@ def test_sync_artifact_creates_domain_relationships():
 def test_sync_chunks_links_chunk_to_artifact():
     writer, driver = _make_writer()
     artifact = Artifact(
-        path=Path("src/esper/nissa/handler.py"),
+        path=Path("src/project/nissa/handler.py"),
         artifact_type="code",
         subsystem="Nissa",
         content="",
@@ -94,7 +94,7 @@ def test_sync_chunks_links_chunk_to_artifact():
     )
     chunk = Chunk(
         artifact=artifact,
-        chunk_id="src/esper/nissa/handler.py::0",
+        chunk_id="src/project/nissa/handler.py::0",
         text="example",
         sequence=0,
         content_digest="digest",

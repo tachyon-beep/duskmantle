@@ -39,9 +39,8 @@ class IngestionConfig:
     environment: str = "local"
     include_patterns: tuple[str, ...] = (
         "docs",
-        "src/esper",
+        "src",
         "tests",
-        "src/esper/leyline/_generated",
         ".codacy",
     )
     audit_path: Path | None = None

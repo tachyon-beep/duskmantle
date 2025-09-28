@@ -12,6 +12,10 @@ The knowledge gateway reads its runtime configuration from environment variables
 | `KM_REPO_PATH` | `/workspace/repo` | Repository location scanned by ingestion. |
 | `KM_DATA_DIR` | `./.duskmantle/config` (host default) | Host directory mounted to `/opt/knowledge/var` when using `bin/km-run`. |
 | `KM_REPO_DIR` | `./.duskmantle/data` (host default) | Host directory mounted to `/workspace/repo` when using `bin/km-run`. |
+| `KM_CONTENT_ROOT` | `/workspace/repo` | Base directory used by MCP upload/storetext helpers (usually matches `KM_REPO_PATH`). |
+| `KM_CONTENT_DOCS_SUBDIR` | `docs` | Relative subdirectory under `KM_CONTENT_ROOT` for authored documents. |
+| `KM_UPLOAD_DEFAULT_OVERWRITE` | `false` | Allow MCP uploads to overwrite existing files by default. |
+| `KM_UPLOAD_DEFAULT_INGEST` | `false` | Whether MCP uploads/storetext trigger an ingest run automatically. |
 
 ## Authentication & Security
 
@@ -60,7 +64,7 @@ The knowledge gateway reads its runtime configuration from environment variables
 | `KM_NEO4J_AUTH_ENABLED` | `false` | Toggle authentication for Neo4j access. |
 | `KM_GRAPH_AUTO_MIGRATE` | `false` | Auto-run graph migrations at API startup (container default `true`). |
 | `KM_QDRANT_URL` | `http://localhost:6333` | Qdrant API base URL. |
-| `KM_QDRANT_COLLECTION` | `esper_knowledge_v1` | Collection name used by ingestion. |
+| `KM_QDRANT_COLLECTION` | `km_knowledge_v1` | Collection name used by ingestion. |
 
 ## Observability & Tracing
 
@@ -74,6 +78,7 @@ The knowledge gateway reads its runtime configuration from environment variables
 | `KM_TRACING_SAMPLE_RATIO` | `1.0` | Fraction of requests sampled (0.0–1.0). |
 | `KM_TRACING_SERVICE_NAME` | `duskmantle-knowledge-gateway` | Service name for exported spans. |
 | `KM_TRACING_CONSOLE_EXPORT` | `false` | Mirror spans to stdout in addition to the OTLP exporter. |
+| `KM_STATE_PATH/audit/mcp_actions.log` | _derived_ | JSONL audit log appended by MCP write tools (see MCP playbook). |
 
 ## CLI Helpers
 

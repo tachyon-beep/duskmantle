@@ -21,6 +21,8 @@ This specification defines the Model Context Protocol (MCP) surface for the Dusk
 | `km-ingest-trigger` | maintainer | Force an ingest run using the configured profile. |
 | `km-feedback-submit` | maintainer | Record feedback on search results (vote, note, context). |
 | `km-backup-trigger` | maintainer | Trigger a backup (invokes `bin/km-backup` or equivalent API). |
+| `km-upload` | maintainer | Copy an existing file into the knowledge workspace and optionally trigger ingest. |
+| `km-storetext` | maintainer | Persist ad-hoc text as a document within the knowledge workspace. |
 
 ### 2.1 Usage Cheat Sheet
 
@@ -61,6 +63,14 @@ The MCP server exposes the following helper summaries. These mirror the metadata
   - Required: `request_id` and `chunk_id` (use the IDs from search responses).
   - Optional: `vote` (-1.0 to 1.0) and `note`.
   - Example: `/sys mcp run duskmantle km-feedback-submit --request-id req123 --chunk-id chunk456 --vote 1`.
+- `km-upload`
+  - Required: `source_path` (must be readable by the MCP host).
+  - Optional: `destination` (relative to `KM_CONTENT_ROOT`), `overwrite`, `ingest`.
+  - Example: `/sys mcp run duskmantle km-upload --source-path ./notes/design.md --destination docs/uploads/`.
+- `km-storetext`
+  - Required: `content` (text body).
+  - Optional: `title`, `destination`, `subsystem`, `tags`, `metadata`, `overwrite`, `ingest`.
+  - Example: `/sys mcp run duskmantle km-storetext --title "Release Notes" --content "## Summary"`.
 
 ## 3. Request & Response Schemas
 
@@ -75,7 +85,7 @@ The MCP server exposes the following helper summaries. These mirror the metadata
     "subsystems": ["Kasmina"],
     "artifact_types": ["doc", "code"],
     "namespaces": ["docs"],
-    "tags": ["Leyline"],
+    "tags": ["Integration"],
     "updated_after": "2024-01-01T00:00:00Z",
     "max_age_days": 30
   },
@@ -127,6 +137,64 @@ The MCP server exposes the following helper summaries. These mirror the metadata
 ### 3.9 `km-backup-trigger`
 - **Request:** `{ "destination": null }`
 - **Response:** `{ "archive": "backups/km-backup-20250927T195120.tgz" }`
+
+### 3.10 `km-upload`
+- **Request:**
+```json
+{
+  "source_path": "./notes/design.md",
+  "destination": "docs/uploads/",
+  "overwrite": false,
+  "ingest": false
+}
+```
+  - `source_path`: required path to a file accessible by the MCP host/container.
+  - `destination`: optional relative path under the content root. When omitted, the file is copied to `<docs_subdir>/<filename>`.
+  - `overwrite`: allow replacing an existing file (default: `KM_UPLOAD_DEFAULT_OVERWRITE`).
+  - `ingest`: trigger an ingest run after the copy (default: `KM_UPLOAD_DEFAULT_INGEST`).
+- **Response:**
+```json
+{
+  "status": "success",
+  "stored_path": "/workspace/repo/docs/uploads/design.md",
+  "relative_path": "docs/uploads/design.md",
+  "overwritten": false,
+  "ingest_triggered": false,
+  "ingest_run": null
+}
+```
+- **Errors:** `invalid_request` (missing/invalid path), `forbidden` (insufficient scope), `upstream_error` (ingest failure).
+
+### 3.11 `km-storetext`
+- **Request:**
+```json
+{
+  "content": "## Body\nDetails\n",
+  "title": "Release Notes",
+  "destination": "docs/uploads/",
+  "subsystem": "Deployment",
+  "tags": ["release", "notes"],
+  "metadata": {"author": "agent"},
+  "overwrite": false,
+  "ingest": true
+}
+```
+  - `content`: required text body (UTF-8); a trailing newline is added automatically.
+  - `title`: optional; used for slug generation and stored in front matter.
+  - `destination`: optional relative path (defaults to the docs subdirectory).
+  - `subsystem`, `tags`, `metadata`: captured in YAML front matter to aid classification.
+  - `overwrite` / `ingest`: same defaults as `km-upload`.
+- **Response:**
+```json
+{
+  "status": "success",
+  "stored_path": "/workspace/repo/docs/uploads/release-notes.md",
+  "relative_path": "docs/uploads/release-notes.md",
+  "ingest_triggered": true,
+  "ingest_run": {"success": true, "run_id": "abc", "profile": "manual"}
+}
+```
+- **Errors:** `invalid_request` (empty content), `forbidden`, `upstream_error` (ingest failure).
 
 ## 4. Error Model
 - All responses include `status` and optionally `error`.

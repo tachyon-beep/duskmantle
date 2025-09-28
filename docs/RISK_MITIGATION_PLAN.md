@@ -35,7 +35,7 @@ This document tracks the key delivery risks for the turnkey knowledge management
 
 ## 4. Classification Accuracy
 
-- **Risk:** Path-based heuristics may mis-tag subsystems or Leyline assets.
+- **Risk:** Path-based heuristics may mis-tag subsystems or Integration assets.
 - **Status:** Mitigation actionable.
 - **Approved Actions:**
   - Create regression fixture set under `tests/data/classification/` mirroring expected repository layouts.

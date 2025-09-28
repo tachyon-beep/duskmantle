@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
 from textwrap import dedent
 from time import perf_counter
 from typing import Any
+import json
 
 from fastmcp import Context, FastMCP
 
@@ -16,6 +18,8 @@ from gateway.observability.metrics import (
     MCP_FAILURES_TOTAL,
     MCP_REQUEST_SECONDS,
     MCP_REQUESTS_TOTAL,
+    MCP_STORETEXT_TOTAL,
+    MCP_UPLOAD_TOTAL,
 )
 
 from .backup import trigger_backup
@@ -24,6 +28,8 @@ from .config import MCPSettings
 from .exceptions import GatewayRequestError
 from .feedback import record_feedback
 from .ingest import latest_ingest_status, trigger_ingest
+from .storetext import handle_storetext
+from .upload import handle_upload
 
 
 TOOL_USAGE = {
@@ -114,6 +120,29 @@ TOOL_USAGE = {
             Optional: numeric `vote` (-1.0 to 1.0) and freeform `note`.
             Example: `/sys mcp run duskmantle km-feedback-submit --request-id req123 --chunk-id chunk456 --vote 1`.
             Maintainer token required when auth is enforced.
+            """
+        ).strip(),
+    },
+    "km-upload": {
+        "description": "Copy an existing file into the knowledge workspace and optionally trigger ingest",
+        "details": dedent(
+            """
+            Required: `source_path` (file visible to the MCP host). Optional: `destination` (relative path inside the
+            content root), `overwrite`, `ingest`. Default behaviour stores the file under the configured docs directory.
+            Example: `/sys mcp run duskmantle km-upload --source-path ./notes/design.md --destination docs/uploads/`.
+            Maintainer scope recommended because this writes to the repository volume and may trigger ingestion.
+            """
+        ).strip(),
+    },
+    "km-storetext": {
+        "description": "Persist raw text as a document within the knowledge workspace",
+        "details": dedent(
+            """
+            Required: `content` (text body). Optional: `title`, `destination`, `subsystem`, `tags`, `metadata` map,
+            `overwrite`, `ingest`. Defaults write markdown into the configured docs directory with YAML front matter
+            derived from the provided metadata.
+            Example: `/sys mcp run duskmantle km-storetext --title "Release Notes" --content "## Summary"`.
+            Maintainer scope recommended because this writes to the repository volume.
             """
         ).strip(),
     },
@@ -416,6 +445,95 @@ def build_server(settings: MCPSettings | None = None) -> FastMCP:
         _record_success("km-feedback-submit", start)
         return payload
 
+    @server.tool(name="km-upload", description=TOOL_USAGE["km-upload"]["description"])
+    async def km_upload(
+        source_path: str,
+        destination: str | None = None,
+        overwrite: bool | None = None,
+        ingest: bool | None = None,
+        context: Context | None = None,
+    ) -> dict[str, Any]:
+        _ensure_maintainer_scope(settings)
+        overwrite_flag = settings.upload_default_overwrite if overwrite is None else bool(overwrite)
+        ingest_flag = settings.upload_default_ingest if ingest is None else bool(ingest)
+        start = perf_counter()
+        try:
+            response = await handle_upload(
+                settings=settings,
+                source_path=source_path,
+                destination=destination,
+                overwrite=overwrite_flag,
+                ingest=ingest_flag,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            MCP_UPLOAD_TOTAL.labels(result="error").inc()
+            _record_failure("km-upload", exc, start)
+            await _report_error(context, f"Upload failed: {exc}")
+            raise
+        MCP_UPLOAD_TOTAL.labels(result="success").inc()
+        _record_success("km-upload", start)
+        await _report_info(context, f"Stored file at {response['relative_path']}")
+        _append_audit_entry(
+            state.settings,
+            tool="km-upload",
+            payload={
+                "source_path": source_path,
+                "destination": destination,
+                "relative_path": response["relative_path"],
+                "overwritten": response["overwritten"],
+                "ingest_triggered": response["ingest_triggered"],
+            },
+        )
+        return response
+
+    @server.tool(name="km-storetext", description=TOOL_USAGE["km-storetext"]["description"])
+    async def km_storetext(
+        content: str,
+        title: str | None = None,
+        destination: str | None = None,
+        subsystem: str | None = None,
+        tags: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
+        overwrite: bool | None = None,
+        ingest: bool | None = None,
+        context: Context | None = None,
+    ) -> dict[str, Any]:
+        _ensure_maintainer_scope(settings)
+        overwrite_flag = settings.upload_default_overwrite if overwrite is None else bool(overwrite)
+        ingest_flag = settings.upload_default_ingest if ingest is None else bool(ingest)
+        start = perf_counter()
+        try:
+            response = await handle_storetext(
+                settings=settings,
+                content=content,
+                title=title,
+                destination=destination,
+                subsystem=subsystem,
+                tags=tags,
+                metadata=metadata,
+                overwrite=overwrite_flag,
+                ingest=ingest_flag,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            MCP_STORETEXT_TOTAL.labels(result="error").inc()
+            _record_failure("km-storetext", exc, start)
+            await _report_error(context, f"Storetext failed: {exc}")
+            raise
+        MCP_STORETEXT_TOTAL.labels(result="success").inc()
+        _record_success("km-storetext", start)
+        await _report_info(context, f"Stored text at {response['relative_path']}")
+        _append_audit_entry(
+            state.settings,
+            tool="km-storetext",
+            payload={
+                "relative_path": response["relative_path"],
+                "title": title,
+                "destination": destination,
+                "ingest_triggered": response["ingest_triggered"],
+            },
+        )
+        return response
+
     return server
 
 
@@ -477,6 +595,31 @@ def _resolve_usage(tool: str | None) -> dict[str, Any]:
     return {"tools": {name: dict(data) for name, data in TOOL_USAGE.items()}}
 
 
+def _ensure_maintainer_scope(settings: MCPSettings) -> None:
+    if settings.admin_token:
+        return
+    raise PermissionError(
+        "Maintainer token (KM_ADMIN_TOKEN) must be configured to use this tool"
+    )
+
+
+def _append_audit_entry(settings: MCPSettings, *, tool: str, payload: dict[str, Any]) -> None:
+    try:
+        audit_dir = settings.state_path / "audit"
+        audit_dir.mkdir(parents=True, exist_ok=True)
+        record = {
+            "tool": tool,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            **payload,
+        }
+        audit_file = audit_dir / "mcp_actions.log"
+        with audit_file.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except Exception:  # pragma: no cover - audit best-effort
+        # Audit logging should not block primary operations.
+        return
+
+
 @lru_cache(maxsize=1)
 def _load_help_document() -> str:
     try:
@@ -497,3 +640,7 @@ def _initialise_metric_labels() -> None:
         MCP_REQUESTS_TOTAL.labels(tool, "success").inc(0)
         MCP_REQUESTS_TOTAL.labels(tool, "error").inc(0)
         MCP_REQUEST_SECONDS.labels(tool)
+    MCP_UPLOAD_TOTAL.labels(result="success").inc(0)
+    MCP_UPLOAD_TOTAL.labels(result="error").inc(0)
+    MCP_STORETEXT_TOTAL.labels(result="success").inc(0)
+    MCP_STORETEXT_TOTAL.labels(result="error").inc(0)

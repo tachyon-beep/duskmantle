@@ -54,9 +54,13 @@ class AppSettings(BaseSettings):
 
     repo_root: Path = Field(Path("/workspace/repo"), alias="KM_REPO_PATH")
     state_path: Path = Field(Path("/opt/knowledge/var"), alias="KM_STATE_PATH")
+    content_root: Path = Field(Path("/workspace/repo"), alias="KM_CONTENT_ROOT")
+    content_docs_subdir: Path = Field(Path("docs"), alias="KM_CONTENT_DOCS_SUBDIR")
+    upload_default_overwrite: bool = Field(False, alias="KM_UPLOAD_DEFAULT_OVERWRITE")
+    upload_default_ingest: bool = Field(False, alias="KM_UPLOAD_DEFAULT_INGEST")
     qdrant_url: str = Field("http://localhost:6333", alias="KM_QDRANT_URL")
     qdrant_api_key: str | None = Field(None, alias="KM_QDRANT_API_KEY")
-    qdrant_collection: str = Field("esper_knowledge_v1", alias="KM_QDRANT_COLLECTION")
+    qdrant_collection: str = Field("km_knowledge_v1", alias="KM_QDRANT_COLLECTION")
 
     neo4j_uri: str = Field("bolt://localhost:7687", alias="KM_NEO4J_URI")
     neo4j_user: str = Field("neo4j", alias="KM_NEO4J_USER")
