@@ -17,10 +17,10 @@ This document explains how to safely upgrade the Duskmantle knowledge gateway co
 
    ```bash
    bin/km-backup
-   ls backups
+   ls .duskmantle/backups
    ```
 
-   Copy the archive (`backups/km-backup-YYYYMMDDTHHMMSS.tgz`) to a safe location.
+   Copy the archive (`.duskmantle/backups/km-backup-YYYYMMDDTHHMMSS.tgz`) to a safe location.
 4. **Note current config:** record `KM_*` env vars, `.codex` MCP entries, and `bin/km-run` overrides.
 5. **Capture the current acceptance snapshot:** run the quick checks from `docs/ACCEPTANCE_DEMO_PLAYBOOK.md` (at minimum `/healthz`, `/coverage`, and a sample `/search`) and refresh `docs/ACCEPTANCE_DEMO_SNAPSHOT.md` so you know the pre-upgrade baseline.
 
@@ -29,7 +29,7 @@ This document explains how to safely upgrade the Duskmantle knowledge gateway co
 1. **Stop the running container:**
 
    ```bash
-   docker rm -f km-gateway
+   docker rm -f duskmantle
    ```
 
 2. **Pull/build the new image:**
@@ -54,7 +54,7 @@ This document explains how to safely upgrade the Duskmantle knowledge gateway co
 4. **Run an ingest if required:**
 
    ```bash
-   docker exec km-gateway gateway-ingest rebuild --profile production
+   docker exec duskmantle gateway-ingest rebuild --profile production
    ```
 
 5. **Validate:**
@@ -66,12 +66,12 @@ This document explains how to safely upgrade the Duskmantle knowledge gateway co
 
 ## 3. Rollback Procedure
 
-1. **Stop the upgraded container:** `docker rm -f km-gateway`.
+1. **Stop the upgraded container:** `docker rm -f duskmantle`.
 2. **Restore data:**
 
    ```bash
-   rm -rf data/*
-   tar -xzf backups/km-backup-YYYYMMDDTHHMMSS.tgz -C data
+   rm -rf .duskmantle/config/*
+   tar -xzf .duskmantle/backups/km-backup-YYYYMMDDTHHMMSS.tgz -C .duskmantle/config
    ```
 
 3. **Launch previous version:**

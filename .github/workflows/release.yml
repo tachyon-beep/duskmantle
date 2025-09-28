@@ -101,3 +101,4 @@ jobs:
             dist/SHA256SUMS
             dist/IMAGE_SHA256SUMS
             CHANGELOG.md
+            docs/dashboards/gateway_overview.json

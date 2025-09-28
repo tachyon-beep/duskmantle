@@ -32,7 +32,17 @@ Alternatively, pull a published image (GitHub Container Registry):
 docker pull ghcr.io/tachyon-beep/duskmantle-km:1.0.0
 ```
 
+**Shortcut:** run `bin/km-bootstrap` (optionally `--image <tag>`). It pulls the latest image, prepares `.duskmantle/{config,data,backups}`, generates secure tokens/passwords in `.duskmantle/secrets.env`, and launches the stack via `bin/km-run`.
+
 ## 3. Launch the Stack
+
+Create working directories for state and content:
+
+```bash
+mkdir -p .duskmantle/{config,data}
+```
+
+Copy or symlink the material you want the gateway to index into `.duskmantle/data/`. That path becomes `/workspace/repo` inside the container.
 
 Use the helper script for consistent mounts and ports:
 
@@ -43,13 +53,16 @@ bin/km-run
 Defaults:
 
 - Ports: API `8000`, Qdrant `6333`, Neo4j `7687`.
-- Data directory: `./data` mounted to `/opt/knowledge/var`.
-- Repository mount: current directory to `/workspace/repo` (read-only by default).
+- State directory: `.duskmantle/config` mounted to `/opt/knowledge/var`.
+- Repository mount: `.duskmantle/data` to `/workspace/repo` (read-only by default).
 
 Override with environment variables (examples):
 
 ```bash
-KM_IMAGE=duskmantle/km:latest KM_DATA_DIR=/var/km-data bin/km-run --detach
+KM_IMAGE=duskmantle/km:latest \
+KM_DATA_DIR=/srv/km/config \
+KM_REPO_DIR=/srv/km/content \
+bin/km-run --detach
 ```
 
 Verify readiness:
@@ -63,10 +76,12 @@ curl http://localhost:8000/readyz
 Inside the container:
 
 ```bash
-docker exec km-gateway gateway-ingest rebuild --profile local --dummy-embeddings
+docker exec duskmantle gateway-ingest rebuild --profile local --dummy-embeddings
 ```
 
 For production, omit `--dummy-embeddings` (requires model download).
+
+**Automatic ingestion (optional):** set `KM_WATCH_ENABLED=true` (and optionally adjust `KM_WATCH_INTERVAL`, `KM_WATCH_PROFILE`, `KM_WATCH_USE_DUMMY`, `KM_WATCH_METRICS_PORT`) before launching `bin/km-run`. The container’s supervisor will run `bin/km-watch` internally, hashing `/workspace/repo` every interval and triggering `gateway-ingest` whenever files change. Fingerprints persist under `/opt/knowledge/var/watch/fingerprints.json`, and metrics are exposed on `KM_WATCH_METRICS_PORT` (default `9103`).
 
 ## 5. Health Checks & Observability
 
@@ -84,7 +99,7 @@ Run the full pipeline locally before publishing:
 ./infra/smoke-test.sh duskmantle/km:dev
 ```
 
-The script builds the image, launches a disposable container, triggers a smoke ingest, validates `/coverage`, and tears down resources.
+The script builds the image, launches a disposable container, triggers a smoke ingest, validates `/coverage`, and tears down resources. Pair it with `bin/km-watch` if you want continuous ingestion whenever `.duskmantle/data` changes.
 
 ## 7. Backups & Restore
 
@@ -94,10 +109,10 @@ Create a backup (tar.gz) of `/opt/knowledge/var`:
 bin/km-backup
 ```
 
-The archive lands in `./backups/km-backup-<timestamp>.tgz`. To restore:
+The archive lands in `.duskmantle/backups/km-backup-<timestamp>.tgz`. To restore:
 
 ```bash
-tar -xzf backups/km-backup-<timestamp>.tgz -C data
+tar -xzf .duskmantle/backups/km-backup-<timestamp>.tgz -C .duskmantle/config
 ```
 
 Restart the container to pick up restored state.
@@ -120,12 +135,12 @@ For more detail, consult `docs/OBSERVABILITY_GUIDE.md` and the release playbook 
 ## 11. Upgrades & Rollback
 
 1. Review the release changelog for schema/config changes.
-2. Back up `/opt/knowledge/var` (`bin/km-backup`). Copy `backups/km-backup-*.tgz` off-host.
-3. Stop the running container (`docker rm -f km-gateway`).
+2. Back up `/opt/knowledge/var` (`bin/km-backup`). Copy `.duskmantle/backups/km-backup-*.tgz` off-host.
+3. Stop the running container (`docker rm -f duskmantle`).
 4. Pull or build the new image (`docker pull duskmantle/km:<tag>` or `scripts/build-image.sh`). Relaunch with the same env vars (`KM_NEO4J_DATABASE=knowledge`, tokens, mounts).
-5. Run ingest if needed (`docker exec km-gateway gateway-ingest rebuild --profile production`).
+5. Run ingest if needed (`docker exec duskmantle gateway-ingest rebuild --profile production`).
 6. Validate `/healthz`, `/coverage`, the smoke script, and `pytest -m mcp_smoke`.
-7. For rollback: stop the container, restore the archived backup to `data/`, and start the previous image tag.
+7. For rollback: stop the container, restore the archived backup to `.duskmantle/config/`, and start the previous image tag.
 
 See `docs/UPGRADE_ROLLBACK.md` for the detailed checklist.
 

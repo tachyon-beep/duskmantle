@@ -49,4 +49,11 @@ def disable_real_graph_driver(monkeypatch: pytest.MonkeyPatch, request: pytest.F
     def _fake_driver(*args, **kwargs):
         return _NullDriver()
 
-    monkeypatch.setattr("gateway.api.app.GraphDatabase", SimpleNamespace(driver=_fake_driver))
+    try:
+        monkeypatch.setattr(
+            "gateway.api.app.GraphDatabase",
+            SimpleNamespace(driver=_fake_driver),
+        )
+    except ImportError:
+        # Optional dependencies (e.g., sentence-transformers) may be missing in minimal envs.
+        pass

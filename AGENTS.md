@@ -6,7 +6,7 @@ Keep specifications in `docs/`, especially `docs/KNOWLEDGE_MANAGEMENT.md` (spec)
 
 ## Build, Test, and Development Commands
 
-Set up a Python 3.12 virtual env with `python3.12 -m venv .venv && source .venv/bin/activate`, then install tooling with `pip install -e .[dev]` (optionally also `pip install -r gateway/requirements.txt` to mirror container deps). Build the turnkey image via `docker build --network=host -t duskmantle/km:dev .`. Run it with `docker run --rm -p 8000:8000 -p 6333:6333 -p 7687:7687 -v $(pwd)/data:/opt/knowledge/var -v $(pwd):/workspace/repo duskmantle/km:dev`, which exposes the API at `http://localhost:8000`. Trigger a manual ingest inside the container with `docker exec <container> gateway-ingest rebuild --profile local --dry-run --dummy-embeddings` (drop the flags for production). Use `./infra/smoke-test.sh` for automated container verification during reviews.
+Set up a Python 3.12 virtual env with `python3.12 -m venv .venv && source .venv/bin/activate`, then install tooling with `pip install -e .[dev]` (optionally also `pip install -r gateway/requirements.txt` to mirror container deps). Build the turnkey image via `docker build --network=host -t duskmantle/km:dev .`. Run it with `docker run --rm -p 8000:8000 -p 6333:6333 -p 7687:7687 -v $(pwd)/.duskmantle/config:/opt/knowledge/var -v $(pwd)/.duskmantle/data:/workspace/repo duskmantle/km:dev`, which exposes the API at `http://localhost:8000`. Trigger a manual ingest inside the container with `docker exec <container> gateway-ingest rebuild --profile local --dry-run --dummy-embeddings` (drop the flags for production). Use `./infra/smoke-test.sh` for automated container verification during reviews.
 
 ## Coding Style & Naming Conventions
 

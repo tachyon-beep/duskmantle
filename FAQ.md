@@ -12,6 +12,18 @@ See `docs/UPGRADE_ROLLBACK.md` for the full checklist (backup, stop container, p
 
 Container images are published to Docker Hub (`duskmantle/km:<tag>`). Wheels/tarballs and checksums land in GitHub Releases per `RELEASE.md`.
 
+### Where do I put files for ingestion?
+
+By default `bin/km-run` mounts `.duskmantle/data` to `/workspace/repo`. Drop or symlink the repository you want indexed into that directory before triggering `gateway-ingest`. Persistent state (Neo4j, Qdrant, coverage, audit logs) lives under `.duskmantle/config`.
+
+### Is there a one-command bootstrap?
+
+Yes. Run `bin/km-bootstrap`. It pulls `ghcr.io/tachyon-beep/duskmantle-km:latest`, creates `.duskmantle/{config,data,backups}`, generates random reader/maintainer tokens plus a Neo4j password, writes them to `.duskmantle/secrets.env`, and launches the container via `bin/km-run`.
+
+### Can the system auto-ingest when files change?
+
+Yes. Start `bin/km-watch` on the host (it hashes `.duskmantle/data` and calls `gateway-ingest` via `docker exec`) or set `KM_WATCH_ENABLED=true` before launching `bin/km-run` so the container runs the same watcher internally. Configure frequency via `KM_WATCH_INTERVAL`, profile via `KM_WATCH_PROFILE`, and metrics exposure via `KM_WATCH_METRICS_PORT`/`--metrics-port` (defaults to `9103` inside the container). Set `KM_WATCH_USE_DUMMY=false` to use live embeddings.
+
 ### How do I run MCP tools?
 
 Follow `docs/MCP_INTEGRATION.md` or Quick Start §10. Use `./bin/km-mcp` locally or `./bin/km-mcp-container` inside the container context.

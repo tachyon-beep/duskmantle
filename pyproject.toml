@@ -71,9 +71,15 @@ target-version = ["py312"]
 
 [tool.ruff]
 line-length = 140
-src = ["gateway", "tests"]
-select = ["E", "F", "B", "I", "UP", "Q", "W"]
+src = ["gateway", "tests", "bin"]
+
+[tool.ruff.lint]
+select = ["E", "F", "B", "I", "UP", "Q", "W", "ANN"]
 ignore = ["E501"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["gateway"]
+
+[tool.ruff.lint.per-file-ignores]
+"bin/km-bootstrap" = ["ANN"]
+"bin/km-watch" = ["ANN"]

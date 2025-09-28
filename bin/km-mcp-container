@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CONTAINER=${KM_MCP_CONTAINER:-km-gateway}
+CONTAINER=${KM_MCP_CONTAINER:-duskmantle}
 # shellcheck disable=SC2086
 exec docker exec -i "$CONTAINER" \
   env \
