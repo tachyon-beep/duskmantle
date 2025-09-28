@@ -47,7 +47,7 @@ This document distills the design and implementation plans into focused work pac
 - **Deliverables:** CI pipeline definitions, `bin/` helper scripts, published release artifacts, updated docs (quick start, troubleshooting, CHANGELOG kickoff).
 - **Early Close Items:** README/CONTRIBUTING scaffolding, risk plan, work packages doc in place.
 - **Remaining Prerequisites:** Docker build/test workflows, release scripts, checksum generation, CHANGELOG scaffolding.
-- **Detailed Plan:** See `docs/WP6_RELEASE_TOOLING_PLAN.md` for phase/step/task breakdown aligned with Phase 4 execution.
+- **Detailed Plan:** See `docs/archive/WP6/WP6_RELEASE_TOOLING_PLAN.md` for phase/step/task breakdown aligned with Phase 4 execution.
 
 ## Work Package 7 — Autonomous Analysis Interface
 - **Scope:** Integrate an OpenAI ChatGPT-5 (or equivalent) client that exposes an MCP-style command for autonomous deep dives. The gateway should accept requests such as “analyze subsystem X,” fetch relevant code and design chunks, and coordinate with the frontier AI using a stored API key.
@@ -71,7 +71,7 @@ This document distills the design and implementation plans into focused work pac
 3. WP3 — Ingestion Pipeline MVP
 4. WP4 — Graph Model Integration
 5. WP5 — Observability & Security Hardening
-6. WP6 — Release Tooling & Documentation *(see `docs/WP6_RELEASE_TOOLING_PLAN.md` for detailed milestones)*
+6. WP6 — Release Tooling & Documentation *(see `docs/archive/WP6/WP6_RELEASE_TOOLING_PLAN.md` for detailed milestones)*
 7. WP7 — Autonomous Analysis Interface
 8. Optional extensions in priority order as demanded by adopters
 

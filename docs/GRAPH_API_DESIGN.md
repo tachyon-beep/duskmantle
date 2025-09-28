@@ -3,6 +3,7 @@
 This document specifies the read-only HTTP interface that exposes graph insights derived from the ingestion pipeline. It expands the outline in `docs/KNOWLEDGE_MANAGEMENT_DESIGN.md §6.3` with precise routes, payloads, and authorization requirements.
 
 ## 1. Design Principles
+
 - **Read-only:** Graph APIs never mutate Neo4j data. Writes remain confined to ingestion jobs.
 - **Scoped access:** Reader tokens may fetch subsystem/asset context; maintainer tokens are required for raw Cypher execution and debugging utilities.
 - **Deterministic payloads:** Responses always include node identifiers, human-readable labels, and provenance references (source file path, commit hash) where applicable.
@@ -10,6 +11,7 @@ This document specifies the read-only HTTP interface that exposes graph insights
 - **Error transparency:** All endpoints surface precise error codes (`404` for missing nodes, `400` for invalid parameters, `429` for rate limits, `503` for backend unavailability).
 
 ## 2. Authentication & Rate Limits
+
 - Routes inherit bearer-token enforcement (`KM_AUTH_ENABLED=true`).
 - Default rate limit: `60 requests / 60 seconds` shared with other reader endpoints; maintainer-only routes retain the stricter `30/minute` throttle.
 - When auth is disabled (`KM_AUTH_MODE=insecure`), endpoints remain accessible for local testing but log warnings.
@@ -17,15 +19,18 @@ This document specifies the read-only HTTP interface that exposes graph insights
 ## 3. Endpoints
 
 ### 3.1 `GET /graph/subsystems/{name}` *(Reader scope)*
+
 Returns rich context for a named subsystem.
 
 **Query Parameters**
+
 - `depth` (int, default `1`): how many hops to traverse for related subsystems.
 - `includeArtifacts` (bool, default `true`): whether to embed associated documents/tests within the response.
 - `cursor` (string, optional): pagination cursor for large neighbor sets.
 - `limit` (int, 1-100, default `25`): page size for related nodes/edges.
 
 **Response**
+
 ```json
 {
   "subsystem": {
@@ -55,17 +60,21 @@ Returns rich context for a named subsystem.
 ```
 
 **Errors**
+
 - `404` when subsystem not found.
 - `400` when `depth` exceeds configured maximum (default `3`).
 
 ### 3.2 `GET /graph/nodes/{nodeId}` *(Reader scope)*
+
 Fetches a single node by compound identifier (`Label:identifier`). Supports generic inspection of files, tests, design docs, etc.
 
 **Query Parameters**
+
 - `relationships` (`incoming|outgoing|all`, default `outgoing`): which edges to return.
 - `limit` (int, default `50`): maximum edges per direction.
 
 **Response**
+
 ```json
 {
   "node": {
@@ -88,16 +97,20 @@ Fetches a single node by compound identifier (`Label:identifier`). Supports gene
 ```
 
 **Errors**
+
 - `404` when node cannot be resolved.
 
 ### 3.3 `GET /graph/search`
+
 Lightweight search across graph entities, intended for UI autocomplete.
 
 **Query Parameters**
+
 - `q` (string, required): case-insensitive term matched against node names, aliases, or file paths.
 - `limit` (int, default `20`)
 
 **Response**
+
 ```json
 {
   "results": [
@@ -108,9 +121,11 @@ Lightweight search across graph entities, intended for UI autocomplete.
 ```
 
 ### 3.4 `POST /graph/cypher` *(Maintainer scope)*
+
 Executes read-only Cypher queries for power users and troubleshooting.
 
 **Request Body**
+
 ```json
 {
   "query": "MATCH (n:Subsystem)-[r:DEPENDS_ON]->(m) RETURN n, r, m LIMIT 10",
@@ -119,6 +134,7 @@ Executes read-only Cypher queries for power users and troubleshooting.
 ```
 
 **Response**
+
 ```json
 {
   "data": [
@@ -138,52 +154,64 @@ Executes read-only Cypher queries for power users and troubleshooting.
 ```
 
 **Constraints**
+
 - Only `MATCH`, `RETURN`, `WITH`, `UNWIND`, `ORDER BY`, `LIMIT` clauses allowed (enforced with allowlist regex).
 - `LIMIT` is required and clamped to `100` to protect the database.
 - `400` when query fails validation; `500` when Neo4j raises runtime errors.
 
 ### 3.5 Future (Deferred) Endpoint Ideas
+
 - `GET /graph/coverage/{subsystem}`: overlay coverage stats per subsystem.
 - `POST /graph/path`: compute shortest path between two nodes.
 - `GET /graph/stats`: expose summary counts for dashboards.
 
 ## 4. Pagination Format
+
 Cursor responses follow the pattern:
+
 ```json
 {
   "cursor": "base64-encoded-state",
   "hasMore": true
 }
 ```
+
 Clients pass the opaque `cursor` query parameter to fetch the next page. The server encodes last seen node id + depth to avoid duplicates. If `hasMore=false`, omit `cursor`.
 
 ## 5. Error Model
+
 All graph endpoints return:
+
 ```json
 {
   "detail": "Human readable message",
   "error_code": "GRAPH_NODE_NOT_FOUND"
 }
 ```
+
 `error_code` values are stable strings (e.g., `GRAPH_NODE_NOT_FOUND`, `GRAPH_QUERY_INVALID`, `GRAPH_SEARCH_TOO_BROAD`).
 
 ## 6. Logging & Metrics
+
 - Each endpoint increments `km_graph_requests_total{route="...",status="success|failure"}` (new counter added in implementation phase).
 - For Cypher executions, log query hashes (not full text) to avoid leaking sensitive data while maintaining traceability.
 
 ## 7. Security Considerations
+
 - Sanitize user-controlled values before injecting into Cypher (parameterized queries).
 - Enforce maximum depth and limit to mitigate query explosion.
 - Ensure responses redact Neo4j internal identifiers, only exposing canonical IDs derived from ingestion metadata.
 - Include rate-limit headers to help clients back off when necessary.
 
 ## 8. Implementation Notes
+
 - Reuse existing Neo4j driver sessions within request lifespan (FastAPI dependency).
 - Add helper in `gateway/graph/service.py` to centralize query building and pagination.
 - Unit test with Neo4j test double (e.g., `neo4j.fake_graph` or custom stub) to avoid integration test flakiness.
 - For integration tests, use temporary Neo4j container or in-memory driver configured via `neo4j.testkit` (if available); otherwise, mark as optional pending test infrastructure.
 
 ## 9. Schema Migrations & Tooling
+
 - Migrations live under `gateway/graph/migrations/` and are executed by `MigrationRunner` using Cypher statements.
 - Applied migrations are tracked in Neo4j via `(:MigrationHistory {id, applied_at})` nodes to ensure idempotency. Each migration ID is stored once, so history growth is bounded; if a rollback removes a migration from the codebase, delete the corresponding history node via `MATCH (m:MigrationHistory {id: 'xyz'}) DETACH DELETE m` to keep the ledger tidy (record the decision in release notes).
 - Run `gateway-graph migrate` to apply pending migrations (supports `--dry-run` to list operations).
@@ -192,7 +220,9 @@ All graph endpoints return:
 - Observability: the API now emits `km_graph_migration_last_status` (1=success, 0=failure, -1=skipped) and `km_graph_migration_last_timestamp` gauges so dashboards can track migration health.
 
 ### Rollback Procedure
+
 When a migration must be reversed after deployment:
+
 1. **Freeze Auto-Migrate:** Set `KM_GRAPH_AUTO_MIGRATE=false` (or remove it) on all running instances to prevent reapplication during rollback.
 2. **Revert Domain Changes:** Apply the inverse Cypher statements for the migration (drop constraints/indices, delete relationships, etc.). Store rollback scripts alongside the original migration file for traceability.
 3. **Prune History Node:** Remove the applied marker so future deploys can run the migration again once fixed: `MATCH (m:MigrationHistory {id: '002_new_edges'}) DETACH DELETE m`.
@@ -200,8 +230,10 @@ When a migration must be reversed after deployment:
 5. **Re-enable Auto-Migrate (Optional):** Once stable, reintroduce `KM_GRAPH_AUTO_MIGRATE=true` for turnkey environments.
 
 ## 10. Search Response Enrichment
+
 - `/search` results (vector or hybrid) attach a `graph_context` block per hit when graph data is available.
 - Response shape:
+
   ```json
   {
     "query": "telemetry ingest latency",
@@ -249,11 +281,14 @@ When a migration must be reversed after deployment:
     }
   }
   ```
+
 - Filters appear in `metadata.filters_applied` so downstream agents can reason about constrained result sets.
 
 ## 11. Search Filters
+
 - Optional filters narrow the candidate set before scoring while preserving graph-based enrichment.
 - Request payload additions:
+
   ```json
   {
     "query": "telemetry latency",
@@ -268,6 +303,7 @@ When a migration must be reversed after deployment:
     }
   }
   ```
+
 - Validation rules:
   - `filters` must be an object. Unknown keys are ignored for forward compatibility.
   - `subsystems` is an array of strings (case-insensitive). If chunk metadata lacks a subsystem match, the service falls back to graph context (primary node + neighbour subsystems) when available; otherwise the chunk is excluded.
@@ -288,14 +324,18 @@ When a migration must be reversed after deployment:
 - Future enhancement: include shortest path snippets when users request `mode=explain` (deferred).
 
 ## 11. Validation Harness
+
 - An integration test (`tests/test_graph_validation.py`) exercises ingestion against a live Neo4j instance. It is marked with `@pytest.mark.neo4j` and skipped unless `NEO4J_TEST_URI` (and optional user/password/database env vars) are defined.
 - Run locally with:
+
   ```bash
   NEO4J_TEST_URI=bolt://localhost:7687 NEO4J_TEST_PASSWORD=yourpass pytest -m neo4j
   ```
+
 - CI jobs may opt in by enabling the `neo4j` marker; the test clears the database, runs migrations, executes ingestion with dummy embeddings, and asserts design documents and chunks are persisted.
 
 ## 12. Graph-Aware Search Signals (Phase 1)
+
 Upcoming scoring enhancements will combine vector similarity with graph-derived signals. The initial signal inventory includes:
 
 - **Subsystem affinity** – boost when the chunk’s owning subsystem matches an explicit query filter or appears in the free-text query (detected via simple keyword heuristics).

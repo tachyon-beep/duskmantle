@@ -1,6 +1,14 @@
 from __future__ import annotations
 
+from pathlib import Path
+import os
 from typing import Any
+
+from neo4j import GraphDatabase
+
+from gateway.graph.migrations.runner import MigrationRunner
+from gateway.ingest.neo4j_writer import Neo4jWriter
+from gateway.ingest.pipeline import IngestionConfig, IngestionPipeline
 
 import pytest
 
@@ -134,29 +142,94 @@ def test_graph_node_accepts_slash_encoded_ids(app: FastAPI) -> None:
 
 
 @pytest.mark.neo4j
-def test_graph_node_endpoint_live(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_graph_node_endpoint_live(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pytest.PathLike[str]
+) -> None:
     monkeypatch.setenv("KM_NEO4J_DATABASE", "knowledge")
     from gateway.config.settings import get_settings
+
+    repo_root = Path(tmp_path) / "repo"
+    (repo_root / "docs").mkdir(parents=True)
+    doc_path = repo_root / "docs" / "sample.md"
+    doc_path.write_text("# Sample\nGraph validation doc.\n")
+
+    driver = GraphDatabase.driver(
+        os.getenv("NEO4J_TEST_URI", "bolt://localhost:7687"),
+        auth=(
+            os.getenv("NEO4J_TEST_USER", "neo4j"),
+            os.getenv("NEO4J_TEST_PASSWORD", "neo4jadmin"),
+        ),
+    )
+    try:
+        MigrationRunner(driver=driver, database="knowledge").run()
+        writer = Neo4jWriter(driver, database="knowledge")
+        writer.ensure_constraints()
+        pipeline = IngestionPipeline(
+            qdrant_writer=None,
+            neo4j_writer=writer,
+            config=IngestionConfig(
+                repo_root=repo_root,
+                dry_run=False,
+                use_dummy_embeddings=True,
+            ),
+        )
+        assert pipeline.run().success
+    finally:
+        driver.close()
 
     get_settings.cache_clear()
     app = create_app()
     client = TestClient(app)
-    response = client.get("/graph/nodes/DesignDoc%3Adocs%2FKNOWLEDGE_MANAGEMENT_IMPLEMENTATION_PLAN.md")
+    response = client.get("/graph/nodes/DesignDoc%3Adocs%2Fsample.md")
     assert response.status_code == 200
     payload = response.json()
-    assert payload["node"]["id"] == "DesignDoc:docs/KNOWLEDGE_MANAGEMENT_IMPLEMENTATION_PLAN.md"
+    assert payload["node"]["id"] == "DesignDoc:docs/sample.md"
     assert any(rel["type"] == "HAS_CHUNK" for rel in payload["relationships"])
 
 
 @pytest.mark.neo4j
-def test_graph_search_endpoint_live(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_graph_search_endpoint_live(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pytest.PathLike[str]
+) -> None:
     monkeypatch.setenv("KM_NEO4J_DATABASE", "knowledge")
     from gateway.config.settings import get_settings
+
+    repo_root = Path(tmp_path) / "repo"
+    (repo_root / "docs").mkdir(parents=True)
+    (repo_root / "src" / "esper" / "telemetry").mkdir(parents=True)
+    (repo_root / "docs" / "sample.md").write_text("# Sample\nGraph validation doc.\n")
+    (repo_root / "src" / "esper" / "telemetry" / "module.py").write_text(
+        "def handler():\n    return 'ok'\n"
+    )
+
+    driver = GraphDatabase.driver(
+        os.getenv("NEO4J_TEST_URI", "bolt://localhost:7687"),
+        auth=(
+            os.getenv("NEO4J_TEST_USER", "neo4j"),
+            os.getenv("NEO4J_TEST_PASSWORD", "neo4jadmin"),
+        ),
+    )
+    try:
+        MigrationRunner(driver=driver, database="knowledge").run()
+        writer = Neo4jWriter(driver, database="knowledge")
+        writer.ensure_constraints()
+        pipeline = IngestionPipeline(
+            qdrant_writer=None,
+            neo4j_writer=writer,
+            config=IngestionConfig(
+                repo_root=repo_root,
+                dry_run=False,
+                use_dummy_embeddings=True,
+            ),
+        )
+        assert pipeline.run().success
+    finally:
+        driver.close()
 
     get_settings.cache_clear()
     app = create_app()
     client = TestClient(app)
-    response = client.get("/graph/search", params={"q": "docs", "limit": 5})
+    response = client.get("/graph/search", params={"q": "sample", "limit": 5})
     assert response.status_code == 200
     results = response.json()["results"]
     assert results, "expected graph search to return results"

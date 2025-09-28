@@ -3,6 +3,7 @@
 The Duskmantle gateway now exposes a first-class Model Context Protocol (MCP) surface so tools such as Codex CLI, Claude Desktop, and Cursor can interact with search, graph, ingest, backup, and feedback workflows without touching the raw HTTP API. This document covers installation, configuration, validation, and troubleshooting.
 
 ## 1. Prerequisites
+
 - Python 3.12 with the project installed locally (`pip install -e .[dev]`). The dev extras bring in FastMCP and `pytest-asyncio` for smoke tests.
 - A running gateway instance (local container via `bin/km-run` or remote deployment) reachable at the URL you provide to the MCP adapter.
   - When using the turnkey container, export `KM_NEO4J_DATABASE=knowledge` before launching or invoking ingestion so graph queries succeed.
@@ -11,6 +12,7 @@ The Duskmantle gateway now exposes a first-class Model Context Protocol (MCP) su
   - `KM_ADMIN_TOKEN` for maintainer operations (ingest trigger, backups, feedback submission).
 
 ## 2. Launch the MCP Server
+
 `gateway-mcp` is an entry point exposed by this repository.
 
 ```bash
@@ -25,9 +27,11 @@ gateway-mcp --transport stdio
 
 - Omit `KM_READER_TOKEN` only when the gateway is running without auth. Add `KM_ADMIN_TOKEN` when you intend to trigger ingest or backups through MCP tools.
 - To expose the adapter over HTTP/SSE instead of stdio, choose a different transport:
+
   ```bash
   gateway-mcp --transport http --host 127.0.0.1 --port 8822
   ```
+
   Agents such as Claude Desktop can then connect using the declared host/port.
 - All tools are documented in `docs/MCP_INTERFACE_SPEC.md`. The IDs align with the following command names:
   - `km-search`
@@ -41,9 +45,11 @@ gateway-mcp --transport stdio
   - `km-feedback-submit`
 
 ## 3. Configure Codex CLI (Examples)
+
 Codex CLI looks for MCP definitions in `.codex/config.toml` (project) or `~/.codex/config.toml` (user). Use one of the following setups:
 
 ### Local repository (stdio transport)
+
 Launch the adapter from the checkout:
 
 ```toml
@@ -54,6 +60,7 @@ env = { "KM_GATEWAY_URL" = "http://localhost:8000", "KM_ADMIN_TOKEN" = "maintain
 ```
 
 ### Container-scoped adapter
+
 Exec the server inside the running `km-gateway` container so agents see the in-container environment:
 
 ```toml
@@ -91,6 +98,7 @@ Some tools prefer a manifest file instead of CLI arguments. Save the following a
 Run `fastmcp serve fastmcp.json` (or point an IDE at the file) to launch the adapter. To use stdio instead, change the arguments to `["--transport", "stdio"]` and omit the host/port flags.
 
 ## 4. Validate Locally
+
 Use the dedicated Pytest marker to confirm the adapter works end-to-end:
 
 ```bash
@@ -98,6 +106,7 @@ pytest -m mcp_smoke --maxfail=1 --disable-warnings
 ```
 
 This smoke slice exercises `km-search`, `km-coverage-summary`, `km-backup-trigger`, `km-graph-node`, `km-graph-subsystem`, and `km-graph-search`, recording metrics under:
+
 - `km_mcp_requests_total{tool,result}`
 - `km_mcp_request_seconds_bucket{tool}`
 - `km_mcp_failures_total{tool,error}`
@@ -109,11 +118,13 @@ Hybrid search metadata now surfaces the dense vs. lexical mix as `metadata.hybri
 For full coverage (including error paths) run `pytest tests/mcp/test_server_tools.py`.
 
 ## 5. Observability & Operations
+
 - Metrics for MCP usage are exported alongside the existing Prometheus registry (see `/metrics`). Add `km_mcp_requests_total` and `km_mcp_request_seconds` to dashboards to monitor latency and error rates.
 - Logs include tool names, duration, and structured error details when upstream requests fail.
 - When running the adapter over HTTP, protect it with the same bearer tokens used by the gateway or place it behind a trusted reverse proxy.
 
 ## 6. Troubleshooting
+
 | Symptom | Likely Cause | Resolution |
 | --- | --- | --- |
 | `RuntimeError: No active context found` | Tool invoked without MCP context (e.g., calling `.run()` without passing `context`) | Use the adapter directly (`gateway-mcp`) or supply `{"context": null}` when invoking tools manually in tests. |
@@ -122,6 +133,7 @@ For full coverage (including error paths) run `pytest tests/mcp/test_server_tool
 | MCP metrics absent | Adapter never executed or metrics registry not scraped | Run `pytest -m mcp_smoke` or execute any MCP command; verify `/metrics` includes `km_mcp_requests_total`. |
 
 ## 7. Release Integration
+
 - GitHub Actions (`release.yml`) executes the MCP smoke marker on every tagged build.
 - The Neo4j integration workflow also runs the MCP smoke slice after graph tests to ensure the adapter remains healthy.
 

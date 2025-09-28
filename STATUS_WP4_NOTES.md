@@ -1,6 +1,7 @@
 # WP4 Working Notes — Graph Model Integration
 
 ## Current State
+
 - Schema migrations implemented via `gateway/graph/migrations/runner.py`; manual CLI (`gateway-graph migrate`) remains available, and packaged runtimes now default to auto-migration (`KM_GRAPH_AUTO_MIGRATE=true`) with startup logs summarizing pending/applied IDs.
 - Startup instrumentation now publishes `km_graph_migration_last_status` / `_timestamp` so failed or skipped auto-migrations are visible in dashboards and can trigger alerts.
 - Graph API endpoints live: `/graph/subsystems/{name}`, `/graph/nodes/{id}`, `/graph/search`, `/graph/cypher` with maintainer gating for Cypher. Dependency overrides stored on `app.state` for testing.
@@ -16,6 +17,7 @@
 - Documentation updates: `docs/GRAPH_API_DESIGN.md` details API, scoring signals, migration tooling, validation harness. README/AGENTS include new env vars and workflows. STATUS/WORK_PACKAGES adjusted.
 
 ## Open Work (WP4)
+
 1. **Schema/Migration Ops**
    - Hybrid default chosen: packaged runtime keeps auto-migrate enabled, production templates disable it and rely on explicit `gateway-graph migrate` runs. Continue to ensure deployment docs/helpers mirror that split.
    - Monitor migration history growth; consider TTL/cleanup approach later.
@@ -45,11 +47,13 @@
    - **5.2 Runbooks** — add graph-health checklist (migrations CLI, validation harness execution) to `docs/OBSERVABILITY_GUIDE.md`.
 
 ## Quick Reference
+
 - **Key Flags**
   - `KM_GRAPH_AUTO_MIGRATE` — auto-run migrations at API startup.
   - `KM_SEARCH_W_SUBSYSTEM`, `KM_SEARCH_W_RELATIONSHIP`, `KM_SEARCH_W_SUPPORT`, `KM_SEARCH_W_COVERAGE_PENALTY` — scoring weights.
   - `KM_SEARCH_SORT_BY_VECTOR` — bypass graph scoring for pure vector order.
 - **Manual Workflows**
+
   ```bash
   # Manual Neo4j migration
   gateway-graph migrate --dry-run
@@ -59,6 +63,7 @@
   docker run -d --rm --name neo4j-test -p 7687:7687 -e NEO4J_AUTH=neo4j/secret neo4j:5
   NEO4J_TEST_URI=bolt://localhost:7687 NEO4J_TEST_PASSWORD=secret pytest -m neo4j
   ```
+
 - **Key Tests**
   - `tests/test_graph_api.py` — API contract.
   - `tests/test_graph_migrations.py`, `tests/test_graph_auto_migrate.py`, `tests/test_graph_cli.py` — migrations tooling.
@@ -66,6 +71,7 @@
   - `tests/test_graph_validation.py` (`-m neo4j`) — end-to-end ingestion validation.
 
 ## Next Steps Queue
+
 - Evaluate adding graph-scoring metrics or logs (e.g., histogram of adjusted minus vector score) for observability.
 - Consider caching strategy for graph context (avoid redundant driver calls under heavy load).
 - Investigate advanced ranking (learning-to-rank or dynamic weighting) once baseline heuristics are validated.

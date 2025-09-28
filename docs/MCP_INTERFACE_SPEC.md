@@ -33,7 +33,7 @@ The MCP server exposes the following helper summaries. These mirror the metadata
   - Optional: `limit` (default 10, max 25), `include_graph`, structured `filters`, `sort_by_vector`.
   - Example: `/sys mcp run duskmantle km-search --query "ingest pipeline" --limit 5`.
 - `km-graph-node`
-  - Required: `node_id` such as `DesignDoc:docs/WP6_RELEASE_TOOLING_PLAN.md`.
+  - Required: `node_id` such as `DesignDoc:docs/archive/WP6/WP6_RELEASE_TOOLING_PLAN.md`.
   - Optional: `relationships` (`outgoing`, `incoming`, `all`, `none`), `limit` (default 50, max 200).
   - Example: `/sys mcp run duskmantle km-graph-node --node-id "Code:gateway/mcp/server.py"`.
 - `km-graph-subsystem`
@@ -85,7 +85,7 @@ The MCP server exposes the following helper summaries. These mirror the metadata
 - **Response:** hybrid search results (chunk, graph context, scoring). Include `metadata.request_id` for follow-up feedback.
 
 ### 3.2 `km-graph-node`
-- **Request:** `{ "node_id": "DesignDoc:docs/WORK_PACKAGES.md", "relationships": "all", "limit": 25 }`
+- **Request:** `{ "node_id": "DesignDoc:docs/archive/WORK_PACKAGES.md", "relationships": "all", "limit": 25 }`
 - **Response:** node serialization plus relationship list. Errors: `not_found`, `invalid_identifier`.
 
 ### 3.3 `km-graph-subsystem`

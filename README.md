@@ -3,13 +3,25 @@
 This repository packages a turnkey knowledge management stack that bundles the Knowledge Gateway, Qdrant, and Neo4j into a single container. It targets Esper-Lite engineers and power users who need deterministic retrieval-augmented answers and graph-backed reasoning over their own repositories without standing up infrastructure.
 
 ## Highlights
+
 - **Single container delivery:** Supervisor launches the gateway, Qdrant, and Neo4j together with baked-in defaults.
 - **Deterministic ingestion:** Periodic jobs index docs, source, tests, and protobufs with provenance and coverage reporting.
-- **Graph-aware retrieval:** Combined vector search and Neo4j context power downstream LLM agents and humans alike.
+- **Hybrid search + graph context:** Vector similarity fused with lexical overlap and live graph lookups for every result.
+- **MCP-native interface:** Codex CLI (and other MCP clients) can call search, graph, ingest, backup, and feedback tools without touching raw HTTP APIs.
 - **Offline ready:** Embedding models and dependencies are vendored so the appliance runs in air-gapped environments.
 
+## Core Capabilities
+
+- **End-to-end ingestion** – discovers repository artifacts, normalises metadata, and writes to Qdrant and Neo4j with constraint enforcement.
+- **Search with explainability** – `/search` returns scoring breakdowns (vector, lexical, subsystem signals) plus graph context for every hit.
+- **Graph exploration** – `/graph/subsystems`, `/graph/nodes`, `/graph/search`, and `/graph/cypher` expose the knowledge graph for diagnostics and agents.
+- **Operational tooling** – `/metrics`, `/healthz`, `/coverage`, `gateway-ingest`, `gateway-search`, `gateway-graph`, and backup helpers cover daily operations.
+- **Release automation** – reproducible wheel/image pipelines, checksum generation, and smoke tests capture every acceptance run in `docs/ACCEPTANCE_DEMO_SNAPSHOT.md`.
+
 ## Quick Start
+
 Prefer the detailed walkthrough in `docs/QUICK_START.md`. Summary:
+
 1. Build the container with `scripts/build-image.sh duskmantle/km:dev` (BuildKit enabled by default).
 2. Launch it via `bin/km-run` (sets up ports and mounts). Override `KM_DATA_DIR`, `KM_REPO_DIR`, or `KM_IMAGE` as needed.
 3. Kick off an ingest inside the container: `docker exec km-gateway gateway-ingest rebuild --profile local --dummy-embeddings`.
@@ -18,38 +30,52 @@ Prefer the detailed walkthrough in `docs/QUICK_START.md`. Summary:
 6. Run `./infra/smoke-test.sh duskmantle/km:dev` to build, launch, ingest, and validate coverage end-to-end.
 
 ## Repository Layout
+
 - `docs/` — Specifications, architecture design, implementation plan, and risk mitigation playbook.
+- `docs/archive/` — Completed work-package plans and historical artefacts preserved for reference.
 - `gateway/` — Python 3.12 application modules (API, ingestion, config, plugins).
 - `infra/` — (Planned) Supervisor configs, resource profiles, helper scripts.
 - `tests/` — Pytest suites and smoke tests for the turnkey appliance.
 - `AGENTS.md` — Contributor guide tailored for coding agents and maintainers.
 
 ## Local Development
+
 1. Ensure Python 3.12 is available on your workstation.
 2. Create and activate a virtual environment:
+
    ```bash
    python3.12 -m venv .venv
    source .venv/bin/activate
    ```
+
 3. Install dependencies (runtime + development extras):
+
    ```bash
    pip install -e .[dev]
    ```
+
 4. (Optional) Install the slimmer runtime set used by the container build:
+
    ```bash
    pip install -r gateway/requirements.txt
    ```
+
 5. Run the smoke tests:
+
    ```bash
    pytest
    ```
+
 6. Apply pending Neo4j migrations when graph schema changes:
+
    ```bash
    gateway-graph migrate
    ```
+
    The packaged container already exports `KM_GRAPH_AUTO_MIGRATE=true`, so migrations run automatically at API startup with detailed logging of pending/Applied IDs. For change-controlled environments, leave the variable unset and invoke the CLI (or a pipeline hook) as part of your deploy.
 
 ## Container Runtime
+
 - Entrypoint script: `/opt/knowledge/docker-entrypoint.sh` (invoked automatically) validates the mounted volume and launches Supervisord.
 - Process manager: `supervisord` starts Qdrant (`6333`/`6334`), Neo4j (`7474`/`7687`), and the gateway API (`8000`). Logs live under `/opt/knowledge/var/logs/`.
 - Persistent state: mount a host directory to `/opt/knowledge/var` for Qdrant snapshots, Neo4j data/logs, and audit ledgers.
@@ -59,13 +85,40 @@ Prefer the detailed walkthrough in `docs/QUICK_START.md`. Summary:
 - `bin/km-backup [archive.tgz]` archives the mounted state directory (default `./data`) into `./backups` with a timestamped filename.
 - See `docs/ACCEPTANCE_DEMO_PLAYBOOK.md` for an end-to-end demo checklist that combines build, ingest, search/graph verification, backup/restore, and smoke testing.
 
+## MCP Integration
+
+The bundled `gateway-mcp` server mirrors gateway functionality into the Model Context Protocol so agents never need direct HTTP access. Install the project with dev extras (`pip install -e .[dev]`) and launch:
+
+```bash
+KM_GATEWAY_URL=http://localhost:8000 \
+KM_ADMIN_TOKEN=${KM_ADMIN_TOKEN:-maintainer-token} \
+gateway-mcp --transport stdio
+```
+
+Key tools (see `docs/MCP_INTERFACE_SPEC.md` for full schemas):
+
+| Tool ID | Scope | Description |
+|---------|-------|-------------|
+| `km-search` | reader | Hybrid search returning chunks, scoring metadata, and optional graph context. |
+| `km-graph-node` | reader | Fetch a node plus relationships by ID (e.g., `DesignDoc:docs/...`). |
+| `km-graph-subsystem` | reader | Inspect subsystem details, related nodes, and artifacts. |
+| `km-graph-search` | reader | Search graph entities by term (subsystems, design docs, source files). |
+| `km-coverage-summary` | reader | Retrieve the latest coverage snapshot. |
+| `km-ingest-status` / `km-ingest-trigger` | maintainer | Inspect or trigger ingestion runs. |
+| `km-backup-trigger` | maintainer | Create a compressed state backup mirroring `bin/km-backup`. |
+| `km-feedback-submit` | maintainer | Record relevance votes for training datasets. |
+
+All MCP usage is mirrored to Prometheus (`km_mcp_requests_total`, `km_mcp_request_seconds`, `km_mcp_failures_total`) so dashboards can track agent activity. Use `pytest -m mcp_smoke` to validate the adapter end-to-end.
+
 ## Release Artifacts
-- GitHub Actions `release.yml` builds wheels, Docker images, runs the smoke test, and drafts a tagged release with artifacts (wheels, tarballs, checksums).
+
+- GitHub Actions `release.yml` builds wheels, Docker images, pushes the image to GitHub Container Registry (GHCR), runs smoke tests, and drafts a tagged release with artifacts (wheels, tarballs, checksums).
 - `dist/SHA256SUMS` and `dist/IMAGE_SHA256SUMS` contain SHA256 hashes generated by `scripts/checksums.sh`.
-- Container images are tagged `duskmantle/km:<version>`; retrieve metadata with `scripts/build-image.sh <tag>` or `docker image inspect`.
-- For air-gapped installs, download the image tarball, load via `docker load -i duskmantle-km.tar`, and follow `docs/QUICK_START.md`.
+- Container images are tagged `duskmantle/km:<version>` locally and published as `ghcr.io/<owner>/duskmantle-km:<version>` on GHCR. For this repository you can pull with `docker pull ghcr.io/tachyon-beep/duskmantle-km:1.0.0` (adjust owner/tag as needed).
+- For air-gapped installs, download the image tarball from the release artifacts, load via `docker load -i duskmantle-km.tar`, and follow `docs/QUICK_START.md`.
 
 ## Configuration
+
 Key environment variables (all prefixed with `KM_`):
 
 | Variable | Default | Purpose |
@@ -128,6 +181,7 @@ Set these in your environment or an `.env` file before building/running the cont
 ¹ The bundled container runtime exports `KM_GRAPH_AUTO_MIGRATE=true`. Production templates should set it to `false` and call `gateway-graph migrate` (or an equivalent pipeline step) during deployment. See `infra/examples/production.env` for a starter override file.
 
 ### Observability & Security
+
 - Metrics exposed at `/metrics` (Prometheus format); audit history available at `/audit/history` (maintainer scope).
 - Coverage reports downloadable via `/coverage` (maintainer scope) or from `/opt/knowledge/var/reports/coverage_report.json`.
 - Logs emitted as JSON with `ingest_run_id`, artifact counts, and timing metadata.
@@ -154,12 +208,14 @@ Set these in your environment or an `.env` file before building/running the cont
 - Optional APScheduler can be enabled via `KM_SCHEDULER_ENABLED=true`. Configure interval mode via `KM_SCHEDULER_INTERVAL_MINUTES` or supply a cron schedule with `KM_SCHEDULER_CRON` (UTC). Jobs skip automatically when the repository HEAD has not changed or another run is in progress.
 - See `docs/OBSERVABILITY_GUIDE.md` for detailed dashboards, alerting examples, and troubleshooting playbooks covering the full telemetry stack.
 - Integration validation: run `pytest -m neo4j` with `NEO4J_TEST_URI`/credentials set to confirm graph topology against a live Neo4j instance.
+
   ```bash
   docker run -d --rm --name neo4j-test -p 7687:7687 -e NEO4J_AUTH=neo4j/secret neo4j:5
   NEO4J_TEST_URI=bolt://localhost:7687 NEO4J_TEST_PASSWORD=secret pytest -m neo4j
   ```
 
 ### Machine-Learned Ranking Workflow
+
 1. **Collect feedback:** ensure MCP-driven searches supply a `feedback` payload; inspect `/opt/knowledge/var/feedback/events.log` for JSONL events (each row includes `request_id`, `scoring`, and votes).
 2. **Prune & redact (optional):** limit history with `gateway-search prune-feedback --max-age-days 30` and scrub sensitive fields using `gateway-search redact-dataset <dataset> --drop-query --drop-context --drop-note`.
 3. **Export training/validation sets:** `gateway-search export-training-data --require-vote --output feedback/datasets/training.csv` (repeat for a holdout dataset if desired).
@@ -168,17 +224,20 @@ Set these in your environment or an `.env` file before building/running the cont
 6. **Enable in runtime:** set `KM_SEARCH_SCORING_MODE=ml` and (optionally) `KM_SEARCH_MODEL_PATH` to the artifact path. Restart the gateway; `/search` responses now report the active mode and feature contributions under `scoring.model`. Failures to load the artifact automatically fall back to heuristic scoring with a warning in logs.
 
 ## Support & Community
+
 - Support is community-driven and limited to GitHub Issues; no email, chat, or commercial channels are offered.
 - Before filing, review `FAQ.md` and search existing issues. Choose the appropriate template (bug or feature) so triage stays consistent.
 - Every bug report should include `/healthz`, relevant `/metrics`, recent logs, MCP smoke output, and (when available) your latest `docs/ACCEPTANCE_DEMO_SNAPSHOT.md`.
 - Feature requests should be scoped, actionable, and linked to design docs or roadmap entries when possible.
 
 ## Getting Involved
+
 - Review the core specification in `docs/KNOWLEDGE_MANAGEMENT.md` and the companion design and implementation plan documents.
 - Follow the practices in `AGENTS.md` for coding style, testing, and workflow expectations.
 - Open issues for questions or enhancements—target users are experienced operators, so include environment details and reproduction steps.
 
 ## Roadmap References
+
 - Architecture decisions: `docs/KNOWLEDGE_MANAGEMENT_DESIGN.md`
 - Graph API surface: `docs/GRAPH_API_DESIGN.md`
 - Implementation phases & milestones: `docs/KNOWLEDGE_MANAGEMENT_IMPLEMENTATION_PLAN.md`

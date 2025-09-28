@@ -41,7 +41,7 @@ TOOL_USAGE = {
         "description": "Fetch a graph node by ID and inspect incoming/outgoing relationships",
         "details": dedent(
             """
-            Required: `node_id` such as `DesignDoc:docs/WP6_RELEASE_TOOLING_PLAN.md`.
+            Required: `node_id` such as `DesignDoc:docs/archive/WP6/WP6_RELEASE_TOOLING_PLAN.md`.
             Optional: `relationships` (`outgoing`, `incoming`, `all`, `none`) and `limit` (default 50, max 200).
             Example: `/sys mcp run duskmantle km-graph-node --node-id "Code:gateway/mcp/server.py"`.
             """

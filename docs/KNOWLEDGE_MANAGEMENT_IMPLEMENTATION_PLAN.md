@@ -1,12 +1,15 @@
 # Knowledge Management Implementation Plan
 
 ## 1. Overview
+
 This plan translates the turnkey single-container design into concrete implementation steps. Work is organized into focused phases that culminate in an open-source image delivering the Knowledge Gateway, Qdrant, and Neo4j as an integrated drop-in solution for a small group of expert users.
 
 ## 2. Phase Breakdown
 
 ### Phase 1: Container Foundation (Weeks 1-2)
+
 **Goals:** Establish project scaffolding, supervise co-located services, ingest documentation.
+
 - Task 1.1 Set up repository structure (`gateway/`, `gateway/plugins/`, `infra/`, `tests/`, `gateway/config/`).
 - Task 1.2 Create base Dockerfile with multi-stage build, install embedding model assets offline, and integrate supervisor (e.g., s6-overlay).
 - Task 1.3 Package Qdrant and Neo4j binaries/configs within the image; configure process startup order and health checks.
@@ -16,7 +19,9 @@ This plan translates the turnkey single-container design into concrete implement
 - **Status (Sept 2025):** Complete — image builds with Qdrant/Neo4j, supervisord orchestration, readiness checks, and smoke test script.
 
 ### Phase 2: Full Corpus & Graph Enrichment (Weeks 3-4)
+
 **Goals:** Cover code/tests, populate Neo4j, enrich API payloads.
+
 - Task 2.1 Implement repository discovery for source/tests based on `critical_paths.yaml` mapping.
 - Task 2.2 Add subsystem classification, Leyline/telemetry tagging, and validation tests.
 - Task 2.3 Apply Neo4j schema migrations, node/edge upsert logic, and `HAS_CHUNK` linkage.
@@ -26,7 +31,9 @@ This plan translates the turnkey single-container design into concrete implement
 - **Status (Sept 2025):** Complete — ingestion writes full graph/linkage, coverage reports surface via `/coverage`, and graph/search contract tests exercise the enriched payloads.
 
 ### Phase 3: Turnkey Hardening (Weeks 5-6)
+
 **Goals:** Finalize security knobs, observability, scheduling, offline readiness.
+
 - Task 3.1 Add APScheduler jobs (periodic ingest, coverage report) with run gating on repo HEAD.
 - Task 3.2 Implement token-based auth with reader/maintainer scopes and rate limiting.
 - Task 3.3 Expose Prometheus metrics and structured logging; document log/metric scraping.
@@ -37,7 +44,9 @@ This plan translates the turnkey single-container design into concrete implement
 - **Status (Sept 2025):** Complete — scheduler reliability, auth hardening, observability, lifespan migration, writer coverage, and operational tooling delivered.
 
 ### Phase 4: Release Packaging & Adoption (Week 7)
+
 **Goals:** Publish final artifacts and onboarding material for power users.
+
 - Task 4.1 Produce versioned container image and downloadable tarball; verify checksum pipeline.
 - Task 4.2 Write quick-start guide, troubleshooting appendix, and upgrade procedure.
 - Task 4.3 Capture minimal support model (FAQ, issue template) aligned with small user base expectations.
@@ -48,21 +57,25 @@ This plan translates the turnkey single-container design into concrete implement
 ## 2.2 Phase 4 Execution Plan
 
 ### Step 4.1 Artifact Production & Verification
+
 - Task 4.1.1 Finalize version tagging strategy (SemVer mapping, prerelease conventions) and document in `RELEASE.md`.
 - Task 4.1.2 Configure CI to publish Docker images/tarballs and wheels on tags (ensure `release.yml` uploads final artifacts, not draft-only).
 - Task 4.1.3 Validate checksum workflow (`scripts/checksums.sh`, `dist/IMAGE_SHA256SUMS`) and provide verification commands in release notes.
 
 ### Step 4.2 Operator Enablement & Documentation
+
 - Task 4.2.1 Expand `docs/QUICK_START.md` with upgrade and rollback procedures (backup/restore, config changes, token rotation).
 - Task 4.2.2 Create troubleshooting appendix (auth errors, scheduler skips, tracing failures, smoke-test triage) referencing observability metrics.
 - Task 4.2.3 Update README/AGENTS with release pipeline overview, artifact download commands, and support expectations.
 
 ### Step 4.3 Support Model & Adoption
+
 - Task 4.3.1 Draft FAQ and issue templates (common questions, log collection steps, reproducible bug checklist).
 - Task 4.3.2 Define communication cadence (release announcements, changelog updates) and backlog triage policy.
 - Task 4.3.3 Capture minimum support SLOs (response times, smoke-test results) in project docs or `SUPPORT.md`.
 
 ### Step 4.4 Acceptance Demo & Validation
+
 - Task 4.4.1 Build a script/playbook that runs end-to-end demo (ingest sample repo, search, graph queries, backup/restore, metrics sanity checks) **(Completed: `docs/ACCEPTANCE_DEMO_PLAYBOOK.md`)**.
 - Task 4.4.2 Record demo results and link to release notes or onboarding materials.
 - Task 4.4.3 After demo approval, publish GitHub release with final artifacts, changelog entry, and verification checklist.
@@ -70,6 +83,7 @@ This plan translates the turnkey single-container design into concrete implement
 ## 2.1 Detailed Phase Execution Plan
 
 ### Phase 3 — Turnkey Hardening
+
 - **Step 3.1 Scheduler & Coverage Reliability**
   - Task 3.1.1 Scheduler Interval Management
     - Subtask 3.1.1.a Implement configuration for interval/cron profiles with repo HEAD gating.
@@ -110,6 +124,7 @@ This plan translates the turnkey single-container design into concrete implement
   - Task 3.5.2 Implement container smoke-test workflow (build → run → healthz → ingest dry-run → coverage check).
 
 ### Phase 4 — Release Packaging & Adoption
+
 - **Step 4.1 Release Automation**
   - Task 4.1.1 Create CI pipeline to build, tag, and publish images/tarballs with checksums.
   - Task 4.1.2 Capture release metadata in CHANGELOG/RELEASE docs per Conventional Commits.
@@ -121,7 +136,9 @@ This plan translates the turnkey single-container design into concrete implement
   - Task 4.3.2 Finalise support expectations (issue templates, FAQ) and confirm Work Package 6 alignment.
 
 ### Phase 5: MCP Interface & Agent Integration (Weeks 8-9)
+
 **Goals:** Provide a first-class Model Context Protocol (MCP) server so Codex CLI and other agents can access the gateway entirely through MCP tools without direct HTTP interaction.
+
 - Task 5.1 MCP Tooling Design.
 - Task 5.2 MCP Server Implementation.
 - Task 5.3 Testing & Telemetry.
@@ -132,24 +149,28 @@ This plan translates the turnkey single-container design into concrete implement
 ## 2.3 Phase 5 Execution Plan
 
 ### Step 5.1 MCP Tooling Design
+
 - Task 5.1.1 Define tool contract: enumerate gateway operations exposed via MCP (`search`, `graph.node`, `graph.subsystem`, `graph.search`, `coverage.summary`, `ingest.status`, `backup.trigger`, `feedback.submit`) **(Completed in `docs/MCP_INTERFACE_SPEC.md`)**.
 - Task 5.1.2 Specify request/response schemas, filters, error handling, and authentication requirements for each tool **(Completed in `docs/MCP_INTERFACE_SPEC.md`)**.
 - Task 5.1.3 Plan token management (reader vs maintainer scopes) and configuration (environment variables, secret injection) **(Documented in spec §1)**.
 - Task 5.1.4 Determine telemetry expectations (metrics/log entries per MCP invocation) **(Documented in spec §5)**.
 
 ### Step 5.2 MCP Server Implementation
+
 - Task 5.2.1 Scaffold an MCP server package (e.g., `mcp/`) with CLI entry point (`bin/km-mcp`). **(Completed via `gateway/mcp/` + `bin/km-mcp`)**
 - Task 5.2.2 Implement tool handlers that call gateway REST endpoints and translate responses to MCP format. **(Implemented for search/graph/coverage/ingest/backup/feedback)**
 - Task 5.2.3 Support configuration via env vars (`KM_GATEWAY_URL`, `KM_READER_TOKEN`, `KM_ADMIN_TOKEN`, etc.). **(Handled by `MCPSettings`)**
 - Task 5.2.4 Bundle the server for distribution (Python console script or Node package) and integrate with container runtime if desired. **(Python console script `gateway-mcp` and shell wrapper `bin/km-mcp`)**
 
 ### Step 5.3 Testing & Telemetry
+
 - Task 5.3.1 Add unit tests mocking gateway responses for each MCP tool. **(Completed in `tests/mcp/test_server_tools.py`)**
 - Task 5.3.2 Create an MCP smoke test that launches the server, executes sample MCP commands (search, coverage, backup), and asserts success. **(Covered by `test_mcp_smoke_run`)**
 - Task 5.3.3 Instrument metrics/logs (`km_mcp_requests_total`, latency histograms) and surface them via Prometheus. **(Implemented via `gateway/observability/metrics.py` + server instrumentation)**
 - Task 5.3.4 Update CI release workflow to optionally run the MCP smoke test after image build. **(Release workflow runs `pytest -m mcp_smoke` post-build)**
 
 ### Step 5.4 Documentation & Distribution *(Complete for 1.0; broader agent automation deferred post-1.0)*
+
 - Task 5.4.1 Expand README/QUICK_START with MCP setup instructions (starting server, Codex CLI config, sample commands). **(Completed: Quick Start §10 and README updates)**
 - Task 5.4.2 Update `docs/MCP_INTEGRATION.md` with detailed tool descriptions, troubleshooting, and auth guidance. **(Completed: guide rewritten with launch/validation steps)**
 - Task 5.4.3 Note release artifacts for the MCP server (npm/PyPI) and align versioning with gateway releases. **(Completed: CI now runs MCP smoke tests; release docs reference the adapter)**
@@ -157,6 +178,7 @@ This plan translates the turnkey single-container design into concrete implement
 - Post-1.0 backlog: prompt orchestration, retrieval QA, and OpenAI client integration (captured under future roadmap/WP7).
 
 ## 3. Dependencies & Tooling
+
 - **Runtime:** Python 3.12+, FastAPI, APScheduler, `qdrant-client`, `neo4j` driver.
 - **Embedding Assets:** `sentence-transformers/all-MiniLM-L6-v2` downloaded during image build; optional GPU support documented.
 - **Build Tooling:** Docker (BuildKit recommended), Makefile or task runner for repeatable builds.
@@ -179,11 +201,13 @@ Detailed mitigation activities are tracked in `docs/RISK_MITIGATION_PLAN.md`. Th
 | Hybrid search tuning | Suboptimal retrieval relevance | Medium | Mitigated for 1.0 — dense + lexical scoring knobs (`KM_SEARCH_VECTOR_WEIGHT`/`KM_SEARCH_LEXICAL_WEIGHT`) and `KM_SEARCH_HNSW_EF_SEARCH` shipped; continue monitoring relevance metrics post-release. |
 
 ## 5. Tracking & Communication
+
 - Maintain a lightweight issue list (GitHub Projects) tagged per phase; update weekly.
 - Record design/plan adjustments directly in `docs/` with changelog entries.
 - Share fortnightly status notes summarizing completed tasks, upcoming focus, and risk updates for stakeholders represented by the agent.
 
 ## 6. Acceptance & Rollout Criteria
+
 - **Functional:** Single container ingests mounted repo, serves `/search` and `/graph` endpoints with accurate context, and supports manual reindexing.
 - **Operational:** Metrics/logging accessible via container output or `/metrics`; scheduled ingest runs succeed; backup/restore scripts verified.
 - **Packaging:** Image published with signed checksums, quick-start/upgrade docs ready, example commands tested on Linux and macOS hosts.

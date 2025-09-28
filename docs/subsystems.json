@@ -19,7 +19,7 @@
     "paths": [
       "docs/OBSERVABILITY_",
       "docs/DASHBOARD_",
-      "docs/WP5_",
+      "docs/archive/WP5/",
       "gateway/observability/"
     ]
   },
@@ -27,7 +27,7 @@
     "description": "Release automation, acceptance demos, and build tooling",
     "criticality": "medium",
     "paths": [
-      "docs/WP6_",
+      "docs/archive/WP6/",
       "docs/ACCEPTANCE_",
       "docs/ACCEPTANCE_DEMO_SNAPSHOT.md",
       "RELEASE.md",

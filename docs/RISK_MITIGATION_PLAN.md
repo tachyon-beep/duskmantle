@@ -3,6 +3,7 @@
 This document tracks the key delivery risks for the turnkey knowledge management container and the concrete mitigation activities approved to address them. Items marked **Open** require follow-up when new data becomes available; others have actionable tasks that can begin immediately.
 
 ## 1. Container Image Size
+
 - **Risk:** Bundling embedding models, Qdrant, and Neo4j may inflate the image, slowing downloads and adoption.
 - **Status:** Mitigation planned.
 - **Approved Actions:**
@@ -12,6 +13,7 @@ This document tracks the key delivery risks for the turnkey knowledge management
 - **Open Questions:** Whether further model quantization is acceptable for target users (requires accuracy validation). Documented as TBD.
 
 ## 2. Persistence Safety
+
 - **Risk:** Misconfigured host volume could lead to data loss during upgrades.
 - **Status:** Mitigation defined.
 - **Approved Actions:**
@@ -22,6 +24,7 @@ This document tracks the key delivery risks for the turnkey knowledge management
 - **Open Questions:** None at this time.
 
 ## 3. Resource Contention
+
 - **Risk:** Co-located services may compete for CPU/RAM, degrading performance.
 - **Status:** Partial mitigation available.
 - **Approved Actions:**
@@ -31,6 +34,7 @@ This document tracks the key delivery risks for the turnkey knowledge management
 - **Open Questions:** Final recommended hardware profile pending real benchmarks.
 
 ## 4. Classification Accuracy
+
 - **Risk:** Path-based heuristics may mis-tag subsystems or Leyline assets.
 - **Status:** Mitigation actionable.
 - **Approved Actions:**
@@ -40,6 +44,7 @@ This document tracks the key delivery risks for the turnkey knowledge management
 - **Open Questions:** Need real repository samples to calibrate regex coverage (leave TBD until repos are available).
 
 ## 5. Authentication Defaults
+
 - **Risk:** Users might expose the API without securing tokens.
 - **Status:** Mitigation actionable.
 - **Approved Actions:**
@@ -49,6 +54,7 @@ This document tracks the key delivery risks for the turnkey knowledge management
 - **Open Questions:** None.
 
 ## 6. Host Compatibility & Support
+
 - **Risk:** Users may struggle with Docker flags, GPU drivers, or unsupported OS versions.
 - **Status:** Mitigation defined.
 - **Approved Actions:**
@@ -58,6 +64,7 @@ This document tracks the key delivery risks for the turnkey knowledge management
 - **Open Questions:** Actual test matrix values pending hands-on validation.
 
 ## 7. Observability Coverage
+
 - **Risk:** Ingestion issues might go unnoticed without robust observability.
 - **Status:** Mitigation actionable.
 - **Approved Actions:**
@@ -68,6 +75,7 @@ This document tracks the key delivery risks for the turnkey knowledge management
 - **Open Questions:** Choice of alerting integrations for specific users remains TBD.
 
 ## 8. Release Distribution Integrity
+
 - **Risk:** Users may deploy corrupted images or mismatch versions.
 - **Status:** Mitigation actionable.
 - **Approved Actions:**

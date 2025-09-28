@@ -23,14 +23,15 @@ The tool pack consists of three cooperative services plus automation:
    - Persistence: volume-mounted `data/` and `logs/` directories.
 
 3. **Knowledge Gateway Service** (custom container)
-  - Written in Python 3.12+.
-   - Responsibilities:
-     - Ingest/normalize repository artifacts.
-     - Generate embeddings via a chosen model (default: `sentence-transformers/all-MiniLM-L6-v2`, configurable).
-     - Upsert vectors into Qdrant with rich payload metadata.
-     - Maintain Neo4j nodes/edges reflecting the contract-first architecture.
-     - Expose a REST API for combined vector + graph queries.
-     - Provide CLI/admin endpoints for re-indexing, health checks, and schema migrations.
+
+- Written in Python 3.12+.
+- Responsibilities:
+  - Ingest/normalize repository artifacts.
+  - Generate embeddings via a chosen model (default: `sentence-transformers/all-MiniLM-L6-v2`, configurable).
+  - Upsert vectors into Qdrant with rich payload metadata.
+  - Maintain Neo4j nodes/edges reflecting the contract-first architecture.
+  - Expose a REST API for combined vector + graph queries.
+  - Provide CLI/admin endpoints for re-indexing, health checks, and schema migrations.
 
 4. **Ingestion Scheduler**
    - Lightweight task runner (APScheduler or Celery beat) embedded in the gateway.
@@ -223,21 +224,25 @@ A coding AI tasked with building this container must complete the following:
 Design the gateway with first-class routines for keeping the knowledge base accurate and compact. These jobs run entirely inside the environment toolchain and never mutate the Esper-Lite repository.
 
 ### 14.1 Ingestion Cadence & Scheduling
+
 - **Full Rescan**: run once every 24 hours to rebuild vector and graph state from scratch. Expose cron-style settings (`FULL_INGEST_CRON`) so operators can shift schedules without code changes.
 - **Incremental Sweep**: default to every 30 minutes. Compute `git diff` against the last successful commit snapshot; only reprocess touched files. Skip chunks whose content digests and metadata are unchanged to save embedding work.
 - **Ad-hoc Trigger**: `/ingest/path` endpoint forces an immediate refresh for targeted files; emit audit entries noting the caller and affected paths.
 
 ### 14.2 Staleness Detection & Pruning
+
 - Persist per-chunk metadata (`git_commit`, `git_timestamp`, `content_digest`). The gateway tracks a `last_seen_at` timestamp each time an artifact is reprocessed.
 - During ingestion, mark artifacts missing from the filesystem as `candidate_for_removal`. A nightly pruning job (`/maintenance/prune`) permanently deletes Qdrant points and Neo4j nodes/relationships whose `candidate_for_removal` flag has been set for two consecutive runs.
 - Record removal operations in the audit log with structured reasons (`removed_file`, `renamed_file`, `manual_request`).
 
 ### 14.3 Versioning & Rollback Safety
+
 - Maintain versioned collection names (`esper_knowledge_v1`, `esper_knowledge_v2`, ...). Promote to a new version when altering payload schemas or switching embedding models.
 - Enable Qdrant snapshotting (`qdrant snapshot create`) post-ingestion; keep the last three snapshots and prune older ones.
 - For Neo4j, schedule weekly `neo4j-admin dump` backups. Store snapshot/backup paths in a gateway-maintained manifest for quick rollback.
 
 ### 14.4 Drift Monitoring
+
 - Metrics to emit via `/metrics`:
   - `knowledge_chunks_total` (labeled by `artifact_type` and `subsystem`).
   - `knowledge_chunks_removed_total` with reason labels.
@@ -249,6 +254,7 @@ Design the gateway with first-class routines for keeping the knowledge base accu
   - The latest successful ingest timestamp drifts beyond the SLA (e.g., +2 hours).
 
 ### 14.5 Manual Maintenance Operations
+
 - Provide authenticated endpoints/CLI commands:
   - `POST /maintenance/rebuild` — drop current collection/graph and perform a clean bootstrapped ingest (requires explicit confirmation flag).
   - `POST /maintenance/prune` — execute pruning logic immediately; useful after large refactors or branch merges.
@@ -256,6 +262,7 @@ Design the gateway with first-class routines for keeping the knowledge base accu
 - Document operator runbook steps for rotating credentials, restoring from snapshots, and validating post-restore by comparing expected chunk counts against baseline metrics.
 
 ### 14.6 Metadata Hygiene & Overrides
+
 - Store subsystem classification rules in `gateway/config/subsystem_map.yaml`. Include glob patterns and optional regex overrides for special cases (e.g., shared utilities).
 - Log any artifacts that fail classification to a dedicated stream (`classification_warnings.log`) and expose them via `/maintenance/unclassified` for human review.
 - Support manual annotations (YAML) that tag specific files with additional metadata (telemetry channels, Leyline messages). Merge these annotations during ingestion, overriding automated guesses to keep the knowledge graph authoritative.
@@ -267,51 +274,61 @@ Implementing these lifecycle loops ensures the knowledge stack remains trustwort
 This section captures additional guidance and stretch goals from the knowledge/data management perspective. Treat these as backlog items for the coding agent once the core system is operational.
 
 ### 15.1 Data Quality & Validation
+
 - **Schema Guardrails**: define Pydantic models for ingestion payloads (vector chunks, graph nodes). Reject or quarantine records that fail validation; expose a `GET /maintenance/quarantine` endpoint for inspection.
 - **Content Sanity Checks**: prior to embedding, enforce heuristics (non-empty text, max token length, ASCII-only for code unless file specifies otherwise). Log discarded chunks with reasons.
 - **Duplicate Detection**: beyond `content_digest`, run periodic similarity clustering to surface near-duplicates across docs/tests. Provide a report so documentation owners can consolidate redundant material.
 
 ### 15.2 Provenance & Auditability
+
 - Attach a `provenance` block to every chunk containing: embedding model version, ingestion job ID, operator (if manual), and source branch if applicable.
 - Maintain an append-only audit ledger (e.g., SQLite or lightweight event log) capturing each ingestion/prune/rebuild operation with timestamp, actor, and outcome.
 - Offer `GET /audit/history` endpoint with pagination for traceability.
 
 ### 15.3 Embedding Model Lifecycle
+
 - Externalize embedding model config to `gateway/config/embedding.yaml` including model name, dimensionality, normalization, and stopwords.
 - Support hot-swapping models: stage new collection (`esper_knowledge_vN+1`) and run A/B validation by comparing retrieval metrics (precision@k using curated question/answer fixtures).
 - If GPU is available, allow the gateway to auto-detect and leverage it; otherwise default to CPU with batched inference to keep ingestion latency predictable.
 
 ### 15.4 Knowledge Coverage & Gaps
+
 - Ship a coverage report job that compares repo file list against indexed artifacts; flag anything intentionally skipped (e.g., large binaries) versus unexpected omissions. Provide `coverage_report.json` for dashboarding.
 - Track `last_indexed_commit` and alert when repository HEAD moves ahead by more than configurable commit count (default: 20) without ingestion catching up.
 - Encourage engineers to register critical documents/tests in a `gateway/config/critical_paths.yaml`; ingestion should fail fast if these files are missing or not indexed.
 
 ### 15.5 Multi-Environment Strategy
+
 - Support environment labels (`dev`, `staging`, `prod`) in payload metadata to allow side-by-side indexes for different branches or prototype variants.
 - Provide tooling to snapshot knowledge base state per environment and promote from dev → staging → prod once validation passes.
 - In docker-compose, allow optional additional repos to be mounted (e.g., `../esper-docs`) and define ingestion profiles per mount (toggle per compose override).
 
 ### 15.6 Security & Access Control Deepening
+
 - Integrate with an external secret manager (Vault or AWS Secrets Manager) for Neo4j/Qdrant credentials when running outside local dev environments.
 - Implement per-endpoint scopes: e.g., ingestion endpoints require `role=maintainer`, search endpoints allow `role=reader`. Bearer token should encode scope claims.
 - Add rate limiting (`fastapi-limiter` or custom middleware) on search endpoints to prevent accidental overload from automated agents.
 
 ### 15.7 Observability Upgrades
+
 - Emit OpenTelemetry traces for major ingestion phases (discover → embed → upsert → graph merge). Ship a collector configuration so traces can be forwarded to existing observability stacks (Nissa/Prometheus integrations).
 - Provide structured logging enrichers that add `ingest_run_id`, `subsystem`, and `artifact_type` to every log line for easier correlation.
 - Publish a weekly summary report (email/Slack webhook) containing ingestion stats, top new documents, and any classification warnings.
 
 ### 15.8 Data Retention & Compliance
+
 - Define retention policies: default to keeping all indexed chunks unless upstream documents are deleted. Allow operators to configure TTL for volatile directories (e.g., scratch design notes) via `retention_policies.yaml`.
 - Ensure snapshots/backups are encrypted at rest (enable AES on Qdrant snapshots, use Neo4j backup encryption options) when running in shared environments.
 - Document procedures for right-to-forget requests—even if unlikely, note how to purge specific paths and verify removal across both stores.
 
 ### 15.9 Extensibility Hooks
+
 - Architect the gateway ingestion pipeline with plugin hooks (Python entry points) so future data sources—Jira tickets, CI logs, telemetry exports—can be added without rewriting core logic.
 - Provide a command-line scaffold (`knowledge-gateway scaffold-plugin --name foo`) that generates boilerplate for new source adapters.
 - Reserve namespace in Neo4j for upcoming entity types (`Incident`, `Runbook`) to avoid schema churn later.
 
 ### 15.10 Documentation Expectations
+
 - Maintain living documentation under `gateway/docs/` covering lifecycle jobs, configuration files, and troubleshooting scenarios. Update it whenever new management features land.
 - Include diagrams (Mermaid or PlantUML) mapping ingestion flows and data relationships to help future maintainers reason about the system.
 - Ensure README highlights the separation between runtime system and knowledge tooling, reiterating that repos remain the single source of truth.

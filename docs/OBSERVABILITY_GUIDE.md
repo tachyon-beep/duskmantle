@@ -215,7 +215,7 @@ jq '.summary' /opt/knowledge/var/reports/coverage_report.json
 
 ## 12. Further Reading
 - `docs/RISK_MITIGATION_PLAN.md` (§7) for observability risks and mitigations.
-- `docs/WP5_EXECUTION_PLAN.md` for milestone-level objectives.
+- `docs/archive/WP5/WP5_EXECUTION_PLAN.md` for milestone-level objectives.
 - `README.md` — quick start and environment variable reference.
 - `AGENTS.md` — contributor expectations for testing and validation flows.
 

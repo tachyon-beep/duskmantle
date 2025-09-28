@@ -1,6 +1,7 @@
 # Project Status Summary
 
 ## Overview
+
 - **Container Runtime (WP1):** ✅ Completed (image build, supervisor orchestration, smoke harness).
 - **Gateway Core (WP2):** ✅ Completed (health endpoints, auth/rate limiting, scheduler, logging).
 - **Ingestion Pipeline (WP3):** ✅ Core ingestion/coverage complete; hybrid search tuning remains (see outstanding list).
@@ -12,33 +13,41 @@
 ## Work Package Breakdown
 
 ### WP1 — Container Runtime Foundation *(Completed)*
+
 Nothing outstanding.
 
 ### WP2 — Gateway Core Skeleton *(Completed)*
+
 Nothing outstanding.
 
 ### WP3 — Ingestion Pipeline MVP *(Complete with minor follow-up)*
+
 - ✅ Discovery, chunking, embeddings, Qdrant/Neo4j integration, coverage report, metrics instrumentation.
 - 🔸 Follow-up: provenance CLI polish/audit report formatting (optional) and ongoing evaluation of hybrid search defaults in production telemetry.
 
 ### WP4 — Graph Model Integration *(Complete)*
+
 - ✅ Ingestion populates Neo4j with constraints/edges; `/graph/subsystems`, `/graph/nodes`, `/graph/search`, `/graph/cypher`, and `/search` graph-context enrichment are live with contract tests and live `pytest -m neo4j` coverage (container optional in CI via `RUN_NEO4J_SLICE`).
 - 🔸 Follow-up: monitor auto-migration logs; schedule periodic live graph checks in CI when feasible.
 
 ### WP5 — Observability & Security Hardening *(Complete)*
+
 - ✅ Metrics (`/metrics`), structured logging, rate limiting, bearer-token auth, audit history endpoint, coverage report, scheduler with repo-head gating/locking, OTel toggle, and observability runbooks.
 - 🔸 Follow-up: continue documentation polish as new metrics are added.
 
 ### WP6 — Release Tooling & Documentation *(In Progress)*
+
 - ✅ Build/checksum scripts, release workflow (`release.yml`), Quick Start + troubleshooting updates, acceptance demo playbook/snapshot.
 - ✅ Release dry-run executed locally (wheel + image build, checksum generation, `infra/smoke-test.sh`, and `pytest -m mcp_smoke` on tag `duskmantle/km:v0.1.0-test`).
 - 🔸 Outstanding: finalise upgrade/rollback procedure, publish FAQ/issue templates/support expectations before tagging 1.0.
 
 ### WP7 — Autonomous Analysis Interface *(Deferred to post-1.0)*
+
 - ✅ MCP server/CLI/tests/telemetry/docs completed (ship-ready as tooling).
 - 🔸 Deferred: full agent automation stack (prompt orchestration, OpenAI client flows, retrieval QA). Revisit after 1.0 release.
 
 ## Recent Highlights
+
 - Added UUID-based Qdrant IDs, audit logging, coverage reports.
 - Metrics, auth, rate limiting, scheduler guardrails, and OpenTelemetry tracing toggle implemented with tests.
 - Published `docs/OBSERVABILITY_GUIDE.md` with metrics, tracing, and troubleshooting playbooks.
@@ -59,11 +68,13 @@ Nothing outstanding.
 - Phase 3 trainer `gateway-search train-model` fits a linear regression over exported features and outputs versionable JSON artifacts with basic metrics.
 - Retention utilities (`gateway-search prune-feedback` and `gateway-search redact-dataset`) keep telemetry lean and allow sensitive fields to be scrubbed before sharing datasets.
 - Evaluation harness (`gateway-search evaluate-model`) benchmarks trained ranking models (MSE/R²/NDCG/Spearman) prior to inference rollout.
-- Release tooling plan published at `docs/WP6_RELEASE_TOOLING_PLAN.md`; initial scripts (`scripts/build-wheel.sh`, `scripts/checksums.sh`) and `CHANGELOG.md`/`RELEASE.md` skeletons are in place with automated tests.
+- Final acceptance ingest (`c821eb34956345bc8ef7cb3765b4ab63`) refreshed Qdrant/Neo4j after archiving docs; `/search` now resolves to `docs/archive/*` paths and the 1.0.0 image (`sha256:04f92b9…`) is validated via smoke test.
+- Release tooling plan (archived) recorded in `docs/archive/WP6/WP6_RELEASE_TOOLING_PLAN.md`; initial scripts (`scripts/build-wheel.sh`, `scripts/checksums.sh`) and `CHANGELOG.md`/`RELEASE.md` skeletons are in place with automated tests.
 - Observability CI workflow (`.github/workflows/observability.yml`) runs nightly to assert `/readyz`, `/healthz`, `/metrics`, and `/coverage` remain healthy.
 - Manual auth-enabled smoke test succeeded with password `tRusKAxG2fQKmP-ik3Y0`.
 
 ## Next Priorities
+
 - Finalise WP6 deliverables: upgrade/rollback guide, support/FAQ artifacts, dry-run tagged release.
 - Monitor hybrid search performance (baseline 2025-09-27 queries show vector/lexical mix 0.46 vs 0.24; continue gathering production telemetry before tuning) and continue provenance tooling polish.
 - Plan WP7 agent enhancements (OpenAI/client orchestration) after release tooling closes.

@@ -3,6 +3,7 @@
 This guide walks through the completed rollout of search-specific monitoring. Each stage maps to the agreed plan and includes actionable artifacts (metric inventory, SLOs, PromQL, and alert hooks) to accelerate dashboard implementation.
 
 ## 1. Metric Inventory
+
 | Metric | Type | Labels | Notes |
 | ------ | ---- | ------ | ----- |
 | `km_search_graph_cache_events_total` | Counter | `status` (`hit`, `miss`, `error`) | Emits one increment per artifact per query. A single search with repeated hits reuses cached context so you should only see one miss followed by hits. |
@@ -12,11 +13,13 @@ This guide walks through the completed rollout of search-specific monitoring. Ea
 | `km_graph_migration_last_status` / `_timestamp` | Gauge | _none_ | Use alongside search panels to catch failed or stale migrations quickly. |
 
 ## 2. SLO Thresholds (Initial Targets)
+
 - **Cache Hit Ratio:** ≥85% of lookups should be hits. Investigate when hits / (hits + misses) < 0.85.
 - **Lookup Latency:** P95 of `km_search_graph_lookup_seconds` ≤ 250 ms for prod; warning at 200 ms, critical at 250 ms.
 - **Ranking Delta Band:** Mean of `km_search_adjusted_minus_vector` should stay within ±0.2. Sustained deviation indicates weighting drift.
 
 ## 3. Panel Sketches
+
 1. **Cache Utilisation (Stacked Bar):** hits vs misses vs errors per 5 min. Overlay hit ratio.
 2. **Neo4j Lookup Latency (Heatmap + Percentile):** heatmap of bucket counts plus P95/P99 line chart.
 3. **Ranking Delta Distribution:** histogram of delta buckets with moving average line.
@@ -24,6 +27,7 @@ This guide walks through the completed rollout of search-specific monitoring. Ea
 5. **Latency Diagnostics Table:** top searches by lookup latency (requires log/trace integration). Optional initial placeholder.
 
 ## 4. PromQL Snippets
+
 ```promql
 # Cache hit ratio (5m sliding window)
 (sum by () (increase(km_search_graph_cache_events_total{status="hit"}[5m]))) /
@@ -43,6 +47,7 @@ sum by (status) (increase(km_search_requests_total[5m]))
 ```
 
 ## 5. Grafana Implementation Notes
+
 - Template variables: `environment` (e.g., prod/staging) using Prometheus label filters and optional `project`.
 - Organise panels into rows: **Search Health** (cache, latency, volume) and **Ranking Drift** (delta distribution, moving average).
 - Suggested visualization types:
@@ -52,6 +57,7 @@ sum by (status) (increase(km_search_requests_total[5m]))
 - Exported dashboard JSON should retain PromQL above; store in `infra/grafana/search_observability.json` when ready (placeholder for future automation).
 
 ## 6. Alert Rules (Prometheus Example)
+
 ```yaml
 - alert: SearchGraphCacheHitRatioLow
   expr: 1 - (sum(increase(km_search_graph_cache_events_total{status="hit"}[10m])) /
@@ -84,6 +90,7 @@ sum by (status) (increase(km_search_requests_total[5m]))
 ```
 
 ## 7. Runbook & Review
+
 - **Documentation:** See updated entries in `docs/OBSERVABILITY_GUIDE.md` (dashboard & alert cookbook) and `STATUS.md` for project status.
 - **Stakeholder Review:** Schedule a 30-minute review with SRE + applied ML team to validate thresholds after one week of data. Capture decisions in `docs/OBSERVABILITY_GUIDE.md#review-log` (placeholder section added).
 - **Next Steps:** Once Grafana dashboard is deployed, export JSON to repo and automate provisioning via Terraform or Grafana provisioning config.

@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  packages: write
 
 jobs:
   build-and-package:
@@ -37,6 +38,23 @@ jobs:
 
       - name: Build docker image
         run: scripts/build-image.sh duskmantle/km:${{ github.ref_name }}
+
+      - name: Push image to GHCR
+        env:
+          OWNER: ${{ github.repository_owner }}
+          TAG: ${{ github.ref_name }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+        run: |
+          set -euo pipefail
+          owner_lc=$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')
+          image="ghcr.io/${owner_lc}/duskmantle-km:${TAG}"
+          token="$GHCR_TOKEN"
+          if [ -z "$token" ]; then
+            token="${{ secrets.GITHUB_TOKEN }}"
+          fi
+          echo "$token" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker tag duskmantle/km:${TAG} "$image"
+          docker push "$image"
 
       - name: Save docker image
         run: docker save duskmantle/km:${{ github.ref_name }} -o dist/duskmantle-km.tar

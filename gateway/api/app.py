@@ -42,7 +42,7 @@ from gateway.search.feedback import SearchFeedbackStore
 from gateway.search.trainer import ModelArtifact, load_artifact
 from gateway.scheduler import IngestionScheduler
 
-from typing import Any
+from typing import Any, Mapping
 from uuid import uuid4
 
 
@@ -417,6 +417,28 @@ def create_app() -> FastAPI:
         feedback_mapping = feedback_payload if isinstance(feedback_payload, dict) else None
         context_payload = payload.get("context")
         feedback_store = getattr(app.state, "search_feedback_store", None)
+
+        def _has_vote(mapping: Mapping[str, Any] | None) -> bool:
+            if not mapping:
+                return False
+            vote_value = mapping.get("vote")
+            if isinstance(vote_value, (int, float)):
+                return True
+            if isinstance(vote_value, str):
+                try:
+                    float(vote_value)
+                except ValueError:
+                    return False
+                else:
+                    return True
+            return False
+
+        if feedback_store is not None and response.results and not _has_vote(feedback_mapping):
+            payload_json["metadata"]["feedback_prompt"] = (
+                "Optional: call `km-feedback-submit` with the provided `request_id` "
+                "and a vote in the range [-1, 1] to help tune search ranking."
+            )
+
         if feedback_store is not None:
             try:
                 feedback_store.record(

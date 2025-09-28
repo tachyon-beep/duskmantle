@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "duskmantle-knowledge-gateway"
-version = "0.1.0"
+version = "1.0.0"
 description = "Turnkey knowledge management gateway packaged with Qdrant and Neo4j"
 readme = "README.md"
 authors = [{ name = "Duskmantle" }]
@@ -66,11 +66,11 @@ markers = [
 ]
 
 [tool.black]
-line-length = 88
+line-length = 140
 target-version = ["py312"]
 
 [tool.ruff]
-line-length = 88
+line-length = 140
 src = ["gateway", "tests"]
 select = ["E", "F", "B", "I", "UP", "Q", "W"]
 ignore = ["E501"]

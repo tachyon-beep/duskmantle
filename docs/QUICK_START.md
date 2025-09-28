@@ -2,51 +2,74 @@
 
 This guide walks through launching the Duskmantle knowledge gateway, running a smoke ingest, verifying health endpoints, and creating backups. For detailed architecture and operational runbooks, see `docs/KNOWLEDGE_MANAGEMENT.md` and `docs/OBSERVABILITY_GUIDE.md`.
 
+### What You Get
+
+- **Turnkey ingest** that sweeps docs, source, and tests into Qdrant + Neo4j with coverage tracking and provenance logs.
+- **Hybrid `/search` API** blending dense vectors with lexical overlap and graph signals, returning per-result scoring breakdowns.
+- **Graph endpoints** (`/graph/subsystems`, `/graph/nodes`, `/graph/search`, `/graph/cypher`) for topology inspection and agent workflows.
+- **Model Context Protocol (MCP) server** exposing search, graph, ingest, backup, and feedback tools so Codex CLI (and other agents) can interact without raw HTTP calls.
+- **Release and observability tooling**: smoke tests, health/metrics endpoints, backup helpers, and acceptance snapshot templates.
+
 ## 1. Prerequisites
+
 - Docker 24+ with BuildKit enabled (default in recent releases).
 - Python 3.12 (optional, for local development and CLI usage).
 - At least 4 GB RAM and 5 GB free disk for Neo4j/Qdrant data.
 
 ## 2. Build or Pull the Container
+
 To build from source:
+
 ```bash
 scripts/build-image.sh duskmantle/km:dev
 ```
+
 This script enables BuildKit, prints image metadata, and accepts optional args via `KM_BUILD_ARGS` or `KM_BUILD_PROGRESS`.
 
-Alternatively, pull a published image:
+Alternatively, pull a published image (GitHub Container Registry):
+
 ```bash
-docker pull duskmantle/km:latest
+docker pull ghcr.io/tachyon-beep/duskmantle-km:1.0.0
 ```
 
 ## 3. Launch the Stack
+
 Use the helper script for consistent mounts and ports:
+
 ```bash
 bin/km-run
 ```
+
 Defaults:
+
 - Ports: API `8000`, Qdrant `6333`, Neo4j `7687`.
 - Data directory: `./data` mounted to `/opt/knowledge/var`.
 - Repository mount: current directory to `/workspace/repo` (read-only by default).
 
 Override with environment variables (examples):
+
 ```bash
 KM_IMAGE=duskmantle/km:latest KM_DATA_DIR=/var/km-data bin/km-run --detach
 ```
 
 Verify readiness:
+
 ```bash
 curl http://localhost:8000/readyz
 ```
 
 ## 4. Run an Ingest
+
 Inside the container:
+
 ```bash
 docker exec km-gateway gateway-ingest rebuild --profile local --dummy-embeddings
 ```
+
 For production, omit `--dummy-embeddings` (requires model download).
 
 ## 5. Health Checks & Observability
+
 - `curl http://localhost:8000/healthz` — overall status plus coverage/audit/scheduler details.
 - `curl http://localhost:8000/metrics` — Prometheus metrics (requires `KM_ADMIN_TOKEN` if auth enabled).
 - `curl http://localhost:8000/coverage` — latest coverage report (maintainer scope).
@@ -54,28 +77,38 @@ For production, omit `--dummy-embeddings` (requires model download).
 Refer to `docs/OBSERVABILITY_GUIDE.md` for alerting thresholds and troubleshooting (e.g., auth 401/403 diagnostics, scheduler skews).
 
 ## 6. Smoke Test Script
+
 Run the full pipeline locally before publishing:
+
 ```bash
 ./infra/smoke-test.sh duskmantle/km:dev
 ```
+
 The script builds the image, launches a disposable container, triggers a smoke ingest, validates `/coverage`, and tears down resources.
 
 ## 7. Backups & Restore
+
 Create a backup (tar.gz) of `/opt/knowledge/var`:
+
 ```bash
 bin/km-backup
 ```
+
 The archive lands in `./backups/km-backup-<timestamp>.tgz`. To restore:
+
 ```bash
 tar -xzf backups/km-backup-<timestamp>.tgz -C data
 ```
+
 Restart the container to pick up restored state.
 
 ## 8. Environment & Authentication
+
 - Set `KM_AUTH_ENABLED=true`, `KM_READER_TOKEN`, and `KM_ADMIN_TOKEN` to secure APIs and CLIs. Maintainer tokens satisfy reader endpoints; reader tokens cannot invoke admin operations.
 - Scheduler and `gateway-ingest` refuse to run without `KM_ADMIN_TOKEN` when auth is enabled.
 
 ## 9. Troubleshooting Highlights
+
 - **401 Unauthorized**: Missing bearer token. Add `-H "Authorization: Bearer $KM_READER_TOKEN"` to requests.
 - **403 Forbidden**: Invalid token or insufficient scope. Use the maintainer token for ingestion, coverage, and `/graph/cypher`.
 - **Scheduler Skips**: Inspect `km_scheduler_runs_total` metrics (`skipped_head`, `skipped_lock`, `skipped_auth`) for root cause.
@@ -85,6 +118,7 @@ Restart the container to pick up restored state.
 For more detail, consult `docs/OBSERVABILITY_GUIDE.md` and the release playbook in `RELEASE.md`.
 
 ## 11. Upgrades & Rollback
+
 1. Review the release changelog for schema/config changes.
 2. Back up `/opt/knowledge/var` (`bin/km-backup`). Copy `backups/km-backup-*.tgz` off-host.
 3. Stop the running container (`docker rm -f km-gateway`).
@@ -95,27 +129,46 @@ For more detail, consult `docs/OBSERVABILITY_GUIDE.md` and the release playbook 
 
 See `docs/UPGRADE_ROLLBACK.md` for the detailed checklist.
 
-## 10. Run the MCP Server (Optional)
-The repository ships with a dedicated MCP server so Codex CLI (and other MCP-aware agents) can interact with the gateway without touching HTTP endpoints directly.
+## 10. Run the MCP Server
+
+Launch `gateway-mcp` to expose the gateway over the Model Context Protocol so agents can call search/graph/ingest/backups without raw HTTP requests.
 
 1. Install the project with dev extras if you have not already:
+
    ```bash
    pip install -e .[dev]
    ```
-2. Launch the server from your host machine (outside of Docker). The defaults assume the API is reachable at `http://localhost:8000`:
+
+2. Start the MCP server (stdio transport works well with Codex CLI):
+
    ```bash
    KM_GATEWAY_URL=http://localhost:8000 \
    KM_READER_TOKEN=${KM_READER_TOKEN:-maintainer-token} \
    KM_ADMIN_TOKEN=${KM_ADMIN_TOKEN:-maintainer-token} \
    ./bin/km-mcp --transport stdio
    ```
-   - Omit `KM_READER_TOKEN` only when auth is disabled. Supply `KM_ADMIN_TOKEN` as well if you plan to trigger ingest or backups through MCP.
-   - Use `--transport http --port 8822` to expose the server over HTTP/SSE instead of stdio.
-   - To run the adapter inside the container context (so helpers like `/workspace/repo/bin/km-backup` are available), use `./bin/km-mcp-container` instead of `./bin/km-mcp`. Set `KM_MCP_BACKUP_SCRIPT=/workspace/repo/bin/km-backup` and `KM_MCP_REPO_ROOT=/workspace/repo` if you need custom paths.
-3. In another terminal, validate the surface by running the bundled smoke marker:
-   ```bash
-   pytest -m mcp_smoke
-   ```
-   Successful execution exercises `km-search`, `km-coverage-summary`, `km-backup-trigger`, `km-graph-node`, `km-graph-subsystem`, and `km-graph-search` through the MCP layer and increments the Prometheus metrics `km_mcp_requests_total`, `km_mcp_request_seconds`, and `km_mcp_failures_total`.
 
-For Codex CLI configuration, container tips (including `KM_NEO4J_DATABASE=knowledge`), and advanced usage patterns, see `docs/MCP_INTEGRATION.md`.
+   - Drop `KM_READER_TOKEN` only if auth is disabled. Provide `KM_ADMIN_TOKEN` whenever you need maintainer tools (`km-ingest-*`, `km-backup-trigger`, `km-feedback-submit`).
+   - Use `--transport http --port 8822` for HTTP/SSE instead of stdio.
+   - To run inside the container, call `./bin/km-mcp-container`; it inherits the gateway environment and helper paths.
+
+   | Tool | Scope | Purpose |
+   |------|-------|---------|
+   | `km-search` | reader | Hybrid search with scoring breakdown and optional graph context. |
+   | `km-graph-node` | reader | Fetch a node and relationships by ID (`DesignDoc:docs/...`). |
+   | `km-graph-subsystem` | reader | Inspect subsystem metadata, related nodes, and artifacts. |
+   | `km-graph-search` | reader | Term search across graph entities. |
+   | `km-coverage-summary` | reader | Retrieve the latest ingestion coverage snapshot. |
+   | `km-ingest-status` / `km-ingest-trigger` | maintainer | Inspect or run ingestion profiles. |
+   | `km-backup-trigger` | maintainer | Invoke the backup helper to create a state archive. |
+   | `km-feedback-submit` | maintainer | Record relevance votes for ranking telemetry. |
+
+3. In another terminal, validate the surface:
+
+   ```bash
+   pytest -m mcp_smoke --maxfail=1 --disable-warnings
+   ```
+
+   The smoke slice exercises the core tools above and increments MCP metrics (`km_mcp_requests_total`, `km_mcp_request_seconds`, `km_mcp_failures_total`) exposed at `/metrics`.
+
+For Codex CLI configuration (including container-scoped tips and token handling), see `docs/MCP_INTEGRATION.md`.
