@@ -33,6 +33,23 @@ Prefer the detailed walkthrough in `docs/QUICK_START.md`. Summary:
 
 The appliance ships with permissive defaults so it works out of the box (Neo4j user/password `neo4j` / `neo4jadmin`, API auth disabled, no maintainer tokens). If you care even slightly about privacy or are running anywhere beyond a throwaway demo, override those credentials immediately—set `KM_NEO4J_PASSWORD`, enable `KM_AUTH_ENABLED=true`, and hard-code reader/maintainer tokens before exposing the stack to real data.
 
+**Quick hardening checklist**
+
+1. Pick new credentials and tokens (e.g., export the following before `bin/km-run`):
+
+   ```bash
+   export KM_NEO4J_PASSWORD='s3cure-pass'
+   export KM_AUTH_ENABLED='true'
+   export KM_READER_TOKEN='reader-token-uuid'
+   export KM_ADMIN_TOKEN='maintainer-token-uuid'
+   ```
+
+   The entrypoint automatically configures Neo4j with the values from `KM_NEO4J_USER`/`KM_NEO4J_PASSWORD`, so no manual `cypher-shell` work is required.
+
+2. If a container is already running with the defaults, stop it, remove the old state (Neo4j stores the password hash on disk), re-export the environment variables above, and restart with `bin/km-run`. The new password will be applied as Neo4j initialises on boot.
+
+3. Update any CLI or MCP clients to pass the new maintainer token when invoking admin endpoints (`KM_AUTH_ENABLED=true` enforces bearer tokens for `/graph/cypher`, `/metrics`, `/coverage`, ingest/backup triggers, etc.).
+
 ## Repository Layout
 
 - `docs/` — Specifications, architecture design, implementation plan, and risk mitigation playbook.
