@@ -34,4 +34,4 @@ MIT License. Reuse with attribution; no warranty.
 
 ### Who maintains this?
 
-Community contributors. Response times are best-effort; monitor RELEASE.md and changelog for updates.
+John Morrissey (<john@foundryside.dev>). Response times are best-effort; monitor `RELEASE.md` and the changelog for updates.
