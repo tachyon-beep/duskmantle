@@ -13,7 +13,7 @@ jobs:
   build-and-package:
     runs-on: ubuntu-latest
     env:
-      RUN_NEO4J_SLICE: ${{ vars.RUN_NEO4J_SLICE || 'false' }}
+      RUN_NEO4J_SLICE: ${{ vars.RUN_NEO4J_SLICE || 'true' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
