@@ -75,4 +75,4 @@ jobs:
         run: |
           docker logs km-observability || true
           docker rm -f km-observability || true
-          rm -rf observability-data
+          sudo rm -rf observability-data
