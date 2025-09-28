@@ -89,8 +89,13 @@ bin/km-watch --interval 15 \
 ### Summarise Recent Changes
 
 ```bash
-km-coverage-summary {} | jq '{artifacts, chunks, missing, timestamp}'
-km-search '{"query":"release checklist","limit":3}' | jq '.results[] | {id, score}'
+km-coverage-summary {}
+# Optionally pretty-print (run as a separate command):
+# km-coverage-summary {} | jq '{artifacts, chunks, missing, timestamp}'
+
+km-search '{"query":"release checklist","limit":3}'
+# Optional jq filter:
+# km-search '{"query":"release checklist","limit":3}' | jq '.results[] | {id, score}'
 ```
 
 ### Smoke-Test the MCP Surface

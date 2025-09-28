@@ -10,6 +10,14 @@ This repository packages a turnkey knowledge management stack that bundles the K
 - **MCP-native interface:** Codex CLI (and other MCP clients) can call search, graph, ingest, backup, and feedback tools without touching raw HTTP APIs.
 - **Offline ready:** Embedding models and dependencies are vendored so the appliance runs in air-gapped environments.
 
+## LLM Agent Workflow
+
+1. Run `bin/km-bootstrap`. It pulls the latest `ghcr.io/tachyon-beep/duskmantle-km` image, provisions `.duskmantle/{config,data,backups}`, and generates fresh credentials.
+2. Drop or symlink the repositories, docs, or transcripts you want indexed into `.duskmantle/data/`. The container mounts this directory at `/workspace/repo` and the watcher fingerprints files so edits trigger delta ingests automatically.
+3. Monitor ingest state. Leave `bin/km-watch` running for host-side polling, or hit `/metrics` and `/healthz` (with maintainer token if auth is enabled) to verify coverage and scheduler status.
+4. Import the Codex MCP snippet from `docs/MCP_INTEGRATION.md` (or the per-tool recipes in `docs/MCP_RECIPES.md`). Any MCP-capable agent can now call `km-search`, `km-graph-*`, `km-ingest-*`, and `km-feedback-submit` without bespoke glue code.
+5. Exercise the surface using the MCP smoke recipe (`docs/MCP_RECIPES.md` section 3) or run `pytest -m mcp_smoke`. `/search` responses include a `metadata.feedback_prompt`; keep submitting feedback via `km-feedback-submit` until the ranking telemetry is healthy.
+
 ## Core Capabilities
 
 - **End-to-end ingestion** – discovers repository artifacts, normalises metadata, and writes to Qdrant and Neo4j with constraint enforcement.
@@ -20,7 +28,9 @@ This repository packages a turnkey knowledge management stack that bundles the K
 
 ## Quick Start
 
-Prefer the detailed walkthrough in `docs/QUICK_START.md`. Summary (or simply run `bin/km-bootstrap` to let the repo pull the latest image, generate credentials, and start the container automatically):
+Prefer the detailed walkthrough in `docs/QUICK_START.md`. Agents should follow the **LLM Agent Workflow** above; dive into the manual steps below only when customising the container build, mounts, or runtime settings.
+
+Summary (or simply run `bin/km-bootstrap` to let the repo pull the latest image, generate credentials, and start the container automatically):
 
 1. Prepare working directories: `mkdir -p .duskmantle/{config,data}`. Copy or symlink the content you want indexed into `.duskmantle/data/` (this path is mounted at `/workspace/repo`).
 2. Build the container with `scripts/build-image.sh duskmantle/km:dev` (BuildKit enabled by default).
