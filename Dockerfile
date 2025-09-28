@@ -10,6 +10,10 @@ ENV KM_HOME=/opt/knowledge \
     KM_ETC=/opt/knowledge/etc \
     PATH="/opt/knowledge/.venv/bin:/opt/knowledge/bin:${PATH}"
 
+# Force CPU-only PyTorch wheels to avoid pulling large CUDA toolkits during pip install
+ENV PIP_NO_CACHE_DIR=1 \
+    PIP_EXTRA_INDEX_URL=https://download.pytorch.org/whl/cpu
+
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
@@ -46,7 +50,8 @@ COPY pyproject.toml README.md .
 COPY gateway gateway
 
 RUN pip install --upgrade pip \
-    && pip install --no-cache-dir .
+    && pip install --no-cache-dir . \
+    && rm -rf /root/.cache
 
 # Copy remaining project assets (docs, infra, etc.)
 COPY docs docs
