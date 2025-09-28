@@ -56,9 +56,6 @@ jobs:
           docker tag duskmantle/km:${TAG} "$image"
           docker push "$image"
 
-      - name: Save docker image
-        run: docker save duskmantle/km:${{ github.ref_name }} -o dist/duskmantle-km.tar
-
       - name: Generate checksums
         run: |
           scripts/checksums.sh dist/release dist/SHA256SUMS
@@ -93,8 +90,6 @@ jobs:
           draft: true
           files: |
             dist/release/*.whl
-            dist/release/*.tar.gz
             dist/SHA256SUMS
             dist/IMAGE_SHA256SUMS
-            dist/duskmantle-km.tar
             CHANGELOG.md
