@@ -29,6 +29,10 @@ Prefer the detailed walkthrough in `docs/QUICK_START.md`. Summary:
 5. Use `bin/km-backup` to snapshot the state directory before upgrades; restore with a simple `tar -xzf` into `KM_DATA_DIR`.
 6. Run `./infra/smoke-test.sh duskmantle/km:dev` to build, launch, ingest, and validate coverage end-to-end.
 
+### Security Defaults
+
+The appliance ships with permissive defaults so it works out of the box (Neo4j user/password `neo4j` / `neo4jadmin`, API auth disabled, no maintainer tokens). If you care even slightly about privacy or are running anywhere beyond a throwaway demo, override those credentials immediately—set `KM_NEO4J_PASSWORD`, enable `KM_AUTH_ENABLED=true`, and hard-code reader/maintainer tokens before exposing the stack to real data.
+
 ## Repository Layout
 
 - `docs/` — Specifications, architecture design, implementation plan, and risk mitigation playbook.
