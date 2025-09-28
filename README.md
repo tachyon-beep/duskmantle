@@ -35,13 +35,15 @@ The appliance ships with permissive defaults so it works out of the box (Neo4j u
 
 **Quick hardening checklist**
 
-1. Pick new credentials and tokens (e.g., export the following before `bin/km-run`):
+1. Generate fresh tokens (`./bin/km-make-tokens` prints ready-to-paste export lines) and pick a new Neo4j password. For example:
 
    ```bash
+   ./bin/km-make-tokens
    export KM_NEO4J_PASSWORD='s3cure-pass'
    export KM_AUTH_ENABLED='true'
-   export KM_READER_TOKEN='reader-token-uuid'
-   export KM_ADMIN_TOKEN='maintainer-token-uuid'
+   # Paste the reader/admin exports emitted above, for example:
+   export KM_READER_TOKEN='5f9f3c8f-0c1e-4e7f-9dd0-6a6c2fef71fb'
+   export KM_ADMIN_TOKEN='de0b36ba-27b2-4b0d-a01f-5bb00e2fd940'
    ```
 
    The entrypoint automatically configures Neo4j with the values from `KM_NEO4J_USER`/`KM_NEO4J_PASSWORD`, so no manual `cypher-shell` work is required.
