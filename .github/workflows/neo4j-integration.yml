@@ -39,18 +39,36 @@ jobs:
           pip install -e .[dev]
 
       - name: Wait for Neo4j
-        run: |
-          for i in {1..30}; do
-            if echo 'RETURN 1' | cypher-shell -a bolt://localhost:7687 -u neo4j -p temp-password >/dev/null 2>&1; then
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "Neo4j did not become ready in time" >&2
-          exit 1
         env:
           NEO4J_HOME: /var/lib/neo4j
-        shell: bash
+        run: |
+          set -euo pipefail
+          . .venv/bin/activate
+          python - <<'PY'
+          import os
+          import time
+          from neo4j import GraphDatabase, exceptions
+
+          uri = os.environ["NEO4J_TEST_URI"]
+          user = os.environ.get("NEO4J_TEST_USER", "neo4j")
+          password = os.environ.get("NEO4J_TEST_PASSWORD", "neo4jadmin")
+          deadline = time.time() + 180
+          last_error = None
+
+          while time.time() < deadline:
+              try:
+                  with GraphDatabase.driver(uri, auth=(user, password)) as driver:
+                      driver.verify_connectivity()
+                  print("Neo4j is ready.")
+                  break
+              except exceptions.Neo4jError as exc:
+                  last_error = exc
+              except Exception as exc:  # noqa: BLE001 - log generic failures for diagnostics
+                  last_error = exc
+              time.sleep(5)
+          else:
+              raise SystemExit(f"Neo4j did not become ready in time: {last_error}")
+          PY
 
       - name: Run Neo4j integration tests
         run: |
