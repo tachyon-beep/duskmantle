@@ -145,7 +145,15 @@ def test_graph_node_accepts_slash_encoded_ids(app: FastAPI) -> None:
 def test_graph_node_endpoint_live(
     monkeypatch: pytest.MonkeyPatch, tmp_path: pytest.PathLike[str]
 ) -> None:
-    monkeypatch.setenv("KM_NEO4J_DATABASE", "knowledge")
+    uri = os.getenv("NEO4J_TEST_URI")
+    user = os.getenv("NEO4J_TEST_USER", "neo4j")
+    password = os.getenv("NEO4J_TEST_PASSWORD", "neo4jadmin")
+    database = os.getenv("NEO4J_TEST_DATABASE", "knowledge")
+
+    if not uri:
+        pytest.skip("Set NEO4J_TEST_URI to run Neo4j integration tests")
+
+    monkeypatch.setenv("KM_NEO4J_DATABASE", database)
     from gateway.config.settings import get_settings
 
     repo_root = Path(tmp_path) / "repo"
@@ -153,16 +161,10 @@ def test_graph_node_endpoint_live(
     doc_path = repo_root / "docs" / "sample.md"
     doc_path.write_text("# Sample\nGraph validation doc.\n")
 
-    driver = GraphDatabase.driver(
-        os.getenv("NEO4J_TEST_URI", "bolt://localhost:7687"),
-        auth=(
-            os.getenv("NEO4J_TEST_USER", "neo4j"),
-            os.getenv("NEO4J_TEST_PASSWORD", "neo4jadmin"),
-        ),
-    )
+    driver = GraphDatabase.driver(uri, auth=(user, password))
     try:
-        MigrationRunner(driver=driver, database="knowledge").run()
-        writer = Neo4jWriter(driver, database="knowledge")
+        MigrationRunner(driver=driver, database=database).run()
+        writer = Neo4jWriter(driver, database=database)
         writer.ensure_constraints()
         pipeline = IngestionPipeline(
             qdrant_writer=None,
@@ -191,7 +193,15 @@ def test_graph_node_endpoint_live(
 def test_graph_search_endpoint_live(
     monkeypatch: pytest.MonkeyPatch, tmp_path: pytest.PathLike[str]
 ) -> None:
-    monkeypatch.setenv("KM_NEO4J_DATABASE", "knowledge")
+    uri = os.getenv("NEO4J_TEST_URI")
+    user = os.getenv("NEO4J_TEST_USER", "neo4j")
+    password = os.getenv("NEO4J_TEST_PASSWORD", "neo4jadmin")
+    database = os.getenv("NEO4J_TEST_DATABASE", "knowledge")
+
+    if not uri:
+        pytest.skip("Set NEO4J_TEST_URI to run Neo4j integration tests")
+
+    monkeypatch.setenv("KM_NEO4J_DATABASE", database)
     from gateway.config.settings import get_settings
 
     repo_root = Path(tmp_path) / "repo"
@@ -202,16 +212,10 @@ def test_graph_search_endpoint_live(
         "def handler():\n    return 'ok'\n"
     )
 
-    driver = GraphDatabase.driver(
-        os.getenv("NEO4J_TEST_URI", "bolt://localhost:7687"),
-        auth=(
-            os.getenv("NEO4J_TEST_USER", "neo4j"),
-            os.getenv("NEO4J_TEST_PASSWORD", "neo4jadmin"),
-        ),
-    )
+    driver = GraphDatabase.driver(uri, auth=(user, password))
     try:
-        MigrationRunner(driver=driver, database="knowledge").run()
-        writer = Neo4jWriter(driver, database="knowledge")
+        MigrationRunner(driver=driver, database=database).run()
+        writer = Neo4jWriter(driver, database=database)
         writer.ensure_constraints()
         pipeline = IngestionPipeline(
             qdrant_writer=None,
