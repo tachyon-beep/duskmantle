@@ -32,6 +32,38 @@ jobs:
 
       - name: Launch container
         run: |
+          mkdir -p observability-data/reports observability-data/audit
+          python - <<'PY'
+          import json
+          import os
+          import sqlite3
+          import time
+
+          state_dir = os.path.abspath("observability-data")
+          reports_dir = os.path.join(state_dir, "reports")
+          audit_dir = os.path.join(state_dir, "audit")
+          os.makedirs(reports_dir, exist_ok=True)
+          os.makedirs(audit_dir, exist_ok=True)
+
+          coverage = {
+              "generated_at": time.time(),
+              "missing_artifacts": [],
+              "summary": {
+                  "artifact_total": 0,
+                  "chunk_total": 0,
+                  "code_total": 0,
+                  "doc_total": 0,
+              },
+          }
+          with open(os.path.join(reports_dir, "coverage_report.json"), "w", encoding="utf-8") as fh:
+              json.dump(coverage, fh)
+
+          audit_path = os.path.join(audit_dir, "audit.db")
+          conn = sqlite3.connect(audit_path)
+          conn.execute("PRAGMA user_version = 0")
+          conn.commit()
+          conn.close()
+          PY
           mkdir -p observability-data
           docker run -d --name km-observability \
             -e KM_ADMIN_TOKEN=$KM_ADMIN_TOKEN \
