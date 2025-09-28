@@ -41,6 +41,8 @@ Summary (or simply run `bin/km-bootstrap` to let the repo pull the latest image,
 7. Run `./infra/smoke-test.sh duskmantle/km:dev` to build, launch, ingest, and validate coverage end-to-end.
 8. (Optional) Leave `bin/km-watch` running to detect file changes under `.duskmantle/data` and trigger ingestion automatically (pass `--metrics-port` to expose watcher metrics; the in-container watcher uses `KM_WATCH_METRICS_PORT`, default `9103`).
 
+> Maintainer actions (uploads, text capture, ingest/backup) write audit entries to `KM_STATE_PATH/audit/mcp_actions.log`. Rotate or collect the log alongside other gateway artifacts if you depend on MCP workflows.
+
 ### Security Defaults
 
 The appliance ships with permissive defaults so it works out of the box (Neo4j user/password `neo4j` / `neo4jadmin`, API auth disabled, no maintainer tokens). If you care even slightly about privacy or are running anywhere beyond a throwaway demo, override those credentials immediately—set `KM_NEO4J_PASSWORD`, enable `KM_AUTH_ENABLED=true`, and hard-code reader/maintainer tokens before exposing the stack to real data.
