@@ -72,6 +72,7 @@ Typical command flow after connecting:
 | Inspect a subsystem | `km-graph-subsystem {"name": "Ingestion", "depth": 2, "limit": 10}` | Multi-hop chains with `hops` and `path` metadata; increase `depth` for deeper graphs. |
 | Export subsystem graph | `curl -sS -H "Authorization: Bearer $KM_READER_TOKEN" $KM_GATEWAY_URL/graph/subsystems/Ingestion/graph` | Returns node/edge lists for visualising dependency connections. |
 | Detect orphaned docs | `curl -sS -H "Authorization: Bearer $KM_READER_TOKEN" $KM_GATEWAY_URL/graph/orphans?limit=20` | Lists artifacts missing BELONGS_TO/DESCRIBES/VALIDATES edges. |
+| Review lifecycle health | `km-lifecycle-report --json` | Lifecycle summary (isolated nodes, stale docs, missing tests). |
 | Fetch a design doc node | `km-graph-node {"node_id": "DesignDoc:docs/KNOWLEDGE_MANAGEMENT.md"}` | Node properties + relationships (`HAS_CHUNK`, `REFERENCES`, …). |
 | Check ingest health | `km-coverage-summary {}` | Artifact/chunk totals, missing artifacts, last run details. |
 | Trigger a rebuild | `km-ingest-trigger {"profile": "local", "dry_run": true}` | Schedules an ingest after editing `.duskmantle/data`. Drop `dry_run` for production. |

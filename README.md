@@ -142,6 +142,7 @@ Key tools (see `docs/MCP_INTERFACE_SPEC.md` for full schemas):
 | `km-graph-subsystem` | reader | Inspect subsystem details, related nodes, and artifacts. |
 | `km-graph-search` | reader | Search graph entities by term (subsystems, design docs, source files). |
 | `km-coverage-summary` | reader | Retrieve the latest coverage snapshot. |
+| `km-lifecycle-report` | maintainer | Summarise isolated graph nodes, stale design docs, and subsystems missing tests. |
 | `km-ingest-status` / `km-ingest-trigger` | maintainer | Inspect or trigger ingestion runs. |
 | `km-backup-trigger` | maintainer | Create a compressed state backup mirroring `bin/km-backup`. |
 | `km-feedback-submit` | maintainer | Record relevance votes for training datasets. |
@@ -168,7 +169,7 @@ All MCP usage is mirrored to Prometheus (`km_mcp_requests_total`, `km_mcp_reques
 ### Observability & Automation
 
 - Metrics exposed at `/metrics` (Prometheus format); audit history available at `/audit/history` (maintainer scope).
-- Coverage reports downloadable via `/coverage` or from `/opt/knowledge/var/reports/coverage_report.json`.
+- Coverage reports downloadable via `/coverage` or from `/opt/knowledge/var/reports/coverage_report.json`. Lifecycle summaries live at `/lifecycle` and the matching JSON under `/opt/knowledge/var/reports/lifecycle_report.json`.
 - `bin/km-watch` (host) or the internal watcher provides continuous ingestion; adjust cadence with `KM_WATCH_INTERVAL` / `--interval`, and expose metrics via `KM_WATCH_METRICS_PORT` or `--metrics-port`.
 - Enable OpenTelemetry tracing with `KM_TRACING_ENABLED=true`; set `KM_TRACING_ENDPOINT` for remote collectors.
 - `gateway-ingest audit-history --limit 10` summarises the last runs; add `--json` for machine output.

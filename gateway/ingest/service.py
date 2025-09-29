@@ -9,6 +9,7 @@ from qdrant_client import QdrantClient
 from gateway.config.settings import AppSettings
 from gateway.ingest.audit import AuditLogger
 from gateway.ingest.coverage import write_coverage_report
+from gateway.ingest.lifecycle import LifecycleConfig, build_graph_service, write_lifecycle_report
 from gateway.ingest.neo4j_writer import Neo4jWriter
 from gateway.ingest.pipeline import IngestionConfig, IngestionPipeline, IngestionResult
 from gateway.ingest.qdrant_writer import QdrantWriter
@@ -48,10 +49,12 @@ def execute_ingestion(
     audit_logger = None
     audit_path = None
     coverage_path = None
+    lifecycle_path = None
     ledger_path = state_path / "reports" / "artifact_ledger.json"
     if not dry:
         audit_path = state_path / "audit" / "audit.db"
         coverage_path = state_path / "reports" / "coverage_report.json"
+        lifecycle_path = state_path / "reports" / "lifecycle_report.json"
         audit_logger = AuditLogger(audit_path)
 
     config = IngestionConfig(
@@ -73,6 +76,10 @@ def execute_ingestion(
 
     pipeline = IngestionPipeline(qdrant_writer=qdrant_writer, neo4j_writer=neo4j_writer, config=config)
 
+    graph_service = None
+    if driver is not None and settings.lifecycle_report_enabled:
+        graph_service = build_graph_service(driver=driver, database=settings.neo4j_database, cache_ttl=0)
+
     try:
         if neo4j_writer and not dry:
             neo4j_writer.ensure_constraints()
@@ -85,6 +92,17 @@ def execute_ingestion(
                 config,
                 output_path=coverage_path,
                 history_limit=settings.coverage_history_limit,
+            )
+        if not dry and settings.lifecycle_report_enabled and lifecycle_path is not None:
+            lifecycle_config = LifecycleConfig(
+                output_path=lifecycle_path,
+                stale_days=settings.lifecycle_stale_days,
+                graph_enabled=graph_service is not None,
+            )
+            write_lifecycle_report(
+                result,
+                config=lifecycle_config,
+                graph_service=graph_service,
             )
         return result
     finally:

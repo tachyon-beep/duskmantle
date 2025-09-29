@@ -82,6 +82,15 @@ TOOL_USAGE = {
             """
         ).strip(),
     },
+    "km-lifecycle-report": {
+        "description": "Summarise isolated nodes, stale docs, and missing tests",
+        "details": dedent(
+            """
+            No parameters. Mirrors the `/lifecycle` endpoint and highlights isolated graph nodes, stale design docs, and subsystems missing tests.
+            Example: `/sys mcp run duskmantle km-lifecycle-report`.
+            """
+        ).strip(),
+    },
     "km-ingest-status": {
         "description": "Show the most recent ingest run (profile, status, timestamps)",
         "details": dedent(
@@ -349,6 +358,21 @@ def build_server(settings: MCPSettings | None = None) -> FastMCP:
             raise
         _record_success("km-coverage-summary", start)
         return summary
+
+    @server.tool(name="km-lifecycle-report", description=TOOL_USAGE["km-lifecycle-report"]["description"])
+    async def km_lifecycle_report(context: Context | None = None) -> dict[str, Any]:
+        start = perf_counter()
+        try:
+            report = await state.require_client().lifecycle_report()
+        except GatewayRequestError as exc:
+            await _report_error(context, f"Lifecycle query failed: {exc.detail}")
+            _record_failure("km-lifecycle-report", exc, start)
+            raise
+        except Exception as exc:  # pragma: no cover - defensive
+            _record_failure("km-lifecycle-report", exc, start)
+            raise
+        _record_success("km-lifecycle-report", start)
+        return report
 
     @server.tool(name="km-ingest-status", description=TOOL_USAGE["km-ingest-status"]["description"])
     async def km_ingest_status(

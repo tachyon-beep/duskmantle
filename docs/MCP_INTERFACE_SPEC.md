@@ -17,6 +17,7 @@ This specification defines the Model Context Protocol (MCP) surface for the Dusk
 | `km-graph-subsystem` | reader | Inspect subsystem details, related nodes, and artifacts. |
 | `km-graph-search` | reader | Search graph entities by term (subsystems, design docs, source files). |
 | `km-coverage-summary` | reader | Retrieve latest coverage summary (artifacts, chunks, missing list). |
+| `km-lifecycle-report` | maintainer | Summarise isolated graph nodes, stale design docs, and subsystems missing tests. |
 | `km-ingest-status` | maintainer | Report last ingest run (run ID, success, counts, timestamp). |
 | `km-ingest-trigger` | maintainer | Force an ingest run using the configured profile. |
 | `km-feedback-submit` | maintainer | Record feedback on search results (vote, note, context). |
@@ -49,6 +50,9 @@ The MCP server exposes the following helper summaries. These mirror the metadata
 - `km-coverage-summary`
   - No parameters. Mirrors `/coverage` and returns artifact/chunk counts plus freshness stats.
   - Example: `/sys mcp run duskmantle km-coverage-summary`.
+- `km-lifecycle-report`
+  - No parameters. Mirrors `/lifecycle` and lists isolated graph nodes, stale design docs (by age threshold), and subsystems missing tests.
+  - Example: `/sys mcp run duskmantle km-lifecycle-report`.
 - `km-ingest-status`
   - Optional: `profile` filter (default: latest run regardless of profile).
   - Example: `/sys mcp run duskmantle km-ingest-status --profile demo`.

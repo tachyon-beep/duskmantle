@@ -144,14 +144,14 @@ A single work package covers both file and text-based content ingestion via MCP.
   - Task 4.1.2 Add endpoints for orphan nodes and subsystem dependency graphs. **(Completed)**
   - Task 4.1.3 Document new graph queries and provide recipe examples. **(Completed)**
 - **Step 4.2 Coverage & lifecycle dashboards**
-  - Task 4.2.1 Generate reports highlighting isolated nodes, stale docs, missing tests.
-  - Task 4.2.2 Expose summaries via MCP/CLI recipe (e.g., `km-lifecycle-report`).
+  - Task 4.2.1 Generate reports highlighting isolated nodes, stale docs, missing tests. **(Completed)**
+  - Task 4.2.2 Expose summaries via MCP/CLI recipe (e.g., `km-lifecycle-report`). **(Completed)**
 
 ### Phase 5 – “Knowledge recipes” & MCP automation
 
 - **Step 5.1 Recipe design**
-  - Task 5.1.1 Catalogue common multi-step workflows (ingest → search → backup).
-  - Task 5.1.2 Define recipe schema/execution harness (MCP script bundle or CLI).
+  - Task 5.1.1 Catalogue common multi-step workflows (ingest → search → backup). **(Completed – see docs/MCP_RECIPES_DESIGN.md §1)**
+  - Task 5.1.2 Define recipe schema/execution harness (MCP script bundle or CLI). **(Completed – design baselined in docs/MCP_RECIPES_DESIGN.md §2)**
 - **Step 5.2 Implementation**
   - Task 5.2.1 Build recipe runner to orchestrate chained MCP calls with logging/rollback.
   - Task 5.2.2 Provide baseline recipes (stale-doc audit, subsystem freshness, release prep).

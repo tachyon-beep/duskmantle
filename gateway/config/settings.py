@@ -80,6 +80,9 @@ class AppSettings(BaseSettings):
     coverage_enabled: bool = Field(True, alias="KM_COVERAGE_ENABLED")
     coverage_history_limit: int = Field(5, alias="KM_COVERAGE_HISTORY_LIMIT")
 
+    lifecycle_report_enabled: bool = Field(True, alias="KM_LIFECYCLE_REPORT_ENABLED")
+    lifecycle_stale_days: int = Field(30, alias="KM_LIFECYCLE_STALE_DAYS")
+
     tracing_enabled: bool = Field(False, alias="KM_TRACING_ENABLED")
     tracing_endpoint: str | None = Field(None, alias="KM_TRACING_ENDPOINT")
     tracing_headers: str | None = Field(None, alias="KM_TRACING_HEADERS")
@@ -212,6 +215,17 @@ class AppSettings(BaseSettings):
     def _validate_history_limit(cls, value: int) -> int:
         if value < 1:
             return 1
+        if value > 100:
+            return 100
+        return value
+
+    @field_validator("lifecycle_stale_days")
+    @classmethod
+    def _validate_lifecycle_stale(cls, value: int) -> int:
+        if value < 0:
+            return 0
+        if value > 365:
+            return 365
         return value
 
     @field_validator("ingest_parallel_workers", "ingest_max_pending_batches", mode="before")

@@ -96,6 +96,13 @@ class GatewayClient:
             require_admin=True,
         )
 
+    async def lifecycle_report(self) -> dict[str, Any]:
+        return await self._request(
+            "GET",
+            "/lifecycle",
+            require_admin=True,
+        )
+
     async def audit_history(self, *, limit: int = 10) -> list[dict[str, Any]]:
         data = await self._request(
             "GET",

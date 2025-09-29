@@ -52,6 +52,7 @@ gateway-mcp = "gateway.mcp.cli:main"
 gateway-ingest = "gateway.ingest.cli:main"
 gateway-graph = "gateway.graph.cli:main"
 gateway-search = "gateway.search.cli:main"
+gateway-lifecycle = "gateway.lifecycle.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

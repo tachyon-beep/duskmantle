@@ -8,6 +8,7 @@ This guide explains how to operate and monitor the Duskmantle Knowledge Gateway.
 - **Tracing:** Optional OpenTelemetry spans that capture HTTP requests and ingestion stages. Export spans to an OTLP collector, APM tool, or stdout.
 - **Audit Ledger:** SQLite database under `/opt/knowledge/var/audit/audit.db` with per-run provenance records accessible via `/audit/history`.
 - **Coverage Report:** Accessible via `/coverage` (maintainer scope) or `/opt/knowledge/var/reports/coverage_report.json`, detailing indexed artifacts, missing coverage, and the `removed_artifacts` list for files deleted from the repo but recently cleaned from the graph. Historical snapshots live under `/opt/knowledge/var/reports/history/coverage_*.json` and are pruned to the limit defined by `KM_COVERAGE_HISTORY_LIMIT`.
+- **Lifecycle Report:** Available at `/lifecycle` (maintainer scope) or `/opt/knowledge/var/reports/lifecycle_report.json`, capturing isolated graph nodes, stale design docs (older than `KM_LIFECYCLE_STALE_DAYS`), and subsystems missing tests. Use it to prioritise authoring or tagging work after each ingest.
 
 ## 2. Metrics Reference
 Expose metrics with:

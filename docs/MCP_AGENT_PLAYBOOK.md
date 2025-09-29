@@ -77,10 +77,6 @@ km-coverage-summary {}
 
 These endpoints report the latest run id, duration, and artifact/chunk counts. Pair with `/metrics` (requires maintainer token) to watch Prometheus counters such as `km_mcp_upload_total` or ingest throughput.
 
-### 3.5 Review Audit Trail
-
-Every successful `km-upload` and `km-storetext` call appends a JSON line to `KM_STATE_PATH/audit/mcp_actions.log`. Inspect this file when reconciling changes or debugging ingest triggers.
-
 ### 3.4 Provide Feedback for Ranking
 
 ```bash
@@ -94,6 +90,14 @@ km-feedback-submit '{
 ```
 
 Aim to provide balanced votes (-1 to 1) so search telemetry can train improved ranking weights. Use `km-help {"tool": "km-feedback-submit", "include_spec": true}` for full schema details.
+
+### 3.5 Review Audit Trail
+
+Every successful `km-upload` and `km-storetext` call appends a JSON line to `KM_STATE_PATH/audit/mcp_actions.log`. Inspect this file when reconciling changes or debugging ingest triggers. Pair it with `km-ingest-status` to correlate ingest runs and use future recipe support to automate audit triage.
+
+### 3.6 Knowledge Recipes (upcoming)
+
+Recipes encapsulate repeatable MCP sequences (daily health, stale audit, release prep). Once the `gateway-recipes` harness lands you will be able to run them via ``km-recipe-run`` or an agent call to `km-recipe-run {"recipe": "release-prep"}`. Design details live in `docs/MCP_RECIPES_DESIGN.md`.
 
 ## 4. Troubleshooting
 

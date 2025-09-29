@@ -317,6 +317,19 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=500, detail="Coverage report is invalid JSON") from exc
         return JSONResponse(data)
 
+    @app.get("/lifecycle", dependencies=[Depends(require_maintainer)], tags=["observability"])
+    @limiter.limit("30/minute")
+    def lifecycle_report(request: Request) -> JSONResponse:  # noqa: ARG001
+        report_path = settings.state_path / "reports" / "lifecycle_report.json"
+        if not report_path.exists():
+            raise HTTPException(status_code=404, detail="Lifecycle report not found")
+
+        try:
+            data = json.loads(report_path.read_text(encoding="utf-8"))
+        except ValueError as exc:  # pragma: no cover - defensive
+            raise HTTPException(status_code=500, detail="Lifecycle report is invalid JSON") from exc
+        return JSONResponse(data)
+
     @app.post("/search", dependencies=[Depends(require_reader)], tags=["search"])
     @limiter.limit(metrics_limit)
     def search_endpoint(

@@ -185,6 +185,23 @@ async def test_graph_tools_delegate_to_client_and_record_metrics(mcp_server):
 
 
 @pytest.mark.asyncio
+async def test_lifecycle_report_records_metrics(mcp_server):
+    server, state = mcp_server
+
+    class StubClient:
+        async def lifecycle_report(self):
+            return {"missing_tests": []}
+
+    state.client = StubClient()
+
+    tool = await server.get_tool("km-lifecycle-report")
+    report = await tool.fn(context=None)
+
+    assert report == {"missing_tests": []}
+    assert _counter_value(MCP_REQUESTS_TOTAL, "km-lifecycle-report", "success") == 1
+
+
+@pytest.mark.asyncio
 async def test_coverage_summary_records_metrics(mcp_server):
     server, state = mcp_server
 
