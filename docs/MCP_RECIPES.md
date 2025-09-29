@@ -1,3 +1,17 @@
+## 0. Running Recipes
+
+Use the `gateway-recipes` CLI (or `bin/km-recipe-run`) to execute YAML-based workflows.
+
+```bash
+# list available recipes
+gateway-recipes list
+
+# run release prep with a custom profile
+km-recipe-run release-prep --var profile=staging
+```
+
+Each run records a transcript under `/opt/knowledge/var/audit/recipes.log`. Recipes mutate state through MCP tools, so ensure you have maintainer credentials loaded (`KM_ADMIN_TOKEN`).
+
 # MCP Recipes
 
 Practical examples for calling the gateway’s MCP tools. Assumptions:
@@ -72,6 +86,7 @@ Typical command flow after connecting:
 | Inspect a subsystem | `km-graph-subsystem {"name": "Ingestion", "depth": 2, "limit": 10}` | Multi-hop chains with `hops` and `path` metadata; increase `depth` for deeper graphs. |
 | Export subsystem graph | `curl -sS -H "Authorization: Bearer $KM_READER_TOKEN" $KM_GATEWAY_URL/graph/subsystems/Ingestion/graph` | Returns node/edge lists for visualising dependency connections. |
 | Detect orphaned docs | `curl -sS -H "Authorization: Bearer $KM_READER_TOKEN" $KM_GATEWAY_URL/graph/orphans?limit=20` | Lists artifacts missing BELONGS_TO/DESCRIBES/VALIDATES edges. |
+| Run release prep recipe | `km-recipe-run release-prep --var profile=release` | Triggers ingest, waits for completion, captures coverage/lifecycle, and creates a backup archive. |
 | Review lifecycle health | `km-lifecycle-report --json` | Lifecycle summary (isolated nodes, stale docs, missing tests). |
 | Fetch a design doc node | `km-graph-node {"node_id": "DesignDoc:docs/KNOWLEDGE_MANAGEMENT.md"}` | Node properties + relationships (`HAS_CHUNK`, `REFERENCES`, …). |
 | Check ingest health | `km-coverage-summary {}` | Artifact/chunk totals, missing artifacts, last run details. |
@@ -81,6 +96,15 @@ Typical command flow after connecting:
 | Capture ad-hoc notes | `km-storetext {"title": "Daily Notes", "content": "- Action items"}` | Persists text as markdown with optional metadata. |
 
 ## 3. Automation Patterns
+
+## 3.1 Recipe Bundles
+
+- **stale-audit** – fetches the lifecycle report and highlights stale docs/isolated nodes.
+- **subsystem-freshness** – inspects a subsystem graph (default `ReleaseTooling`) and surfaces recent artefacts.
+- **release-prep** – orchestrates ingest, coverage, lifecycle checks, smoke search, and backup creation prior to tagging.
+
+Run with `km-recipe-run <name>` or `gateway-recipes run <name>`. Use `--dry-run` to preview steps and `--var key=value` to override defaults.
+
 
 ### Refresh Ingest After Repo Changes
 

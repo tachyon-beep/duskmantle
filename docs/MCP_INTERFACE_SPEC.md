@@ -22,6 +22,7 @@ This specification defines the Model Context Protocol (MCP) surface for the Dusk
 | `km-ingest-trigger` | maintainer | Force an ingest run using the configured profile. |
 | `km-feedback-submit` | maintainer | Record feedback on search results (vote, note, context). |
 | `km-backup-trigger` | maintainer | Trigger a backup (invokes `bin/km-backup` or equivalent API). |
+| `km-recipe-run` | maintainer | Execute a named recipe (daily health, release prep, stale audit). |
 | `km-upload` | maintainer | Copy an existing file into the knowledge workspace and optionally trigger ingest. |
 | `km-storetext` | maintainer | Persist ad-hoc text as a document within the knowledge workspace. |
 
@@ -63,6 +64,9 @@ The MCP server exposes the following helper summaries. These mirror the metadata
 - `km-backup-trigger`
   - No parameters. Requires maintainer token and returns backup archive metadata.
   - Example: `/sys mcp run duskmantle km-backup-trigger`.
+- `km-recipe-run`
+  - Required: `recipe` name. Optional: `vars` object mapping overrides. Executes the YAML recipe and returns the final outputs transcript.
+  - Example: `/sys mcp run duskmantle km-recipe-run --recipe release-prep --vars {"profile":"release"}`.
 - `km-feedback-submit`
   - Required: `request_id` and `chunk_id` (use the IDs from search responses).
   - Optional: `vote` (-1.0 to 1.0) and `note`.
@@ -139,6 +143,11 @@ The MCP server exposes the following helper summaries. These mirror the metadata
 - **Response:** acknowledgement with timestamp.
 
 ### 3.9 `km-backup-trigger`
+### 3.10 `km-recipe-run`
+- **Request:** `{ "recipe": "release-prep", "vars": {"profile": "release"} }`
+- **Response:** `{ "status": "success", "outputs": {...}, "steps": [...] }` where `steps` describes each tool invocation.
+- **Errors:** `recipe_not_found`, `tool_failed`, `assert_failed`, `timeout`.
+
 - **Request:** `{ "destination": null }`
 - **Response:** `{ "archive": "backups/km-backup-20250927T195120.tgz" }`
 

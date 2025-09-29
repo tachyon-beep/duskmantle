@@ -95,9 +95,23 @@ Aim to provide balanced votes (-1 to 1) so search telemetry can train improved r
 
 Every successful `km-upload` and `km-storetext` call appends a JSON line to `KM_STATE_PATH/audit/mcp_actions.log`. Inspect this file when reconciling changes or debugging ingest triggers. Pair it with `km-ingest-status` to correlate ingest runs and use future recipe support to automate audit triage.
 
-### 3.6 Knowledge Recipes (upcoming)
+### 3.6 Knowledge Recipes
 
-Recipes encapsulate repeatable MCP sequences (daily health, stale audit, release prep). Once the `gateway-recipes` harness lands you will be able to run them via ``km-recipe-run`` or an agent call to `km-recipe-run {"recipe": "release-prep"}`. Design details live in `docs/MCP_RECIPES_DESIGN.md`.
+Use `km-recipe-run <name>` (or `gateway-recipes run <name>`) to execute bundled workflows. The baseline recipes include:
+
+- `stale-audit` – pull lifecycle signals for stale docs/isolated nodes.
+- `subsystem-freshness` – inspect a subsystem graph and surface recent artefacts.
+- `release-prep` – trigger ingest, wait for completion, capture coverage/lifecycle, then take a backup.
+
+Example:
+
+```bash
+km-recipe-run release-prep --var profile=staging
+```
+
+Every execution writes to `/opt/knowledge/var/audit/recipes.log`; tail it to monitor automation runs or escalate failures.
+
+More details live in `docs/MCP_RECIPES_DESIGN.md` and `docs/MCP_RECIPES.md`.
 
 ## 4. Troubleshooting
 

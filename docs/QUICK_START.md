@@ -90,6 +90,7 @@ For production, omit `--dummy-embeddings` (requires model download).
 - `curl http://localhost:8000/metrics` — Prometheus metrics (requires `KM_ADMIN_TOKEN` if auth enabled).
 - `curl http://localhost:8000/coverage` — latest coverage report (maintainer scope).
 - `curl http://localhost:8000/lifecycle` — lifecycle snapshot (isolated nodes, stale docs, missing tests; maintainer scope).
+- `gateway-recipes list` — enumerate available automation recipes (use `km-recipe-run <name>` to execute).
 
 Refer to `docs/OBSERVABILITY_GUIDE.md` for alerting thresholds and troubleshooting (e.g., auth 401/403 diagnostics, scheduler skews).
 
@@ -178,6 +179,7 @@ Launch `gateway-mcp` to expose the gateway over the Model Context Protocol so ag
    | `km-coverage-summary` | reader | Retrieve the latest ingestion coverage snapshot. |
 | `km-lifecycle-report` | maintainer | Summarise isolated graph nodes, stale docs, and subsystems missing tests. |
    | `km-ingest-status` / `km-ingest-trigger` | maintainer | Inspect or run ingestion profiles. |
+| `km-recipe-run` | maintainer | Execute predefined automation workflows (e.g., release-prep). |
    | `km-backup-trigger` | maintainer | Invoke the backup helper to create a state archive. |
    | `km-feedback-submit` | maintainer | Record relevance votes for ranking telemetry. |
 

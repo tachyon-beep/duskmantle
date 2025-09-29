@@ -1,0 +1,61 @@
+version: 1
+name: release-prep
+summary: Prepare for a release by verifying ingest health, coverage, lifecycle status, and taking a backup.
+variables:
+  profile: release
+  search_query: "release checklist"
+steps:
+  - id: trigger-ingest
+    tool: km-ingest-trigger
+    params:
+      profile: ${vars.profile}
+      dry_run: false
+    expect:
+      result.status: success
+    capture:
+      - name: ingest_run
+        path: result.run
+  - id: wait-ingest
+    wait:
+      tool: km-ingest-status
+      params:
+        profile: ${vars.profile}
+      until:
+        path: status
+        equals: ok
+      interval_seconds: 10
+      timeout_seconds: 900
+  - id: coverage
+    tool: km-coverage-summary
+    capture:
+      - name: coverage
+        path: result
+  - id: lifecycle
+    tool: km-lifecycle-report
+    capture:
+      - name: lifecycle
+        path: result
+  - id: smoke-search
+    tool: km-search
+    params:
+      query: ${vars.search_query}
+      limit: 3
+    assert:
+      - path: result.results
+        exists: True
+      - path: result.results[0]
+        exists: True
+    capture:
+      - name: search
+        path: result
+  - id: backup
+    tool: km-backup-trigger
+    capture:
+      - name: backup
+        path: result
+outputs:
+  ingest_run: ${captures.ingest_run}
+  coverage: ${captures.coverage}
+  lifecycle: ${captures.lifecycle}
+  smoke_search: ${captures.search}
+  backup_archive: ${captures.backup.archive}

@@ -153,9 +153,9 @@ A single work package covers both file and text-based content ingestion via MCP.
   - Task 5.1.1 Catalogue common multi-step workflows (ingest → search → backup). **(Completed – see docs/MCP_RECIPES_DESIGN.md §1)**
   - Task 5.1.2 Define recipe schema/execution harness (MCP script bundle or CLI). **(Completed – design baselined in docs/MCP_RECIPES_DESIGN.md §2)**
 - **Step 5.2 Implementation**
-  - Task 5.2.1 Build recipe runner to orchestrate chained MCP calls with logging/rollback.
-  - Task 5.2.2 Provide baseline recipes (stale-doc audit, subsystem freshness, release prep).
-  - Task 5.2.3 Document recipes in MCP playbook and add validation tests.
+  - Task 5.2.1 Build recipe runner to orchestrate chained MCP calls with logging/rollback. **(Completed – implemented via `gateway/recipes/` executor)**
+  - Task 5.2.2 Provide baseline recipes (stale-doc audit, subsystem freshness, release prep). **(Completed)**
+  - Task 5.2.3 Document recipes in MCP playbook and add validation tests. **(Completed)**
 - **Step 5.3 UI spike (optional)**
   - Task 5.3.1 Prototype HTML report or lightweight UI for search/graph browsing.
   - Task 5.3.2 Evaluate integration cost; schedule standalone milestone if pursued.

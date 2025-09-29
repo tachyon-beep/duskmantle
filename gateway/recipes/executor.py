@@ -3,19 +3,22 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import time
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, AsyncIterator, Callable, Dict
+from types import TracebackType
 
 import yaml
+
 from gateway.mcp.backup import trigger_backup
+from gateway.mcp.client import GatewayClient
 from gateway.mcp.config import MCPSettings
 from gateway.mcp.ingest import latest_ingest_status, trigger_ingest
-from gateway.mcp.client import GatewayClient
 
-from .models import Capture, Condition, Recipe, RecipeStep, WaitConfig
+from .models import Capture, Condition, Recipe, WaitConfig
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +32,7 @@ class StepResult:
     step_id: str
     status: str
     duration_seconds: float
-    result: Any | None = None
+    result: object | None = None
     message: str | None = None
 
 
@@ -40,9 +43,9 @@ class RecipeRunResult:
     finished_at: float
     success: bool
     steps: list[StepResult] = field(default_factory=list)
-    outputs: dict[str, Any] = field(default_factory=dict)
+    outputs: dict[str, object] = field(default_factory=dict)
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, object]:
         return {
             "recipe": self.recipe.name,
             "started_at": self.started_at,
@@ -66,36 +69,36 @@ class RecipeRunResult:
 class ToolExecutor:
     """Abstract tool executor interface."""
 
-    async def call(self, tool: str, params: dict[str, Any]) -> Any:  # pragma: no cover - interface
+    async def call(self, tool: str, params: dict[str, object]) -> object:  # pragma: no cover - interface
         raise NotImplementedError
 
-    async def __aenter__(self) -> "ToolExecutor":  # pragma: no cover - interface
+    async def __aenter__(self) -> ToolExecutor:  # pragma: no cover - interface
         return self
 
-    async def __aexit__(self, exc_type, exc, tb) -> None:  # pragma: no cover - interface
+    async def __aexit__(self, exc_type: type[BaseException] | None, exc: BaseException | None, tb: TracebackType | None) -> None:  # pragma: no cover - interface
         return None
 
 
 class GatewayToolExecutor(ToolExecutor):
     """Execute tools by reusing gateway HTTP/MCP helpers."""
 
-    def __init__(self, settings: MCPSettings):
+    def __init__(self, settings: MCPSettings) -> None:
         self.settings = settings
         self._client_manager: GatewayClient | None = None
         self._client: GatewayClient | None = None
 
-    async def __aenter__(self) -> "GatewayToolExecutor":
+    async def __aenter__(self) -> GatewayToolExecutor:
         self._client_manager = GatewayClient(self.settings)
         self._client = await self._client_manager.__aenter__()
         return self
 
-    async def __aexit__(self, exc_type, exc, tb) -> None:
+    async def __aexit__(self, exc_type: type[BaseException] | None, exc: BaseException | None, tb: TracebackType | None) -> None:
         if self._client_manager is not None:
             await self._client_manager.__aexit__(exc_type, exc, tb)
         self._client = None
         self._client_manager = None
 
-    async def call(self, tool: str, params: dict[str, Any]) -> Any:
+    async def call(self, tool: str, params: dict[str, object]) -> object:
         if self._client is None:
             raise RuntimeError("Gateway client not initialised")
         client = self._client
@@ -150,13 +153,13 @@ class GatewayToolExecutor(ToolExecutor):
         raise RecipeExecutionError(f"Unsupported tool '{tool}' in recipe")
 
 
-def _resolve_template(value: Any, context: dict[str, Any]) -> Any:
+def _resolve_template(value: object, context: dict[str, object]) -> object:
     if isinstance(value, str):
         if value.startswith("${") and value.endswith("}") and value.count("${") == 1:
             expr = value[2:-1].strip()
             return _lookup_expression(expr, context)
 
-        def replace(match):
+        def replace(match: re.Match[str]) -> str:
             expr_inner = match.group(1)
             resolved = _lookup_expression(expr_inner.strip(), context)
             return str(resolved)
@@ -172,10 +175,14 @@ def _resolve_template(value: Any, context: dict[str, Any]) -> Any:
     return value
 
 
-def _lookup_expression(expr: str, context: dict[str, Any]) -> Any:
+def _lookup_expression(expr: str, context: dict[str, object]) -> object:
+    if expr in context.get("vars", {}):
+        return context["vars"][expr]
+    if expr in context:
+        return context[expr]
     parts = expr.split(".")
     root = context
-    current: Any = None
+    current: object | None = None
     for index, part in enumerate(parts):
         if index == 0:
             if part == "vars":
@@ -184,57 +191,67 @@ def _lookup_expression(expr: str, context: dict[str, Any]) -> Any:
             if part == "steps":
                 current = root.get("steps", {})
                 continue
-            current = root.get(part)
-            continue
-        if isinstance(current, dict):
-            key = part
-            idx = None
-            if "[" in key:
-                base, rest = key.split("[", 1)
-                if base:
-                    current = current.get(base)
-                else:
-                    rest = "[" + rest
-                segments = [seg[:-1] for seg in rest.split("[") if seg]
-                for segment in segments:
-                    if isinstance(current, (list, tuple)):
-                        current = current[int(segment)]
-                    elif isinstance(current, dict):
-                        current = current.get(segment)
-                    else:
-                        current = None
-                        break
+            if part == "captures":
+                current = root.get("captures", {})
                 continue
-            current = current.get(key)
-        elif isinstance(current, (list, tuple)):
-            if part.isdigit():
-                current = current[int(part)]
-            else:
-                raise RecipeExecutionError(f"Cannot access key '{part}' on list")
+            if part in root:
+                current = root[part]
+                continue
+            if "result" in root and isinstance(root["result"], dict) and part in root["result"]:
+                current = root["result"][part]
+                continue
+            current = None
         else:
-            raise RecipeExecutionError(f"Cannot access '{part}' on {type(current).__name__}")
+            current = _descend(current, part)
+        if current is None:
+            break
+    if current is None and "result" in root and isinstance(root["result"], dict):
+        current = root["result"].get(expr)
+    if current is None:
+        raise RecipeExecutionError(f"Unable to resolve expression '{expr}'")
     return current
 
 
-def _evaluate_condition(result: Any, condition: Condition) -> None:
+def _descend(current: object, part: str) -> object:
+    if isinstance(current, dict):
+        key = part
+        if "[" in key:
+            base, rest = key.split("[", 1)
+            if base:
+                current = current.get(base)
+            else:
+                rest = "[" + rest
+            segments = [seg[:-1] for seg in rest.split("[") if seg]
+            for segment in segments:
+                if isinstance(current, (list, tuple)):
+                    current = current[int(segment)]
+                elif isinstance(current, dict):
+                    current = current.get(segment)
+                else:
+                    current = None
+                    break
+            return current
+        return current.get(key)
+    if isinstance(current, (list, tuple)):
+        if part.isdigit():
+            return current[int(part)]
+        raise RecipeExecutionError(f"Cannot access key '{part}' on list")
+    return None
+
+
+def _evaluate_condition(result: object, condition: Condition) -> None:
     value = _lookup_expression(condition.path, {"result": result}) if condition.path else result
     if condition.exists is not None:
         exists = value is not None
         if condition.exists != exists:
-            raise RecipeExecutionError(
-                f"Expected existence {condition.exists} for path '{condition.path}', got {exists}"
-            )
+            raise RecipeExecutionError(f"Expected existence {condition.exists} for path '{condition.path}', got {exists}")
     if condition.equals is not None and value != condition.equals:
-        raise RecipeExecutionError(
-            f"Expected {condition.path} == {condition.equals!r}, got {value!r}"
-        )
+        raise RecipeExecutionError(f"Expected {condition.path} == {condition.equals!r}, got {value!r}")
     if condition.not_equals is not None and value == condition.not_equals:
-        raise RecipeExecutionError(
-            f"Expected {condition.path} != {condition.not_equals!r}, got {value!r}"
-        )
+        raise RecipeExecutionError(f"Expected {condition.path} != {condition.not_equals!r}, got {value!r}")
 
 
-def _compute_capture(result: Any, capture: Capture) -> Any:
+def _compute_capture(result: object, capture: Capture) -> object:
     if capture.path is None:
         return result
     return _lookup_expression(capture.path, {"result": result})
@@ -246,7 +263,7 @@ class RecipeRunner:
     def __init__(
         self,
         settings: MCPSettings,
-        executor_factory: Callable[[], ToolExecutor | AsyncIterator[ToolExecutor]] | None = None,
+        executor_factory: Callable[[], ToolExecutor] | None = None,
         audit_path: Path | None = None,
     ) -> None:
         self.settings = settings
@@ -257,7 +274,7 @@ class RecipeRunner:
         self,
         recipe: Recipe,
         *,
-        variables: dict[str, Any] | None = None,
+        variables: dict[str, object] | None = None,
         dry_run: bool = False,
     ) -> RecipeRunResult:
         variables = variables or {}
@@ -275,9 +292,7 @@ class RecipeRunner:
             for step in recipe.steps:
                 params = _resolve_template(step.params, context)
                 logger.info("[recipe] step %s -> %s params=%s", step.id, step.tool or "wait", params)
-                step_results.append(
-                    StepResult(step_id=step.id, status="skipped", duration_seconds=0.0, message="dry-run")
-                )
+                step_results.append(StepResult(step_id=step.id, status="skipped", duration_seconds=0.0, message="dry-run"))
             finished = time.time()
             result = RecipeRunResult(
                 recipe=recipe,
@@ -295,7 +310,7 @@ class RecipeRunner:
                 logger.info("[recipe] executing step %s", step.id)
                 step_start = time.time()
                 try:
-                    result_payload: Any
+                    result_payload: object
                     if step.tool:
                         params = _resolve_template(step.params, context)
                         result_payload = await executor.call(step.tool, params)
@@ -310,7 +325,7 @@ class RecipeRunner:
                                     )
                         if step.asserts:
                             for cond in step.asserts:
-                                _evaluate_condition({"result": result_payload}, cond)
+                                _evaluate_condition(result_payload, cond)
                     elif step.wait:
                         result_payload = await self._execute_wait(executor, context, step.wait)
                     else:  # pragma: no cover - validator forbids this path
@@ -321,9 +336,7 @@ class RecipeRunner:
                         for capture in step.capture:
                             context["captures"][capture.name] = _compute_capture(result_payload, capture)
                     duration = time.time() - step_start
-                    step_results.append(
-                        StepResult(step_id=step.id, status="success", duration_seconds=duration, result=result_payload)
-                    )
+                    step_results.append(StepResult(step_id=step.id, status="success", duration_seconds=duration, result=result_payload))
                 except Exception as exc:  # pragma: no cover - failure path
                     duration = time.time() - step_start
                     logger.error("[recipe] step %s failed: %s", step.id, exc)
@@ -339,13 +352,16 @@ class RecipeRunner:
                     break
 
         finished = time.time()
-        outputs: dict[str, Any] = {}
+        outputs: dict[str, object] = {}
         if success:
             for key, expr in recipe.outputs.items():
-                outputs[key] = _resolve_template(expr, {
-                    **context,
-                    "outputs": outputs,
-                })
+                outputs[key] = _resolve_template(
+                    expr,
+                    {
+                        **context,
+                        "outputs": outputs,
+                    },
+                )
 
         result = RecipeRunResult(
             recipe=recipe,
@@ -363,9 +379,9 @@ class RecipeRunner:
     async def _execute_wait(
         self,
         executor: ToolExecutor,
-        context: dict[str, Any],
+        context: dict[str, object],
         wait: WaitConfig,
-    ) -> Any:
+    ) -> object:
         deadline = time.time() + wait.timeout_seconds
         attempt = 0
         params = _resolve_template(wait.params, context)
@@ -373,17 +389,17 @@ class RecipeRunner:
             attempt += 1
             payload = await executor.call(wait.tool, params)
             try:
-                _evaluate_condition({"result": payload}, wait.until)
+                _evaluate_condition(payload, wait.until)
                 logger.info("[recipe] wait condition satisfied after %s attempts", attempt)
                 return payload
             except RecipeExecutionError:
                 if time.time() >= deadline:
                     raise RecipeExecutionError(
                         f"Wait condition for tool '{wait.tool}' timed out after {attempt} attempts"
-                    )
+                    ) from None
                 await asyncio.sleep(wait.interval_seconds)
 
-    def _append_audit(self, result: RecipeRunResult, context: dict[str, Any]) -> None:
+    def _append_audit(self, result: RecipeRunResult, context: dict[str, object]) -> None:
         try:
             self.audit_path.parent.mkdir(parents=True, exist_ok=True)
             record = {
@@ -409,14 +425,10 @@ class RecipeRunner:
 
 
 @asynccontextmanager
-def _executor_cm(factory: Callable[[], ToolExecutor | AsyncIterator[ToolExecutor]]) -> AsyncIterator[ToolExecutor]:
-    obj = factory()
-    if hasattr(obj, "__aenter__"):
-        async with obj as executor:
-            yield executor
-    else:  # pragma: no cover - for factories returning async generators
-        async with obj:  # type: ignore[misc]
-            yield obj
+async def _executor_cm(factory: Callable[[], ToolExecutor]) -> AsyncIterator[ToolExecutor]:
+    executor = factory()
+    async with executor as exec_instance:
+        yield exec_instance
 
 
 def load_recipe(path: Path) -> Recipe:
