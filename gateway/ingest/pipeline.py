@@ -25,6 +25,7 @@ from gateway.observability.metrics import (
     INGEST_DURATION_SECONDS,
     INGEST_LAST_RUN_STATUS,
     INGEST_LAST_RUN_TIMESTAMP,
+    INGEST_STALE_RESOLVED_TOTAL,
 )
 
 logger = logging.getLogger(__name__)
@@ -210,7 +211,7 @@ class IngestionPipeline:
                     persist_span.set_attribute("km.ingest.persist.qdrant", wrote_qdrant)
                     persist_span.set_attribute("km.ingest.persist.neo4j", wrote_neo4j)
 
-                removed_artifacts = self._handle_stale_artifacts(ledger_previous, current_ledger_entries)
+                removed_artifacts = self._handle_stale_artifacts(ledger_previous, current_ledger_entries, profile)
 
                 success = True
                 return IngestionResult(
@@ -272,6 +273,7 @@ class IngestionPipeline:
         self,
         previous: dict[str, dict[str, object]],
         current: dict[str, dict[str, object]],
+        profile: str,
     ) -> list[dict[str, object]]:
         ledger_path = self.config.ledger_path
         if ledger_path is None:
@@ -299,6 +301,10 @@ class IngestionPipeline:
                     "status": status,
                 }
             )
+
+        deleted_count = sum(1 for item in removed if item.get("status") == "deleted")
+        if deleted_count:
+            INGEST_STALE_RESOLVED_TOTAL.labels(profile=profile).inc(deleted_count)
 
         if not self.config.dry_run:
             self._write_artifact_ledger(current)

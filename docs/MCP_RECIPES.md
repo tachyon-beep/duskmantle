@@ -95,28 +95,22 @@ km-coverage-summary {}
 # Optionally pretty-print (run as a separate command):
 # km-coverage-summary {} | jq '{artifacts, chunks, missing, timestamp}'
 
-km-search '{"query":"release checklist","limit":3}'
+km-search {"query":"release checklist","limit":3}
 # Optional jq filter:
-# km-search '{"query":"release checklist","limit":3}' | jq '.results[] | {id, score}'
+# km-search {"query":"release checklist","limit":3} | jq '.results[] | {id, score}'
 ```
 
 ### Upload Files and Capture Notes
 
 ```bash
 # Copy an existing file into the workspace (no ingest by default)
-km-upload '{"source_path": "./notes/design.md", "destination": "docs/uploads/"}'
+km-upload {"source_path": "./notes/design.md", "destination": "docs/uploads/"}
 
 # Store fresh text with metadata and trigger ingest immediately
-km-storetext '{
-  "title": "Daily Digest",
-  "content": "## Summary\n- Fixed ingestion retries",
-  "destination": "docs/digests",
-  "tags": ["digest", "status"],
-  "ingest": true
-}'
+km-storetext {"title": "Daily Digest", "content": "## Summary\n- Fixed ingestion retries", "destination": "docs/digests", "tags": ["digest", "status"], "ingest": true}
 
 # Check the resulting ingest status
-km-ingest-status '{"profile": "manual"}'
+km-ingest-status {"profile": "manual"}
 ```
 
 ### Smoke-Test the MCP Surface

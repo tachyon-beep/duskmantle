@@ -69,6 +69,23 @@ def create_app() -> FastAPI:
         if not settings.reader_token:
             logger.warning("Auth enabled without KM_READER_TOKEN; maintainer token will service reader endpoints")
 
+    weight_profile_name, resolved_weights = settings.resolved_search_weights()
+    logger.info(
+        "Gateway startup configuration initialised",
+        extra={
+            "event": "startup_config",
+            "version": get_version(),
+            "auth_enabled": settings.auth_enabled,
+            "auth_mode": settings.auth_mode,
+            "graph_auto_migrate": settings.graph_auto_migrate,
+            "embedding_model": settings.embedding_model,
+            "ingest_window": settings.ingest_window,
+            "ingest_overlap": settings.ingest_overlap,
+            "search_weight_profile": weight_profile_name,
+            "search_weights": resolved_weights,
+        },
+    )
+
     limiter = Limiter(
         key_func=get_remote_address,
         default_limits=[f"{settings.rate_limit_requests} per {settings.rate_limit_window_seconds} seconds"],
@@ -96,6 +113,16 @@ def create_app() -> FastAPI:
         redoc_url="/redoc",
         lifespan=lifespan,
     )
+
+    @app.middleware("http")
+    async def request_id_middleware(request: Request, call_next):
+        incoming = request.headers.get("x-request-id")
+        request_id = incoming or str(uuid4())
+        request.state.request_id = request_id
+        response = await call_next(request)
+        if "X-Request-ID" not in response.headers:
+            response.headers["X-Request-ID"] = request_id
+        return response
 
     configure_tracing(app, settings)
 
@@ -370,7 +397,7 @@ def create_app() -> FastAPI:
         if include_graph and driver is not None:
             graph_service = get_graph_service(driver, settings.neo4j_database)
 
-        request_id = str(uuid4())
+        request_id = getattr(request.state, "request_id", None) or str(uuid4())
 
         try:
             response = search_service.search(

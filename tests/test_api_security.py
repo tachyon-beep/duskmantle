@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +11,7 @@ from fastapi.testclient import TestClient
 from gateway.api.app import create_app
 from gateway.search.service import SearchResult, SearchResponse
 from gateway.config.settings import get_settings
+from gateway import get_version
 
 
 @pytest.fixture(autouse=True)
@@ -105,6 +107,23 @@ def test_rate_limiting(monkeypatch: pytest.MonkeyPatch) -> None:
     resp = client.get("/metrics")
     assert resp.status_code == 429
     assert resp.json()["detail"] == "Rate limit exceeded"
+
+
+
+def test_startup_logs_configuration(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    monkeypatch.setenv("KM_AUTH_ENABLED", "false")
+    monkeypatch.setenv("KM_STATE_PATH", str(tmp_path / "state"))
+
+    with caplog.at_level(logging.INFO):
+        create_app()
+
+    startup_records = [record for record in caplog.records if getattr(record, "event", "") == "startup_config"]
+    assert startup_records, "expected startup_config log record"
+    record = startup_records[-1]
+    assert record.version == get_version()
+    assert record.embedding_model
+    assert isinstance(record.search_weights, dict)
+    assert record.search_weight_profile
 
 
 def test_secure_mode_without_admin_token_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

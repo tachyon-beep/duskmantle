@@ -19,15 +19,26 @@
             {
               "type": "value",
               "options": {
-                "0": { "text": "failed", "color": "red" },
-                "1": { "text": "ok", "color": "green" }
+                "0": {
+                  "text": "failed",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "ok",
+                  "color": "green"
+                }
               }
             }
           ],
           "unit": "none"
         }
       },
-      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 }
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      }
     },
     {
       "type": "stat",
@@ -43,7 +54,12 @@
           "unit": "dateTimeAsIso"
         }
       },
-      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 }
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 0
+      }
     },
     {
       "type": "stat",
@@ -59,15 +75,20 @@
           "unit": "dateTimeAsIso"
         }
       },
-      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 }
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 0
+      }
     },
     {
       "type": "stat",
       "title": "Watcher Errors",
       "targets": [
         {
-          "expr": "km_watch_errors_total",
-          "legendFormat": "errors"
+          "expr": "increase(km_watch_runs_total{result=\"error\"}[1h])",
+          "legendFormat": "errors (1h)"
         }
       ],
       "fieldConfig": {
@@ -75,7 +96,12 @@
           "unit": "none"
         }
       },
-      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 }
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 0
+      }
     },
     {
       "type": "timeseries",
@@ -91,7 +117,12 @@
           "unit": "s"
         }
       },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 4 }
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 4
+      }
     },
     {
       "type": "timeseries",
@@ -106,22 +137,68 @@
           "legendFormat": "graph/s"
         }
       ],
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 12 }
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 12
+      }
     },
     {
       "type": "timeseries",
       "title": "Watcher Run Rate",
       "targets": [
         {
-          "expr": "rate(km_watch_runs_total[5m])",
-          "legendFormat": "runs/s"
+          "expr": "rate(km_watch_runs_total{result=\"success\"}[5m])",
+          "legendFormat": "success/s"
         },
         {
-          "expr": "rate(km_watch_errors_total[5m])",
-          "legendFormat": "errors/s"
+          "expr": "rate(km_watch_runs_total{result=\"error\"}[5m])",
+          "legendFormat": "error/s"
+        },
+        {
+          "expr": "rate(km_watch_runs_total{result=\"no_change\"}[5m])",
+          "legendFormat": "no_change/s"
         }
       ],
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 20 }
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 20
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Stale Artifacts Removed",
+      "targets": [
+        {
+          "expr": "increase(km_ingest_stale_resolved_total[1h])",
+          "legendFormat": "{{profile}}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 28
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Ingest Skips by Reason",
+      "targets": [
+        {
+          "expr": "increase(km_ingest_skips_total[1h])",
+          "legendFormat": "{{reason}}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 28
+      }
     }
   ]
 }

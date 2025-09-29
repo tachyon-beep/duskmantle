@@ -130,7 +130,11 @@ class SearchService:
                 search_params=search_params,
             )
         except Exception as exc:  # pragma: no cover - network errors handled upstream
-            logger.error("Search query failed: %s", exc)
+            logger.error(
+                "Search query failed: %s",
+                exc,
+                extra={"component": "search", "event": "vector_search_error", "request_id": request_id},
+            )
             raise
 
         results: list[SearchResult] = []
@@ -441,6 +445,7 @@ class SearchService:
                             "component": "search",
                             "event": "ml_model_error",
                             "error": str(exc),
+                            "request_id": request_id,
                         },
                     )
                     warnings.append("ml scoring unavailable")
@@ -484,6 +489,8 @@ class SearchService:
             metadata["hnsw_ef_search"] = self.hnsw_ef_search
         if filters_applied:
             metadata["filters_applied"] = filters_applied
+        if request_id:
+            metadata["request_id"] = request_id
         return SearchResponse(query=query, results=results, metadata=metadata)
     def _build_model_features(
         self,

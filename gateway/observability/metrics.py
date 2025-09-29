@@ -56,6 +56,19 @@ COVERAGE_STALE_ARTIFACTS = Gauge(
     labelnames=["profile"],
 )
 
+
+INGEST_STALE_RESOLVED_TOTAL = Counter(
+    "km_ingest_stale_resolved_total",
+    "Count of stale artifacts removed from backends during ingestion",
+    labelnames=["profile"],
+)
+
+INGEST_SKIPS_TOTAL = Counter(
+    "km_ingest_skips_total",
+    "Ingestion runs skipped partitioned by reason",
+    labelnames=["reason"],
+)
+
 SEARCH_REQUESTS_TOTAL = Counter(
     "km_search_requests_total",
     "Search API requests partitioned by outcome",
@@ -103,6 +116,12 @@ COVERAGE_HISTORY_SNAPSHOTS = Gauge(
     "km_coverage_history_snapshots",
     "Number of retained coverage history snapshots",
     labelnames=["profile"],
+)
+
+WATCH_RUNS_TOTAL = Counter(
+    "km_watch_runs_total",
+    "Watcher outcomes partitioned by result",
+    labelnames=["result"],
 )
 
 MCP_REQUESTS_TOTAL = Counter(

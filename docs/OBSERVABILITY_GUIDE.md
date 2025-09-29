@@ -27,6 +27,9 @@ Key time-series:
 | `km_coverage_last_run_timestamp` | Gauge | `profile` | Epoch of last coverage report. | Alert when older than max(2× schedule interval, 1h) or >24h when scheduler disabled. |
 | `km_coverage_missing_artifacts_total` | Gauge | `profile` | Count of artifacts with zero chunks in last run. | Alert when count grows between runs. |
 | `km_coverage_stale_artifacts_total` | Gauge | `profile` | Removed/stale artifacts detected in the latest ingest. | Alert when value stays >0 for multiple runs (cleanup failing). |
+| `km_ingest_stale_resolved_total` | Counter | `profile` | Number of stale artifacts removed during ingestion (cumulative). | Alert when spikes exceed expected churn (possible mass deletions). |
+| `km_ingest_skips_total` | Counter | `reason` | Scheduler/automation ingest skips partitioned by reason. | Alert on sustained `auth`, `lock`, or `head` growth. |
+| `km_watch_runs_total` | Counter | `result` | Watcher outcomes (`success`, `error`, `no_change`). | Alert when `error` outpaces `success` or `no_change` dominates unexpectedly. |
 | `km_coverage_history_snapshots` | Gauge | `profile` | Number of retained coverage snapshots under `reports/history/`. | Alert when value drops below configured history limit (e.g., disk cleanup failure). |
 | `km_search_requests_total` | Counter | `status` (`success`,`failure`) | Search API requests partitioned by outcome. | Alert when failure ratio rises above baseline. |
 | `km_search_graph_cache_events_total` | Counter | `status` (`miss`,`hit`,`error`) | Tracks graph context cache utilisation. | Alert when `status="error"` climbs or hit ratio drops suddenly. |
@@ -37,6 +40,11 @@ Key time-series:
 | `km_scheduler_runs_total` | Counter | `result` (`success`,`failure`,`skipped_head`,`skipped_lock`,`skipped_auth`) | Scheduled ingestion job outcomes. | Alert if `result="failure"` or `skipped_auth` increments unexpectedly. |
 | `km_scheduler_last_success_timestamp` | Gauge | _none_ | Unix timestamp of last successful scheduled ingestion run. | Alert when stale relative to configured schedule. |
 | `uvicorn_requests_total` (via OTEL / ASGI) | Counter | `method`, `path`, `status_code` | Requires tracing enabled. | Alert on elevated 5xx rates or 429 spikes. |
+
+Grafana dashboard updates:
+- **Stale Artifacts Removed** visualises `increase(km_ingest_stale_resolved_total[1h])` per profile so you can spot unexpected purges.
+- **Ingest Skips by Reason** overlays `increase(km_ingest_skips_total[1h])` so auth/lock/head skips stand out.
+- **Watcher Outcomes** charts `rate(km_watch_runs_total{result}[5m])` for success/error/no-change to highlight automation drift.
 
 ### Prometheus Scrape Example
 ```yaml
@@ -84,6 +92,7 @@ Logs are emitted as JSON to stdout. Sample entry:
 
 ### Tips
 - Route container stdout to a log shipper (Fluent Bit, Vector). Configure parsers for JSON to index key fields.
+- On startup the API emits a `event="startup_config"` log summarizing version, auth mode, ingest chunk settings, embedding model, and resolved search weights—capture it for release notes and audits.
 - Search for `"level": "ERROR"` to surface ingestion failures.
 - Correlate application logs with scheduler logs under `/opt/knowledge/var/logs/supervisor/` if running under Supervisord.
 

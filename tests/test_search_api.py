@@ -68,13 +68,38 @@ def test_search_endpoint_returns_results(monkeypatch, tmp_path):
 
     resp = client.post("/search", json={"query": "telemetry"})
     assert resp.status_code == 200
+    request_id_header = resp.headers.get("x-request-id")
+    assert request_id_header
     data = resp.json()
     assert data["results"][0]["chunk"]["artifact_path"] == "src/module.py"
     assert "scoring" in data["results"][0]
     assert data["results"][0]["graph_context"]["primary_node"]["id"] == "SourceFile:src/module.py"
     assert data["results"][0]["scoring"]["signals"]["subsystem_affinity"] == 1.0
     assert data["metadata"]["scoring_mode"] == "heuristic"
-    assert "request_id" in data["metadata"]
+    assert data["metadata"]["request_id"] == request_id_header
+
+
+def test_search_reuses_incoming_request_id(monkeypatch, tmp_path):
+    monkeypatch.setenv("KM_AUTH_ENABLED", "false")
+    monkeypatch.setenv("KM_STATE_PATH", str(tmp_path))
+    from gateway.config.settings import get_settings
+
+    get_settings.cache_clear()
+    app = create_app()
+    service = DummySearchService()
+    app.dependency_overrides[app.state.search_service_dependency] = lambda: service
+    client = TestClient(app)
+
+    custom_request_id = "test-request-123"
+    resp = client.post(
+        "/search",
+        json={"query": "telemetry"},
+        headers={"X-Request-ID": custom_request_id},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert resp.headers.get("x-request-id") == custom_request_id
+    assert data["metadata"]["request_id"] == custom_request_id
 
 
 def test_search_requires_reader_token(monkeypatch, tmp_path):
@@ -154,6 +179,7 @@ def test_search_feedback_logged(monkeypatch, tmp_path):
     assert row["feedback_vote"] == 4.0
     assert row["context"] == {"task": "deep-dive"}
     assert row["artifact_path"] == "src/module.py"
+    assert row["request_id"] == resp.json()["metadata"]["request_id"]
 
 
 def test_search_filters_passed_to_service(monkeypatch, tmp_path):

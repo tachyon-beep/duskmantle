@@ -13,7 +13,9 @@ import sys
 import time
 from pathlib import Path
 
-from prometheus_client import Counter, Gauge, start_http_server
+from gateway.observability.metrics import WATCH_RUNS_TOTAL
+
+from prometheus_client import Gauge, start_http_server
 
 
 def compute_fingerprints(root: Path) -> dict[str, str]:
@@ -63,10 +65,8 @@ def trigger_command(command: list[str], shell: bool = False) -> int:
     return subprocess.call(command, shell=False)
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Watch .duskmantle/data for file changes and trigger ingestion."
-    )
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Watch .duskmantle/data for file changes and trigger ingestion.")
     parser.add_argument(
         "--root",
         default=os.getenv("KM_WATCH_ROOT", str(Path.cwd() / ".duskmantle" / "data")),
@@ -122,31 +122,24 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Check once and exit (useful for CI)",
     )
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
-def main() -> int:
-    args = parse_args()
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
     root = Path(args.root).resolve()
     fingerprint_path = Path(args.fingerprints).resolve()
     root.mkdir(parents=True, exist_ok=True)
     previous = load_fingerprints(fingerprint_path)
 
     metrics_enabled = args.metrics_port > 0
+    last_run_gauge: Gauge | None = None
     if metrics_enabled:
         start_http_server(args.metrics_port)
-    runs_counter = Counter(
-        "km_watch_runs_total",
-        "Number of successful watch-triggered ingestion runs",
-    )
-    errors_counter = Counter(
-        "km_watch_errors_total",
-        "Number of watch-triggered ingestion runs that failed",
-    )
-    last_run_gauge = Gauge(
-        "km_watch_last_run_timestamp",
-        "Unix timestamp of the most recent watch-triggered ingestion",
-    )
+        last_run_gauge = Gauge(
+            "km_watch_last_run_timestamp",
+            "Unix timestamp of the most recent watch-triggered ingestion",
+        )
 
     if args.command:
         if args.shell:
@@ -177,16 +170,16 @@ def main() -> int:
                     f"[km-watch] Ingest command exited with {rc}; retaining previous fingerprints",
                     file=sys.stderr,
                 )
-                if metrics_enabled:
-                    errors_counter.inc()
+                WATCH_RUNS_TOTAL.labels(result="error").inc()
             else:
                 save_fingerprints(fingerprint_path, current)
                 previous = current
-                if metrics_enabled:
-                    runs_counter.inc()
+                WATCH_RUNS_TOTAL.labels(result="success").inc()
+                if last_run_gauge is not None:
                     last_run_gauge.set(time.time())
         else:
             print("[km-watch] No changes detected")
+            WATCH_RUNS_TOTAL.labels(result="no_change").inc()
         if args.once:
             break
         time.sleep(args.interval)

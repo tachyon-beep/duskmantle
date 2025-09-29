@@ -14,6 +14,7 @@ from filelock import FileLock, Timeout
 from gateway.config.settings import AppSettings
 from gateway.ingest.service import execute_ingestion
 from gateway.observability.metrics import (
+    INGEST_SKIPS_TOTAL,
     SCHEDULER_LAST_SUCCESS_TIMESTAMP,
     SCHEDULER_RUNS_TOTAL,
 )
@@ -40,6 +41,7 @@ class IngestionScheduler:
                 extra={"setting": "KM_ADMIN_TOKEN"},
             )
             SCHEDULER_RUNS_TOTAL.labels(result="skipped_auth").inc()
+            INGEST_SKIPS_TOTAL.labels(reason="auth").inc()
             return
         trigger_config = self.settings.scheduler_trigger_config()
         trigger = _build_trigger(trigger_config)
@@ -68,20 +70,18 @@ class IngestionScheduler:
             except Timeout:
                 logger.info("Scheduled ingestion skipped: another run is active")
                 SCHEDULER_RUNS_TOTAL.labels(result="skipped_lock").inc()
+                INGEST_SKIPS_TOTAL.labels(reason="lock").inc()
                 return
 
             last_head = self._read_last_head()
             current_head = _current_repo_head(self.settings.repo_root)
-            if (
-                not self.settings.dry_run
-                and current_head is not None
-                and current_head == last_head
-            ):
+            if not self.settings.dry_run and current_head is not None and current_head == last_head:
                 logger.info(
                     "Scheduled ingestion skipped: repository unchanged",
                     extra={"repo_head": current_head},
                 )
                 SCHEDULER_RUNS_TOTAL.labels(result="skipped_head").inc()
+                INGEST_SKIPS_TOTAL.labels(reason="head").inc()
                 return
 
             result = execute_ingestion(
@@ -132,8 +132,7 @@ def _current_repo_head(repo_root: Path) -> str | None:
                 cwd=repo_root,
                 text=True,
                 stderr=subprocess.DEVNULL,
-            )
-            .strip()
+            ).strip()
             or None
         )
     except Exception:

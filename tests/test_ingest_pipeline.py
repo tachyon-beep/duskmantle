@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from prometheus_client import REGISTRY
 
 from gateway.ingest.pipeline import IngestionConfig, IngestionPipeline
 
@@ -21,6 +22,11 @@ class StubQdrantWriter:
 
     def delete_artifact(self, artifact_path: str) -> None:
         self.deleted_paths.append(artifact_path)
+
+
+def _metric_value(name: str, labels: dict[str, str]) -> float:
+    value = REGISTRY.get_sample_value(name, labels)
+    return float(value) if value is not None else 0.0
 
 
 class StubNeo4jWriter:
@@ -111,7 +117,9 @@ def test_pipeline_removes_stale_artifacts(tmp_path: Path) -> None:
     stale_path.unlink()
 
     qdrant2, neo4j2, pipeline2 = _run_pipeline()
+    metric_before = _metric_value("km_ingest_stale_resolved_total", {"profile": "local"})
     result_second = pipeline2.run()
+    metric_after = _metric_value("km_ingest_stale_resolved_total", {"profile": "local"})
 
     assert result_second.removed_artifacts
     removed_entry = result_second.removed_artifacts[0]
@@ -121,3 +129,4 @@ def test_pipeline_removes_stale_artifacts(tmp_path: Path) -> None:
     assert "artifact_type" in removed_entry
     assert "docs/obsolete.md" in neo4j2.deleted_paths
     assert "docs/obsolete.md" in qdrant2.deleted_paths
+    assert metric_after == metric_before + 1
