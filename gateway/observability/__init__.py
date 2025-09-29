@@ -16,6 +16,7 @@ from .metrics import (
     SEARCH_SCORE_DELTA,
     GRAPH_MIGRATION_LAST_STATUS,
     GRAPH_MIGRATION_LAST_TIMESTAMP,
+    UI_REQUESTS_TOTAL,
 )
 from .tracing import configure_tracing
 
@@ -36,4 +37,5 @@ __all__ = [
     "SEARCH_SCORE_DELTA",
     "GRAPH_MIGRATION_LAST_STATUS",
     "GRAPH_MIGRATION_LAST_TIMESTAMP",
+    "UI_REQUESTS_TOTAL",
 ]

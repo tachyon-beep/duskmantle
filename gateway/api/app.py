@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager, suppress
 from datetime import datetime, timezone
 
 from fastapi import Body, Depends, FastAPI, HTTPException, Request, Response
+from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from slowapi import Limiter
@@ -41,6 +42,7 @@ from gateway.search import SearchService
 from gateway.search.feedback import SearchFeedbackStore
 from gateway.search.trainer import ModelArtifact, load_artifact
 from gateway.scheduler import IngestionScheduler
+from gateway.ui import get_static_path, router as ui_router
 
 from typing import Any, Mapping
 from uuid import uuid4
@@ -113,6 +115,8 @@ def create_app() -> FastAPI:
         redoc_url="/redoc",
         lifespan=lifespan,
     )
+    app.mount("/ui/static", StaticFiles(directory=str(get_static_path())), name="ui-static")
+    app.include_router(ui_router)
 
     @app.middleware("http")
     async def request_id_middleware(request: Request, call_next):

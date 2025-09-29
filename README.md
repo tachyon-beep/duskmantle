@@ -7,6 +7,7 @@ This repository packages a turnkey knowledge management stack that bundles the K
 - **Single container delivery:** Supervisor launches the gateway, Qdrant, and Neo4j together with baked-in defaults.
 - **Deterministic ingestion:** Periodic jobs index docs, source, tests, and protobufs with provenance and coverage reporting.
 - **Hybrid search + graph context:** Vector similarity fused with lexical overlap and live graph lookups for every result.
+- **Embedded preview UI:** Visit `/ui/` for a bundled console shell; future sprints will light up search, subsystems, and lifecycle dashboards.
 - **MCP-native interface:** Codex CLI (and other MCP clients) can call search, graph, ingest, backup, and feedback tools without touching raw HTTP APIs.
 - **Offline ready:** Embedding models and dependencies are vendored so the appliance runs in air-gapped environments.
 
@@ -15,6 +16,7 @@ This repository packages a turnkey knowledge management stack that bundles the K
 1. Run `bin/km-bootstrap`. It pulls the latest `ghcr.io/tachyon-beep/duskmantle-km` image, provisions `.duskmantle/{config,data,backups}`, and generates fresh credentials.
 2. Drop or symlink the repositories, docs, or transcripts you want indexed into `.duskmantle/data/`. The container mounts this directory at `/workspace/repo` and the watcher fingerprints files so edits trigger delta ingests automatically.
 3. Monitor ingest state. Leave `bin/km-watch` running for host-side polling, or hit `/metrics` and `/healthz` (with maintainer token if auth is enabled) to verify coverage and scheduler status.
+   Visit `/ui/search` after bootstrap to issue hybrid queries through the bundled console (supply your reader token via the Tokens menu).
 4. Import the Codex MCP snippet from `docs/MCP_INTEGRATION.md` (or the per-tool recipes in `docs/MCP_RECIPES.md`). Any MCP-capable agent can now call `km-search`, `km-graph-*`, `km-ingest-*`, and `km-feedback-submit` without bespoke glue code.
 5. Exercise the surface using the MCP smoke recipe (`docs/MCP_RECIPES.md` section 3) or run `pytest -m mcp_smoke`. Start with `km-upload`/`km-storetext` to add material, then query via `km-search`; `/search` responses include a `metadata.feedback_prompt`, so keep submitting feedback with `km-feedback-submit` until ranking telemetry stabilises.
 

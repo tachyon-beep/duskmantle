@@ -71,6 +71,9 @@ Verify readiness:
 curl http://localhost:8000/readyz
 ```
 
+Then open `http://localhost:8000/ui/` in a browser to explore the embedded console preview (search, subsystem, and lifecycle panels arrive in later iterations).
+Head to the Search tab to issue hybrid queries without leaving the container, supplying your reader token when prompted.
+
 ## 4. Run an Ingest
 
 Inside the container:

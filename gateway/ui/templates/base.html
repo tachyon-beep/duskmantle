@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}Duskmantle Console{% endblock %}</title>
+    <link rel="stylesheet" href="/ui/static/styles.css" />
+    <script defer src="/ui/static/app.js"></script>
+  </head>
+  <body data-dm-scope="layout">
+    <header class="dm-header">
+      <div class="dm-header__brand">
+        <h1>Duskmantle Knowledge Console</h1>
+        <p class="dm-tagline">Preview UI for search, graph, and lifecycle views.</p>
+      </div>
+      <nav class="dm-nav" data-dm-nav>
+        <a href="/ui/" class="dm-nav__link" data-dm-nav-link="home">Overview</a>
+        <a href="/ui/search" class="dm-nav__link" data-dm-nav-link="search">Search</a>
+        <a href="/ui/subsystems" class="dm-nav__link" data-dm-nav-link="subsystems">Subsystems</a>
+        <a href="/ui/lifecycle" class="dm-nav__link" data-dm-nav-link="lifecycle">Lifecycle</a>
+      </nav>
+      <button class="dm-button" type="button" data-dm-open-tokens>Tokens</button>
+    </header>
+
+    <main class="dm-main">
+      {% block content %}{% endblock %}
+    </main>
+
+    <footer class="dm-footer">
+      <p>Request ID: <span data-dm-request-id>—</span></p>
+    </footer>
+
+    <div class="dm-modal" data-dm-modal hidden>
+      <div class="dm-modal__backdrop" data-dm-close-tokens></div>
+      <div class="dm-modal__dialog" role="dialog" aria-modal="true">
+        <h2>API Tokens</h2>
+        <p>Tokens are stored for this session and added as <code>Authorization</code> headers for gateway calls.</p>
+        <label>Reader token
+          <input type="password" data-dm-reader-token placeholder="KM_READER_TOKEN" />
+        </label>
+        <label>Maintainer token
+          <input type="password" data-dm-maintainer-token placeholder="KM_ADMIN_TOKEN" />
+        </label>
+        <div class="dm-modal__actions">
+          <button class="dm-button" type="button" data-dm-save-tokens>Save</button>
+          <button class="dm-button dm-button--ghost" type="button" data-dm-clear-tokens>Clear</button>
+          <button class="dm-button dm-button--ghost" type="button" data-dm-close-tokens>Close</button>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

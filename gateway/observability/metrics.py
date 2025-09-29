@@ -153,3 +153,10 @@ MCP_STORETEXT_TOTAL = Counter(
     "MCP storetext tool invocations partitioned by result",
     labelnames=["result"],
 )
+
+
+UI_REQUESTS_TOTAL = Counter(
+    "km_ui_requests_total",
+    "Embedded UI visits partitioned by view",
+    labelnames=["view"],
+)

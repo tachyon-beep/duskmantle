@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}Duskmantle Console · Overview{% endblock %}
+
+{% block content %}
+<section class="dm-card">
+  <h2>What&apos;s next?</h2>
+  <ul>
+    <li>Interactive search view with hybrid results and feedback prompts.</li>
+    <li>Subsystem explorer with multi-hop dependency mapping.</li>
+    <li>Lifecycle dashboard summarising stale docs and isolated nodes.</li>
+  </ul>
+  <p class="dm-note">Use the MCP recipes or API endpoints until the interactive views land.</p>
+</section>
+<section class="dm-card">
+  <h2>Quick Links</h2>
+  <ul>
+    <li><a href="/docs">OpenAPI reference</a></li>
+    <li><a href="/metrics">Prometheus metrics</a></li>
+    <li><a href="/docs/MCP_AGENT_PLAYBOOK.md">MCP agent playbook</a></li>
+  </ul>
+</section>
+{% endblock %}

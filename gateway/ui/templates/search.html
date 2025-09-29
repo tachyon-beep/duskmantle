@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}Duskmantle Console · Search{% endblock %}
+
+{% block content %}
+<section class="dm-card dm-card--wide">
+  <h2>Hybrid Search</h2>
+  <p class="dm-note">Profile: <strong>{{ weight_profile }}</strong>. Vector weight {{ weights.vector_weight }}, lexical weight {{ weights.lexical_weight }}.</p>
+  <form id="dm-search-form" class="dm-form" autocomplete="off">
+    <label>Query
+      <input type="text" name="query" placeholder="Find design docs, subsystems, incidents…" required />
+    </label>
+    <div class="dm-form__row">
+      <label>Limit
+        <input type="number" name="limit" min="1" max="20" value="5" />
+      </label>
+      <label class="dm-checkbox">
+        <input type="checkbox" name="include_graph" checked /> Include graph context
+      </label>
+    </div>
+    <div class="dm-form__actions">
+      <button class="dm-button" type="submit">Search</button>
+      <span class="dm-form__status" data-dm-search-status>Provide a reader token before querying.</span>
+    </div>
+  </form>
+</section>
+
+<section class="dm-card dm-card--wide" data-dm-search-results hidden>
+  <h3>Results</h3>
+  <div data-dm-search-feedback class="dm-feedback"></div>
+  <ol data-dm-search-list class="dm-results"></ol>
+</section>
+{% endblock %}
