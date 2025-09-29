@@ -93,7 +93,8 @@ This plan translates the turnkey single-container design into concrete implement
     - Subtask 3.1.2.a Extend coverage writer to maintain multiple snapshots and prune old reports.
     - Subtask 3.1.2.b Add integration tests simulating consecutive scheduler runs verifying rotation/metrics.
     - Subtask 3.1.2.c Update observability guide with coverage health checks and alert thresholds.
-- **Step 3.2 Auth & Access Controls**
+- **Step 3.2 Auth & Access Controls** *(Completed in v1.0.1)*
+  - Status: MCP upload/storetext tooling now enforces maintainer scope with audit logging. CLI and HTTP endpoints validate tokens, and README/AGENTS/MCP guides document rotation plus error handling.
   - Task 3.2.1 Scope Enforcement
     - Subtask 3.2.1.a Align API dependencies to enforce `reader`/`maintainer` scopes consistently (CLI + HTTP).
     - Subtask 3.2.1.b Add regression tests covering missing/invalid tokens per endpoint.
@@ -125,15 +126,15 @@ This plan translates the turnkey single-container design into concrete implement
 
 ### Phase 4 — Release Packaging & Adoption
 
-- **Step 4.1 Release Automation**
-  - Task 4.1.1 Create CI pipeline to build, tag, and publish images/tarballs with checksums.
-  - Task 4.1.2 Capture release metadata in CHANGELOG/RELEASE docs per Conventional Commits.
-- **Step 4.2 Operator Enablement**
-  - Task 4.2.1 Produce quick-start guide, upgrade notes, and troubleshooting appendix.
-  - Task 4.2.2 Provide backup/restore and smoke-test runbooks referencing OBSERVABILITY_GUIDE.
-- **Step 4.3 Acceptance Validation**
-  - Task 4.3.1 Run end-to-end acceptance demo (search, graph, reindex, backup/restore).
-  - Task 4.3.2 Finalise support expectations (issue templates, FAQ) and confirm Work Package 6 alignment.
+- **Step 4.1 Release Automation** *(Completed)*
+  - Task 4.1.1 Create CI pipeline to build, tag, and publish images/tarballs with checksums. **(Completed – `release.yml` builds, tests, pushes images, and publishes wheel/checksum artifacts.)**
+  - Task 4.1.2 Capture release metadata in CHANGELOG/RELEASE docs per Conventional Commits. **(Completed – CHANGELOG/RELEASE playbook maintained.)**
+- **Step 4.2 Operator Enablement** *(Completed)*
+  - Task 4.2.1 Produce quick-start guide, upgrade notes, and troubleshooting appendix. **(Completed – README, QUICK_START, and UPGRADE docs cover these flows.)**
+  - Task 4.2.2 Provide backup/restore and smoke-test runbooks referencing OBSERVABILITY_GUIDE. **(Completed – `bin/km-backup`, smoke script, and guides documented.)**
+- **Step 4.3 Acceptance Validation** *(Completed)*
+  - Task 4.3.1 Run end-to-end acceptance demo (search, graph, reindex, backup/restore). **(Completed – playbook + snapshot kept up to date.)**
+  - Task 4.3.2 Finalise support expectations (issue templates, FAQ) and confirm Work Package 6 alignment. **(Completed – FAQ and support notes documented.)**
 
 ### Phase 5: MCP Interface & Agent Integration (Weeks 8-9)
 
@@ -144,7 +145,7 @@ This plan translates the turnkey single-container design into concrete implement
 - Task 5.3 Testing & Telemetry.
 - Task 5.4 Documentation & Distribution.
 - **Exit Criteria:** Agents can invoke search/graph/coverage/backups via MCP commands; automated smoke test validates MCP flows; documentation covers setup and troubleshooting.
-- **Status (Sept 2025):** Step 5.1 complete; Step 5.2 MCP server implemented (server package + CLI); Step 5.3 tests & telemetry in place (CI wiring pending).
+- **Status (Oct 2025):** Steps 5.1–5.3 complete; MCP telemetry counters ship in Prometheus and tagged builds run the MCP smoke slice in `release.yml`.
 
 ## 2.3 Phase 5 Execution Plan
 

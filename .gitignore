@@ -43,5 +43,7 @@ Thumbs.db
 .ruff_cache/
 .codex/
 .codacy/
-
+.playwright/
+.playwright-state/
 backups/
+node_modules/

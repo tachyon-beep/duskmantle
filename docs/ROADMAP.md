@@ -2,9 +2,9 @@
 
 This roadmap captures future enhancements aimed at making the knowledge gateway friendlier for MCP-driven workflows. Items are grouped from high to low priority, balancing expected impact (utility for LLM agents and maintainers) against implementation effort. “Quick win” tags highlight relatively low-effort tasks that deliver outsized value.
 
-## Work Package: MCP Content Capture (High Priority, Quick Wins)
+## Work Package: MCP Content Capture (Completed)
 
-A single work package covers both file and text-based content ingestion via MCP.
+Deliverables for MCP-driven uploads and text capture shipped with the 1.0.1 milestone. The notes below remain for historical reference.
 
 ### Tasks
 
@@ -36,10 +36,9 @@ A single work package covers both file and text-based content ingestion via MCP.
 
 ## Medium Priority
 
-- **km-bundle** – Bundled export of MCP recipe outcomes and lifecycle snapshots (tracked under WP7).
-[retain remaining roadmap sections unchanged]
+- **km-bundle** – Package MCP recipe outputs and lifecycle snapshots as downloadable archives (tracked alongside Knowledge Console work in WP7).
 
-## Work Package: MCP Upload & StoreText Execution Plan
+## Work Package: MCP Upload & StoreText Execution Plan *(Completed)*
 
 ### Phase 1 – Foundations & Utilities
 
@@ -140,15 +139,15 @@ A single work package covers both file and text-based content ingestion via MCP.
 
 ### Phase 1 – Telemetry & Visuals
 
-- **Step 1.1 Lifecycle trend emitters**
-  - Task 1.1.1 Persist rolling history (per ingest) of stale docs, isolated nodes, subsystems without tests, and removed artifacts (JSON + Prometheus gauges).
-  - Task 1.1.2 Expose `/lifecycle/history` (maintainer scope) returning the last N datapoints for UI consumption.
-- **Step 1.2 Sparkline rendering**
-  - Task 1.2.1 Introduce a lightweight chart helper (inline SVG/Canvas) that renders stale/isolated/missing/removed trends without external build tooling.
-  - Task 1.2.2 Update the lifecycle view to call the history endpoint and populate spark lines with graceful fallbacks when history is absent.
-- **Step 1.3 Observability integration**
-  - Task 1.3.1 Extend Grafana dashboards with `km_ui_requests_total`, `km_ui_events_total`, and lifecycle trend panels.
-  - Task 1.3.2 Document alerting thresholds in `docs/OBSERVABILITY_GUIDE.md` and ensure metrics are scraped in CI smoke jobs.
+- **Step 1.1 Lifecycle trend emitters** **(Completed)**
+  - Task 1.1.1 Persist rolling history (per ingest) of stale docs, isolated nodes, subsystems without tests, and removed artifacts (JSON + Prometheus gauges). **(Completed)**
+  - Task 1.1.2 Expose `/lifecycle/history` (maintainer scope) returning the last N datapoints for UI consumption. **(Completed)**
+- **Step 1.2 Sparkline rendering** **(Completed)**
+  - Task 1.2.1 Introduce a lightweight chart helper (inline SVG/Canvas) that renders stale/isolated/missing/removed trends without external build tooling. **(Completed)**
+  - Task 1.2.2 Update the lifecycle view to call the history endpoint and populate spark lines with graceful fallbacks when history is absent. **(Completed)**
+- **Step 1.3 Observability integration** **(In Progress)**
+  - Task 1.3.1 Extend Grafana dashboards with `km_ui_requests_total`, `km_ui_events_total`, and lifecycle trend panels. *(Dashboard export pending; documentation updated in release 1.0.1)*
+  - Task 1.3.2 Document alerting thresholds in `docs/OBSERVABILITY_GUIDE.md` and ensure metrics are scraped in CI smoke jobs. **(Completed)**
 
 ### Phase 2 – Agent Shortcuts
 
@@ -167,9 +166,9 @@ A single work package covers both file and text-based content ingestion via MCP.
 - **Step 3.2 Localisation & resilience** **(Completed)**
   - Task 3.2.1 Centralise UI strings for future localisation; document token-handling behaviour in README/Quick Start. **(Completed)**
   - Task 3.2.2 Improve error surfaces (offline, 401/403, 5xx) with retry and support guidance. **(Completed)**
-- **Step 3.3 Automated testing**
-  - Task 3.3.1 Add Playwright smoke tests covering navigation, lifecycle refresh, and recipe launch buttons.
-  - Task 3.3.2 Integrate UI tests into CI (nightly slice) with optional container spin-up.
+- **Step 3.3 Automated testing** **(Completed)**
+  - Task 3.3.1 Add Playwright smoke tests covering navigation, lifecycle refresh, and recipe launch buttons. **(Completed)**
+  - Task 3.3.2 Integrate UI tests into CI (nightly slice) with optional container spin-up. **(Completed – observability workflow runs `npx playwright test`)**
 
 ## Work Package: Knowledge UX & Automation (Target: v1.3)
 

@@ -45,11 +45,17 @@ Summary (or simply run `bin/km-bootstrap` to let the repo pull the latest image,
 7. Run `./infra/smoke-test.sh duskmantle/km:dev` to build, launch, ingest, and validate coverage end-to-end.
 8. (Optional) Leave `bin/km-watch` running to detect file changes under `.duskmantle/data` and trigger ingestion automatically (pass `--metrics-port` to expose watcher metrics; the in-container watcher uses `KM_WATCH_METRICS_PORT`, default `9103`).
 
-> Maintainer actions (uploads, text capture, ingest/backup) write audit entries to `KM_STATE_PATH/audit/mcp_actions.log`. Rotate or collect the log alongside other gateway artifacts if you depend on MCP workflows.
+> Maintainer operations (uploads, text capture, ingest and backup triggers) append audit lines to `KM_STATE_PATH/audit/mcp_actions.log`. Include the file in your log rotation policy whenever MCP workflows are part of your day-to-day usage.
+
+### UI Smoke Tests (Playwright)
+
+- Run `bin/km-playwright` to install Node dependencies (`npm ci`) and execute the smoke suite. Pass additional arguments to forward them to `npx playwright test` (e.g., `bin/km-playwright -- --trace on`).
+- Use `bin/km-playwright --no-install` when you want to reuse an existing `node_modules/` directory without reinstalling packages.
+- The Playwright config boots `tests/playwright_server.py`, which seeds lifecycle history, disables schedulers, and serves the embedded UI at `http://127.0.0.1:8765` for the tests.
 
 ### Security Defaults
 
-The appliance ships with permissive defaults so it works out of the box (Neo4j user/password `neo4j` / `neo4jadmin`, API auth disabled, no maintainer tokens). If you care even slightly about privacy or are running anywhere beyond a throwaway demo, rotate those credentials immediately—set `KM_NEO4J_PASSWORD` to a non-default value, enable `KM_AUTH_ENABLED=true`, and hard-code reader/maintainer tokens before exposing the stack to real data. The gateway now exits on startup if auth is enabled without a maintainer token or a custom Neo4j password.
+The appliance ships with permissive defaults so local demos start without extra configuration (Neo4j user/password `neo4j` / `neo4jadmin`, API auth disabled, no maintainer tokens). Before handling anything beyond disposable test data, rotate those credentials—set `KM_NEO4J_PASSWORD` to a non-default value, enable `KM_AUTH_ENABLED=true`, and supply reader/maintainer tokens ahead of launch. The gateway now exits on startup if auth is enabled without a maintainer token or a custom Neo4j password.
 
 **Quick hardening checklist**
 

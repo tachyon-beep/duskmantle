@@ -350,8 +350,6 @@ def create_app() -> FastAPI:
         files: list[Path] = []
         if history_dir.exists():
             files = sorted(history_dir.glob("lifecycle_*.json"), key=lambda path: path.stat().st_mtime, reverse=True)[:limit_normalized]
-        if history_dir.exists():
-            files = sorted(history_dir.glob("lifecycle_*.json"), key=lambda path: path.stat().st_mtime, reverse=True)[:limit]
         entries: list[dict[str, object]] = []
         for path_entry in reversed(files):
             try:

@@ -37,8 +37,12 @@ Key time-series:
 | `km_search_graph_cache_events_total` | Counter | `status` (`miss`,`hit`,`error`) | Tracks graph context cache utilisation. | Alert when `status="error"` climbs or hit ratio drops suddenly. |
 | `km_search_graph_lookup_seconds` | Histogram | _none_ | Latency of Neo4j lookups for search enrichment. | Alert when P95 exceeds expected threshold (e.g., >250 ms). |
 | `km_search_adjusted_minus_vector` | Histogram | _none_ | Distribution of adjusted minus vector scores per result. | Alert when distribution skews heavily positive/negative (ranking drift). |
-| `km_ui_requests_total` | Counter | `view` | Embedded console visits by view (`landing`, `search`, `subsystems`, `lifecycle`). | Monitor for unexpected spikes that could indicate scraping or unauthorised use. |
-| `km_ui_events_total` | Counter | `event` | UI-triggered events (currently `lifecycle_download` when the JSON report is fetched). | Alert when expected downloads are absent or surge unexpectedly. |
+| `km_ui_requests_total` | Counter | `view` | Embedded console visits by view (`landing`, `search`, `subsystems`, `lifecycle`). | Alert on prolonged spikes (possible scraping) or sudden drops during active adoption. |
+| `km_ui_events_total` | Counter | `event` | UI-triggered events (`lifecycle_download`, MCP recipe copy buttons, subsystem downloads). | Alert when error events appear or download volume surges unexpectedly. |
+| `km_lifecycle_stale_docs` | Gauge | `profile` | Latest stale document count emitted during ingest. | Alert when value exceeds the stale-days threshold for >24h. |
+| `km_lifecycle_isolated_nodes` | Gauge | `profile` | Orphaned/isolated graph nodes detected in last ingest. | Alert when count increases between runs. |
+| `km_lifecycle_missing_tests` | Gauge | `profile` | Subsystems lacking tests. | Alert when value remains above zero.
+| `km_lifecycle_removed_artifacts` | Gauge | `profile` | Recently removed artifacts pending cleanup. | Alert when value stays non-zero across runs. |
 | `km_graph_migration_last_status` | Gauge | _none_ | 1=success, 0=failure, -1=skipped (auto-migrate state). | Alert on 0 or when paired timestamp is stale. |
 | `km_graph_migration_last_timestamp` | Gauge | _none_ | Unix timestamp of last graph migration attempt. | Alert when older than deployment policy while auto-migrate is enabled. |
 | `km_scheduler_runs_total` | Counter | `result` (`success`,`failure`,`skipped_head`,`skipped_lock`,`skipped_auth`) | Scheduled ingestion job outcomes. | Alert if `result="failure"` or `skipped_auth` increments unexpectedly. |
@@ -49,6 +53,12 @@ Grafana dashboard updates:
 - **Stale Artifacts Removed** visualises `increase(km_ingest_stale_resolved_total[1h])` per profile so you can spot unexpected purges.
 - **Ingest Skips by Reason** overlays `increase(km_ingest_skips_total[1h])` so auth/lock/head skips stand out.
 - **Watcher Outcomes** charts `rate(km_watch_runs_total{result}[5m])` for success/error/no-change to highlight automation drift.
+
+### Lifecycle Sparklines & History
+
+- `/lifecycle/history` returns enriched entries with a `counts` map powering the UI spark lines. The console requests this endpoint after loading `/lifecycle` and renders inline SVGs for stale docs, isolated nodes, missing tests, and removed artifacts.
+- Persist at least three history snapshots per environment so trends are visible. Set `KM_LIFECYCLE_HISTORY_LIMIT` to balance storage vs fidelity (default 30).
+- When plotting in Grafana, combine the gauges (`km_lifecycle_*`) with transforms or the history endpoint to show short-term trends alongside absolute counts.
 
 ### Prometheus Scrape Example
 ```yaml
@@ -73,6 +83,8 @@ scrape_configs:
 - **Rate Limit Hotspot:** `rate(uvicorn_requests_total{status_code="429"}[5m]) > 5` indicates throttling pressure; investigate abusive clients or increase `KM_RATE_LIMIT_REQUESTS`.
 - **High Ingestion Latency:** `histogram_quantile(0.95, sum(rate(km_ingest_duration_seconds_bucket[15m])) by (le)) > <SLO>`.
 - **Scheduler Regression:** Alert when `time() - km_scheduler_last_success_timestamp > 2 * expected_interval` or when `rate(km_scheduler_runs_total{result="failure"}[30m]) > 0`.
+- **Lifecycle Regression:** Trigger when `km_lifecycle_stale_docs > threshold` or `km_lifecycle_isolated_nodes > 0` for more than 24 h. Use `/lifecycle/history` as a secondary check to confirm trend direction before paging.
+- **UI Engagement Drop:** Alert when `rate(km_ui_requests_total[30m])` drops below baseline during active business hours, or when `km_ui_events_total{event="lifecycle_download"}` flatlines (users may have lost access).
 
 ### Health Endpoints
 - `GET /healthz` returns an overall `status` (`ok` or `degraded`) plus detailed checks for `coverage`, `audit`, and `scheduler`.

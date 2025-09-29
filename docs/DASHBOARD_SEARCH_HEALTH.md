@@ -93,4 +93,4 @@ sum by (status) (increase(km_search_requests_total[5m]))
 
 - **Documentation:** See updated entries in `docs/OBSERVABILITY_GUIDE.md` (dashboard & alert cookbook) and `STATUS.md` for project status.
 - **Stakeholder Review:** Schedule a 30-minute review with SRE + applied ML team to validate thresholds after one week of data. Capture decisions in `docs/OBSERVABILITY_GUIDE.md#review-log` (placeholder section added).
-- **Next Steps:** Once Grafana dashboard is deployed, export JSON to repo and automate provisioning via Terraform or Grafana provisioning config.
+- **Provisioning:** Dashboard JSON exported to `infra/grafana/search_observability.json`. Consider integrating with Grafana provisioning or Terraform modules for automated rollout.

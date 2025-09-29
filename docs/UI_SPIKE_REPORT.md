@@ -36,8 +36,8 @@ The spike deliberately focused on read-only experiences, reusing existing API co
 | Token persistence expectations | Current storage is session-bound. Document behaviour and revisit if offline caching is required. |
 | Telemetry volume | Monitor `km_ui_requests_total` to ensure console traffic does not skew rate limits; add label-based filters in dashboards. |
 
-## 5. Next Steps Snapshot
+## 5. Next Steps Snapshot *(Completed / Tracked)*
 
-- Update `docs/ROADMAP.md` Phase 5 Step 5.3 to mark the spike complete and reference the knowledge console milestone.
-- Document UI metrics and lifecycle download events in the observability guide.
-- Scope sparkline telemetry work (see optional UX plan) before committing to chart libraries or additional dependencies.
+- Roadmap Phase 5 Step 5.3 now references the Knowledge Console milestone (see `docs/ROADMAP.md`).
+- Observability guide documents UI metrics, lifecycle history, and sparkline telemetry alerts (`docs/OBSERVABILITY_GUIDE.md`).
+- Sparkline telemetry plan is captured under Work Package B (Release 1.0.1) with implementation tracked via `RELEASE101_PACKAGES.md`.
