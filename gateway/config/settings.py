@@ -82,6 +82,7 @@ class AppSettings(BaseSettings):
 
     lifecycle_report_enabled: bool = Field(True, alias="KM_LIFECYCLE_REPORT_ENABLED")
     lifecycle_stale_days: int = Field(30, alias="KM_LIFECYCLE_STALE_DAYS")
+    lifecycle_history_limit: int = Field(10, alias="KM_LIFECYCLE_HISTORY_LIMIT")
 
     tracing_enabled: bool = Field(False, alias="KM_TRACING_ENABLED")
     tracing_endpoint: str | None = Field(None, alias="KM_TRACING_ENDPOINT")

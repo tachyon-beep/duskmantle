@@ -124,6 +124,49 @@ WATCH_RUNS_TOTAL = Counter(
     labelnames=["result"],
 )
 
+
+LIFECYCLE_LAST_RUN_STATUS = Gauge(
+    "km_lifecycle_last_run_status",
+    "Lifecycle report generation status (1=success,0=failure)",
+    labelnames=["profile"],
+)
+
+LIFECYCLE_LAST_RUN_TIMESTAMP = Gauge(
+    "km_lifecycle_last_run_timestamp",
+    "Unix timestamp of the last lifecycle report",
+    labelnames=["profile"],
+)
+
+LIFECYCLE_STALE_DOCS_TOTAL = Gauge(
+    "km_lifecycle_stale_docs_total",
+    "Number of stale design docs in the latest lifecycle report",
+    labelnames=["profile"],
+)
+
+LIFECYCLE_ISOLATED_NODES_TOTAL = Gauge(
+    "km_lifecycle_isolated_nodes_total",
+    "Number of isolated graph nodes recorded in the latest lifecycle report",
+    labelnames=["profile"],
+)
+
+LIFECYCLE_MISSING_TEST_SUBSYSTEMS_TOTAL = Gauge(
+    "km_lifecycle_missing_test_subsystems_total",
+    "Number of subsystems missing tests in the latest lifecycle report",
+    labelnames=["profile"],
+)
+
+LIFECYCLE_REMOVED_ARTIFACTS_TOTAL = Gauge(
+    "km_lifecycle_removed_artifacts_total",
+    "Number of recently removed artifacts recorded in the latest lifecycle report",
+    labelnames=["profile"],
+)
+
+LIFECYCLE_HISTORY_SNAPSHOTS = Gauge(
+    "km_lifecycle_history_snapshots",
+    "Number of retained lifecycle history snapshots",
+    labelnames=["profile"],
+)
+
 MCP_REQUESTS_TOTAL = Counter(
     "km_mcp_requests_total",
     "MCP tool invocations partitioned by result",
@@ -159,4 +202,11 @@ UI_REQUESTS_TOTAL = Counter(
     "km_ui_requests_total",
     "Embedded UI visits partitioned by view",
     labelnames=["view"],
+)
+
+
+UI_EVENTS_TOTAL = Counter(
+    "km_ui_events_total",
+    "Embedded UI events partitioned by event label",
+    labelnames=["event"],
 )

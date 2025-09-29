@@ -16,7 +16,8 @@ This repository packages a turnkey knowledge management stack that bundles the K
 1. Run `bin/km-bootstrap`. It pulls the latest `ghcr.io/tachyon-beep/duskmantle-km` image, provisions `.duskmantle/{config,data,backups}`, and generates fresh credentials.
 2. Drop or symlink the repositories, docs, or transcripts you want indexed into `.duskmantle/data/`. The container mounts this directory at `/workspace/repo` and the watcher fingerprints files so edits trigger delta ingests automatically.
 3. Monitor ingest state. Leave `bin/km-watch` running for host-side polling, or hit `/metrics` and `/healthz` (with maintainer token if auth is enabled) to verify coverage and scheduler status.
-   Visit `/ui/search` after bootstrap to issue hybrid queries through the bundled console (supply your reader token via the Tokens menu).
+   Visit `/ui/search` after bootstrap to issue hybrid queries through the bundled console (supply your reader token via the Tokens menu). Switch to `/ui/subsystems` to explore dependency chains and linked artifacts. The `/ui/lifecycle` tab plots spark lines once a few lifecycle snapshots exist, making stale docs and isolation trends easy to spot.
+   Use the action buttons to copy ready-to-run MCP commands (`km-search`, `km-graph-subsystem`, recipes) or download JSON exports for issue triage.
 4. Import the Codex MCP snippet from `docs/MCP_INTEGRATION.md` (or the per-tool recipes in `docs/MCP_RECIPES.md`). Any MCP-capable agent can now call `km-search`, `km-graph-*`, `km-ingest-*`, and `km-feedback-submit` without bespoke glue code.
 5. Exercise the surface using the MCP smoke recipe (`docs/MCP_RECIPES.md` section 3) or run `pytest -m mcp_smoke`. Start with `km-upload`/`km-storetext` to add material, then query via `km-search`; `/search` responses include a `metadata.feedback_prompt`, so keep submitting feedback with `km-feedback-submit` until ranking telemetry stabilises.
 

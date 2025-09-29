@@ -8,7 +8,7 @@ This guide explains how to operate and monitor the Duskmantle Knowledge Gateway.
 - **Tracing:** Optional OpenTelemetry spans that capture HTTP requests and ingestion stages. Export spans to an OTLP collector, APM tool, or stdout.
 - **Audit Ledger:** SQLite database under `/opt/knowledge/var/audit/audit.db` with per-run provenance records accessible via `/audit/history`.
 - **Coverage Report:** Accessible via `/coverage` (maintainer scope) or `/opt/knowledge/var/reports/coverage_report.json`, detailing indexed artifacts, missing coverage, and the `removed_artifacts` list for files deleted from the repo but recently cleaned from the graph. Historical snapshots live under `/opt/knowledge/var/reports/history/coverage_*.json` and are pruned to the limit defined by `KM_COVERAGE_HISTORY_LIMIT`.
-- **Lifecycle Report:** Available at `/lifecycle` (maintainer scope) or `/opt/knowledge/var/reports/lifecycle_report.json`, capturing isolated graph nodes, stale design docs (older than `KM_LIFECYCLE_STALE_DAYS`), and subsystems missing tests. Use it to prioritise authoring or tagging work after each ingest.
+- **Lifecycle Report:** Available at `/lifecycle` (maintainer scope) or `/opt/knowledge/var/reports/lifecycle_report.json`, capturing isolated graph nodes, stale design docs (older than `KM_LIFECYCLE_STALE_DAYS`), and subsystems missing tests. Use it to prioritise authoring or tagging work after each ingest. Historical snapshots live under `/opt/knowledge/var/reports/lifecycle_history/` and are surfaced via `/lifecycle/history` for the UI spark lines.
 - **Recipe Audit:** Running `km-recipe-run` appends JSONL entries to `/opt/knowledge/var/audit/recipes.log` summarising step status and captured outputs. Tail this log to monitor automation runs or integrate with alerting.
 
 ## 2. Metrics Reference
@@ -37,6 +37,8 @@ Key time-series:
 | `km_search_graph_cache_events_total` | Counter | `status` (`miss`,`hit`,`error`) | Tracks graph context cache utilisation. | Alert when `status="error"` climbs or hit ratio drops suddenly. |
 | `km_search_graph_lookup_seconds` | Histogram | _none_ | Latency of Neo4j lookups for search enrichment. | Alert when P95 exceeds expected threshold (e.g., >250 ms). |
 | `km_search_adjusted_minus_vector` | Histogram | _none_ | Distribution of adjusted minus vector scores per result. | Alert when distribution skews heavily positive/negative (ranking drift). |
+| `km_ui_requests_total` | Counter | `view` | Embedded console visits by view (`landing`, `search`, `subsystems`, `lifecycle`). | Monitor for unexpected spikes that could indicate scraping or unauthorised use. |
+| `km_ui_events_total` | Counter | `event` | UI-triggered events (currently `lifecycle_download` when the JSON report is fetched). | Alert when expected downloads are absent or surge unexpectedly. |
 | `km_graph_migration_last_status` | Gauge | _none_ | 1=success, 0=failure, -1=skipped (auto-migrate state). | Alert on 0 or when paired timestamp is stale. |
 | `km_graph_migration_last_timestamp` | Gauge | _none_ | Unix timestamp of last graph migration attempt. | Alert when older than deployment policy while auto-migrate is enabled. |
 | `km_scheduler_runs_total` | Counter | `result` (`success`,`failure`,`skipped_head`,`skipped_lock`,`skipped_auth`) | Scheduled ingestion job outcomes. | Alert if `result="failure"` or `skipped_auth` increments unexpectedly. |

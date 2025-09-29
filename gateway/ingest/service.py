@@ -98,6 +98,7 @@ def execute_ingestion(
                 output_path=lifecycle_path,
                 stale_days=settings.lifecycle_stale_days,
                 graph_enabled=graph_service is not None,
+                history_limit=settings.lifecycle_history_limit,
             )
             write_lifecycle_report(
                 result,

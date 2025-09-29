@@ -5,9 +5,19 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from prometheus_client import REGISTRY
 
 from gateway.ingest.lifecycle import LifecycleConfig, write_lifecycle_report
 from gateway.ingest.pipeline import IngestionResult
+from gateway.observability.metrics import (
+    LIFECYCLE_HISTORY_SNAPSHOTS,
+    LIFECYCLE_ISOLATED_NODES_TOTAL,
+    LIFECYCLE_LAST_RUN_STATUS,
+    LIFECYCLE_LAST_RUN_TIMESTAMP,
+    LIFECYCLE_MISSING_TEST_SUBSYSTEMS_TOTAL,
+    LIFECYCLE_REMOVED_ARTIFACTS_TOTAL,
+    LIFECYCLE_STALE_DOCS_TOTAL,
+)
 
 
 class DummyGraphService:
@@ -64,12 +74,22 @@ def ingestion_result() -> IngestionResult:
         success=True,
         artifacts=artifacts,
     )
+    result.removed_artifacts.append({
+        "path": "docs/removed.md",
+        "status": "deleted",
+        "timestamp": now,
+    })
     return result
 
 
 def test_write_lifecycle_report_without_graph(tmp_path: Path, ingestion_result: IngestionResult) -> None:
     output_path = tmp_path / "reports" / "lifecycle_report.json"
-    config = LifecycleConfig(output_path=output_path, stale_days=30, graph_enabled=False)
+    config = LifecycleConfig(
+        output_path=output_path,
+        stale_days=30,
+        graph_enabled=False,
+        history_limit=3,
+    )
 
     write_lifecycle_report(ingestion_result, config=config, graph_service=None)
 
@@ -79,6 +99,20 @@ def test_write_lifecycle_report_without_graph(tmp_path: Path, ingestion_result: 
     assert any(entry["path"] == "docs/old.md" for entry in stale_docs)
     assert payload["missing_tests"][0]["subsystem"] == "Kasmina"
     assert payload["isolated"] == {}
+    assert payload["removed_artifacts"][0]["path"] == "docs/removed.md"
+    summary = payload["summary"]
+    assert summary["stale_docs"] == 1
+    assert summary["removed_artifacts"] == 1
+
+    history_dir = output_path.parent / "lifecycle_history"
+    snapshots = list(history_dir.glob('lifecycle_*.json'))
+    assert len(snapshots) == 1
+
+    profile_labels = {"profile": "local"}
+    assert REGISTRY.get_sample_value('km_lifecycle_last_run_status', profile_labels) == 1.0
+    assert REGISTRY.get_sample_value('km_lifecycle_stale_docs_total', profile_labels) == 1.0
+    assert REGISTRY.get_sample_value('km_lifecycle_removed_artifacts_total', profile_labels) == 1.0
+    assert REGISTRY.get_sample_value('km_lifecycle_history_snapshots', profile_labels) == 1.0
 
 
 def test_write_lifecycle_report_with_graph(tmp_path: Path, ingestion_result: IngestionResult) -> None:
@@ -87,7 +121,12 @@ def test_write_lifecycle_report_with_graph(tmp_path: Path, ingestion_result: Ing
         "DesignDoc": [[{"id": "DesignDoc:docs/orphan.md", "properties": {"path": "docs/orphan.md"}}]],
         "SourceFile": [],
     }
-    config = LifecycleConfig(output_path=output_path, stale_days=30, graph_enabled=True)
+    config = LifecycleConfig(
+        output_path=output_path,
+        stale_days=30,
+        graph_enabled=True,
+        history_limit=2,
+    )
     graph_service = DummyGraphService(graph_nodes)
 
     write_lifecycle_report(ingestion_result, config=config, graph_service=graph_service)
@@ -95,3 +134,5 @@ def test_write_lifecycle_report_with_graph(tmp_path: Path, ingestion_result: Ing
     payload = json.loads(output_path.read_text())
     assert "DesignDoc" in payload["isolated"]
     assert payload["isolated"]["DesignDoc"][0]["path"] == "docs/orphan.md"
+    summary = payload["summary"]
+    assert summary["isolated_nodes"] == 1

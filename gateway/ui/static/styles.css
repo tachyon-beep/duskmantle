@@ -293,3 +293,158 @@ body {
     padding: 1.5rem;
   }
 }
+
+
+.dm-panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.dm-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.8rem;
+  border-radius: 999px;
+  background: rgba(118, 198, 255, 0.15);
+  color: rgba(193, 226, 255, 0.9);
+  font-size: 0.82rem;
+}
+
+.dm-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1.5rem;
+}
+
+.dm-definition {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.35rem 0.75rem;
+  margin: 0;
+}
+
+.dm-definition dt {
+  font-weight: 600;
+  color: rgba(247, 249, 252, 0.78);
+}
+
+.dm-definition dd {
+  margin: 0;
+  color: rgba(247, 249, 252, 0.86);
+}
+
+.dm-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.dm-list li {
+  background: rgba(11, 17, 28, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 0.45rem 0.8rem;
+  font-size: 0.9rem;
+}
+
+.dm-divider {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  margin: 1.5rem 0;
+}
+
+.dm-table-scroll {
+  overflow-x: auto;
+  margin-top: 1rem;
+}
+
+.dm-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  min-width: 480px;
+}
+
+.dm-table th,
+.dm-table td {
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  text-align: left;
+}
+
+.dm-table tbody tr:hover {
+  background: rgba(118, 198, 255, 0.08);
+}
+
+
+.dm-actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.dm-actions--stack {
+  margin-top: 1.25rem;
+  justify-content: flex-start;
+}
+
+.dm-timestamp {
+  font-size: 0.85rem;
+  color: rgba(247, 249, 252, 0.68);
+  margin-top: 0.75rem;
+}
+
+.dm-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.dm-metric {
+  background: rgba(10, 16, 26, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 0.75rem 1rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.dm-metric__label {
+  font-size: 0.85rem;
+  color: rgba(247, 249, 252, 0.78);
+}
+
+.dm-metric__value {
+  font-size: 1.4rem;
+  font-weight: 600;
+}
+
+
+.dm-metric__spark {
+  display: block;
+  width: 100%;
+  height: 28px;
+  margin-top: 0.4rem;
+}
+
+.dm-metric__spark svg {
+  width: 100%;
+  height: 100%;
+}
+
+.dm-spark-line {
+  fill: none;
+  stroke: rgba(118, 198, 255, 0.85);
+  stroke-width: 2;
+}
+
+.dm-spark-fill {
+  fill: rgba(118, 198, 255, 0.18);
+}

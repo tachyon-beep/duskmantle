@@ -59,3 +59,64 @@ def test_ui_search_view(tmp_path: Path, monkeypatch) -> None:
     assert "performSearch" in script.text
 
     _reset_settings()
+
+
+
+def test_ui_subsystems_view(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("KM_STATE_PATH", str(tmp_path / "state"))
+    _reset_settings()
+    app = create_app()
+    client = TestClient(app)
+
+    before = REGISTRY.get_sample_value("km_ui_requests_total", {"view": "subsystems"}) or 0.0
+
+    response = client.get("/ui/subsystems")
+    assert response.status_code == 200
+    assert 'Subsystem Explorer' in response.text
+    assert 'dm-subsystem-form' in response.text
+
+    after = REGISTRY.get_sample_value("km_ui_requests_total", {"view": "subsystems"}) or 0.0
+    assert after == before + 1.0
+
+    _reset_settings()
+
+
+
+def test_ui_lifecycle_download(tmp_path: Path, monkeypatch) -> None:
+    state_dir = tmp_path / "state"
+    reports_dir = state_dir / "reports"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    report_path = reports_dir / "lifecycle_report.json"
+    report_path.write_text('{"stale_docs": [], "isolated_nodes": []}')
+
+    monkeypatch.setenv("KM_STATE_PATH", str(state_dir))
+    _reset_settings()
+    app = create_app()
+    client = TestClient(app)
+
+    before = REGISTRY.get_sample_value("km_ui_events_total", {"event": "lifecycle_download"}) or 0.0
+
+    response = client.get('/ui/lifecycle/report')
+    assert response.status_code == 200
+    assert response.json() == {"stale_docs": [], "isolated_nodes": []}
+
+    after = REGISTRY.get_sample_value("km_ui_events_total", {"event": "lifecycle_download"}) or 0.0
+    assert after == before + 1.0
+
+    _reset_settings()
+
+
+
+def test_ui_events_endpoint(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("KM_STATE_PATH", str(tmp_path / "state"))
+    _reset_settings()
+    app = create_app()
+    client = TestClient(app)
+
+    before = REGISTRY.get_sample_value("km_ui_events_total", {"event": "test-event"}) or 0.0
+    response = client.post('/ui/events', json={"event": "test-event"})
+    assert response.status_code == 200
+    after = REGISTRY.get_sample_value("km_ui_events_total", {"event": "test-event"}) or 0.0
+    assert after == before + 1.0
+
+    _reset_settings()

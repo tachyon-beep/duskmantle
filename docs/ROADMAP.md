@@ -36,7 +36,7 @@ A single work package covers both file and text-based content ingestion via MCP.
 
 ## Medium Priority
 
-- **km-bundle** – ...
+- **km-bundle** – Bundled export of MCP recipe outcomes and lifecycle snapshots (tracked under WP7).
 [retain remaining roadmap sections unchanged]
 
 ## Work Package: MCP Upload & StoreText Execution Plan
@@ -135,6 +135,42 @@ A single work package covers both file and text-based content ingestion via MCP.
   - Task 3.3.2 Implement backpressure to avoid memory spikes.
   - Task 3.3.3 Load-test ingestion throughput with representative repositories.
 
+
+## Work Package: Knowledge Console (Proposed WP7)
+
+### Phase 1 – Telemetry & Visuals
+
+- **Step 1.1 Lifecycle trend emitters**
+  - Task 1.1.1 Persist rolling history (per ingest) of stale docs, isolated nodes, subsystems without tests, and removed artifacts (JSON + Prometheus gauges).
+  - Task 1.1.2 Expose `/lifecycle/history` (maintainer scope) returning the last N datapoints for UI consumption.
+- **Step 1.2 Sparkline rendering**
+  - Task 1.2.1 Introduce a lightweight chart helper (inline SVG/Canvas) that renders stale/isolated/missing/removed trends without external build tooling.
+  - Task 1.2.2 Update the lifecycle view to call the history endpoint and populate spark lines with graceful fallbacks when history is absent.
+- **Step 1.3 Observability integration**
+  - Task 1.3.1 Extend Grafana dashboards with `km_ui_requests_total`, `km_ui_events_total`, and lifecycle trend panels.
+  - Task 1.3.2 Document alerting thresholds in `docs/OBSERVABILITY_GUIDE.md` and ensure metrics are scraped in CI smoke jobs.
+
+### Phase 2 – Agent Shortcuts
+
+- **Step 2.1 MCP launchers** **(Completed)**
+  - Task 2.1.1 Add console buttons that trigger `km-recipe-run` (via MCP) with prefilled variables for release prep, stale audit, and subsystem freshness. **(Completed)**
+  - Task 2.1.2 Surface copy-ready MCP command snippets and request IDs for downstream prompts. **(Completed)**
+- **Step 2.2 Context export** **(Completed)**
+  - Task 2.2.1 Provide download/export buttons (JSON/Markdown) for search results and subsystem tables to streamline issue filing. **(Completed)**
+  - Task 2.2.2 Audit audit-log entries to ensure UI-triggered actions remain traceable. **(Completed via `km_ui_events_total` instrumentation)**
+
+### Phase 3 – Accessibility & Hardened UX
+
+- **Step 3.1 Accessibility audit**
+  - Task 3.1.1 Ensure keyboard navigation, focus states, and ARIA roles cover all interactive elements.
+  - Task 3.1.2 Add high-contrast and reduced-motion toggles with persisted preferences.
+- **Step 3.2 Localisation & resilience**
+  - Task 3.2.1 Centralise UI strings for future localisation; document token-handling behaviour in README/Quick Start.
+  - Task 3.2.2 Improve error surfaces (offline, 401/403, 5xx) with retry and support guidance.
+- **Step 3.3 Automated testing**
+  - Task 3.3.1 Add Playwright smoke tests covering navigation, lifecycle refresh, and recipe launch buttons.
+  - Task 3.3.2 Integrate UI tests into CI (nightly slice) with optional container spin-up.
+
 ## Work Package: Knowledge UX & Automation (Target: v1.3)
 
 ### Phase 4 – Graph analytics & lifecycle views
@@ -156,9 +192,9 @@ A single work package covers both file and text-based content ingestion via MCP.
   - Task 5.2.1 Build recipe runner to orchestrate chained MCP calls with logging/rollback. **(Completed – implemented via `gateway/recipes/` executor)**
   - Task 5.2.2 Provide baseline recipes (stale-doc audit, subsystem freshness, release prep). **(Completed)**
   - Task 5.2.3 Document recipes in MCP playbook and add validation tests. **(Completed)**
-- **Step 5.3 UI spike (optional)**
-  - Task 5.3.1 Prototype HTML report or lightweight UI for search/graph browsing.
-  - Task 5.3.2 Evaluate integration cost; schedule standalone milestone if pursued.
+- **Step 5.3 UI spike** *(completed – see docs/UI_SPIKE_REPORT.md)*
+  - Task 5.3.1 Prototype HTML report or lightweight UI for search/graph browsing. **(Completed)**
+  - Task 5.3.2 Evaluate integration cost; schedule standalone milestone if pursued. **(Completed – follow-up captured under WP7 Knowledge Console)**
 
 ## Work Package: Documentation & Onboarding (Ongoing)
 

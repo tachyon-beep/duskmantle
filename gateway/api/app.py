@@ -6,6 +6,7 @@ import sqlite3
 import time
 from contextlib import asynccontextmanager, suppress
 from datetime import datetime, timezone
+from pathlib import Path
 
 from fastapi import Body, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.staticfiles import StaticFiles
@@ -31,6 +32,7 @@ from gateway.graph import (
 )
 from gateway.graph.migrations import MigrationRunner
 from gateway.ingest.embedding import Embedder
+from gateway.ingest.lifecycle import summarize_lifecycle
 from gateway.observability import (
     GRAPH_MIGRATION_LAST_STATUS,
     GRAPH_MIGRATION_LAST_TIMESTAMP,
@@ -333,6 +335,33 @@ def create_app() -> FastAPI:
         except ValueError as exc:  # pragma: no cover - defensive
             raise HTTPException(status_code=500, detail="Lifecycle report is invalid JSON") from exc
         return JSONResponse(data)
+
+    @app.get("/lifecycle/history", dependencies=[Depends(require_maintainer)], tags=["observability"])
+    @limiter.limit("30/minute")
+    def lifecycle_history(request: Request, limit: int = 30) -> JSONResponse:  # noqa: ARG001
+        history_dir = settings.state_path / "reports" / "lifecycle_history"
+        if settings.lifecycle_history_limit <= 0:
+            return JSONResponse({"history": []})
+        try:
+            requested = int(limit or 1)
+        except (TypeError, ValueError):
+            requested = 1
+        limit_normalized = max(1, min(requested, settings.lifecycle_history_limit))
+        files: list[Path] = []
+        if history_dir.exists():
+            files = sorted(history_dir.glob("lifecycle_*.json"), key=lambda path: path.stat().st_mtime, reverse=True)[:limit_normalized]
+        if history_dir.exists():
+            files = sorted(history_dir.glob("lifecycle_*.json"), key=lambda path: path.stat().st_mtime, reverse=True)[:limit]
+        entries: list[dict[str, object]] = []
+        for path_entry in reversed(files):
+            try:
+                payload = json.loads(path_entry.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            summary = summarize_lifecycle(payload)
+            summary["path"] = path_entry.name
+            entries.append(summary)
+        return JSONResponse({"history": entries})
 
     @app.post("/search", dependencies=[Depends(require_reader)], tags=["search"])
     @limiter.limit(metrics_limit)

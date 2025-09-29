@@ -73,6 +73,9 @@ curl http://localhost:8000/readyz
 
 Then open `http://localhost:8000/ui/` in a browser to explore the embedded console preview (search, subsystem, and lifecycle panels arrive in later iterations).
 Head to the Search tab to issue hybrid queries without leaving the container, supplying your reader token when prompted.
+Review dependencies from the Subsystems tab — start with `ReleaseTooling` or any subsystem defined in your ingest.
+Spark lines on the Lifecycle tab appear after at least one completed ingest so you can visualise stale docs and isolated nodes over time.
+Use the console actions to copy MCP commands or download JSON snapshots when filing issues.
 
 ## 4. Run an Ingest
 
