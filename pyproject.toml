@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "duskmantle-knowledge-gateway"
-version = "1.0.0"
+version = "1.0.1"
 description = "Turnkey knowledge management gateway packaged with Qdrant and Neo4j"
 readme = "README.md"
 authors = [{ name = "John Morrissey", email = "john@foundryside.dev" }]
