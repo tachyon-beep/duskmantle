@@ -49,6 +49,20 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Use deterministic dummy embeddings (testing only)",
     )
+    incremental_group = rebuild_parser.add_mutually_exclusive_group()
+    incremental_group.add_argument(
+        "--incremental",
+        dest="incremental",
+        action="store_true",
+        help="Force incremental ingest even if disabled in configuration",
+    )
+    incremental_group.add_argument(
+        "--full-rebuild",
+        dest="incremental",
+        action="store_false",
+        help="Disable incremental ingest for this run",
+    )
+    rebuild_parser.set_defaults(incremental=None)
 
     history_parser = subparsers.add_parser(
         "audit-history",
@@ -75,6 +89,7 @@ def rebuild(
     repo: Path | None,
     dry_run: bool,
     dummy_embeddings: bool,
+    incremental: bool | None,
     settings: AppSettings | None = None,
 ) -> None:
     """Execute a full ingestion pass."""
@@ -88,7 +103,8 @@ def rebuild(
         repo_override=repo,
         dry_run=dry_run,
         use_dummy_embeddings=dummy_embeddings,
-        )
+        incremental=incremental,
+    )
     logger.info(
         "Ingestion run completed",
         extra={
@@ -176,6 +192,7 @@ def main(argv: list[str] | None = None) -> None:
             repo=args.repo,
             dry_run=args.dry_run,
             dummy_embeddings=args.dummy_embeddings,
+            incremental=args.incremental,
             settings=settings,
         )
     elif args.command == "audit-history":

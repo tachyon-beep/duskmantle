@@ -109,28 +109,28 @@ A single work package covers both file and text-based content ingestion via MCP.
   - Task 1.3.1 Refuse secure-mode startup without required tokens/passwords.
   - Task 1.3.2 Document the failure behaviour and migration guidance.
 
-### Phase 2 – Monitoring & Insights
+### Phase 2 – Monitoring & Insights - COMPLETED
 
-- **Step 2.1 Enhanced logging**
+- **Step 2.1 Enhanced logging** *(completed)*
   - Task 2.1.1 Introduce request IDs tied to search/feedback events.
   - Task 2.1.2 Emit startup config summary (version, weight profile, ingest defaults).
-- **Step 2.2 Observability polish**
+- **Step 2.2 Observability polish** *(completed)*
   - Task 2.2.1 Add Prometheus counters for stale deletions resolved, ingest skips, watch-triggered ingests.
   - Task 2.2.2 Update Grafana dashboards to surface new metrics.
 
 ## Work Package: Performance & Scale (Target: v1.2)
 
-### Phase 3 – Ingestion Optimisation
+### Phase 3 – Ingestion Optimisation - COMPLETED
 
-- **Step 3.1 Batch Neo4j writes**
+- **Step 3.1 Batch Neo4j writes** *(completed)*
   - Task 3.1.1 Profile current ingest to identify hot Cypher paths.
   - Task 3.1.2 Refactor `Neo4jWriter` to batch MERGE operations via `UNWIND` or transaction batching.
   - Task 3.1.3 Benchmark before/after; ensure transactional safety.
-- **Step 3.2 Incremental ingest**
+- **Step 3.2 Incremental ingest** *(completed)*
   - Task 3.2.1 Persist file digests/timestamps alongside chunks.
   - Task 3.2.2 Skip unchanged files during discovery; re-embed only modified/new content.
   - Task 3.2.3 Provide CLI flags for full rebuild vs incremental; update docs/tests.
-- **Step 3.3 Async/parallel execution**
+- **Step 3.3 Async/parallel execution** *(completed)*
   - Task 3.3.1 Evaluate embedding and writer parallelism (asyncio worker pool, thread pools).
   - Task 3.3.2 Implement backpressure to avoid memory spikes.
   - Task 3.3.3 Load-test ingestion throughput with representative repositories.

@@ -77,6 +77,7 @@ Inside the container:
 
 ```bash
 docker exec duskmantle gateway-ingest rebuild --profile local --dummy-embeddings
+# Incremental ingest runs by default; add `--full-rebuild` to force reprocessing all artifacts.
 ```
 
 For production, omit `--dummy-embeddings` (requires model download).

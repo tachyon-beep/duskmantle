@@ -33,6 +33,7 @@ The knowledge gateway reads its runtime configuration from environment variables
 | `KM_INGEST_WINDOW` / `KM_INGEST_OVERLAP` | `1000` / `200` | Chunking size and overlap (characters). |
 | `KM_INGEST_DRY_RUN` | `false` | Skip writes (plan the ingestion without mutating storage). |
 | `KM_INGEST_USE_DUMMY` | `false` | Use deterministic embeddings for non-production runs. |
+| `KM_INGEST_INCREMENTAL` | `true` | Enable incremental ingest (skip unchanged artifacts using the ledger). |
 | `KM_SEARCH_WEIGHT_PROFILE` | `default` | Built-in weight bundle (`default`, `analysis`, `operations`, `docs-heavy`). |
 | `KM_SEARCH_VECTOR_WEIGHT` / `KM_SEARCH_LEXICAL_WEIGHT` | `1.0` / `0.25` | Hybrid weighting multipliers. |
 | `KM_SEARCH_HNSW_EF_SEARCH` | `128` | Recall tuning for Qdrant HNSW queries (increase for higher recall). |

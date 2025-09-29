@@ -71,6 +71,9 @@ class AppSettings(BaseSettings):
     ingest_window: int = Field(1000, alias="KM_INGEST_WINDOW")
     ingest_overlap: int = Field(200, alias="KM_INGEST_OVERLAP")
     ingest_use_dummy_embeddings: bool = Field(False, alias="KM_INGEST_USE_DUMMY")
+    ingest_incremental_enabled: bool = Field(True, alias="KM_INGEST_INCREMENTAL")
+    ingest_parallel_workers: int = Field(2, alias="KM_INGEST_PARALLEL_WORKERS")
+    ingest_max_pending_batches: int = Field(4, alias="KM_INGEST_MAX_PENDING_BATCHES")
     scheduler_enabled: bool = Field(False, alias="KM_SCHEDULER_ENABLED")
     scheduler_interval_minutes: int = Field(30, alias="KM_SCHEDULER_INTERVAL_MINUTES")
     scheduler_cron: str | None = Field(None, alias="KM_SCHEDULER_CRON")
@@ -198,6 +201,17 @@ class AppSettings(BaseSettings):
         if value < 1:
             return 1
         return value
+
+    @field_validator("ingest_parallel_workers", "ingest_max_pending_batches", mode="before")
+    @classmethod
+    def _ensure_positive_parallelism(cls, value: int) -> int:
+        try:
+            numeric = int(value)
+        except (TypeError, ValueError):
+            return 1
+        if numeric < 1:
+            return 1
+        return numeric
 
 
 @lru_cache(maxsize=1)

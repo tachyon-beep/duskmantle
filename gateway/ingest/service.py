@@ -23,12 +23,14 @@ def execute_ingestion(
     repo_override: Path | None = None,
     dry_run: bool | None = None,
     use_dummy_embeddings: bool | None = None,
+    incremental: bool | None = None,
 ) -> IngestionResult:
     """Run ingestion using shared settings and return result."""
 
     repo_root = repo_override or settings.repo_root
     dry = settings.dry_run if dry_run is None else dry_run
     use_dummy = settings.ingest_use_dummy_embeddings if use_dummy_embeddings is None else use_dummy_embeddings
+    incremental_enabled = settings.ingest_incremental_enabled if incremental is None else incremental
 
     state_path = settings.state_path
 
@@ -64,6 +66,9 @@ def execute_ingestion(
         coverage_path=coverage_path,
         coverage_history_limit=settings.coverage_history_limit,
         ledger_path=ledger_path,
+        incremental=incremental_enabled,
+        embed_parallel_workers=max(1, settings.ingest_parallel_workers),
+        max_pending_batches=max(1, settings.ingest_max_pending_batches),
     )
 
     pipeline = IngestionPipeline(qdrant_writer=qdrant_writer, neo4j_writer=neo4j_writer, config=config)

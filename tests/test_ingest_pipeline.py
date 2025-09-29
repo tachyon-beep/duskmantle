@@ -130,3 +130,41 @@ def test_pipeline_removes_stale_artifacts(tmp_path: Path) -> None:
     assert "docs/obsolete.md" in neo4j2.deleted_paths
     assert "docs/obsolete.md" in qdrant2.deleted_paths
     assert metric_after == metric_before + 1
+
+
+def test_pipeline_skips_unchanged_artifacts(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    (repo / "docs").mkdir(parents=True)
+    (repo / "docs" / "file.md").write_text("content v1")
+
+    ledger_path = tmp_path / "state" / "reports" / "artifact_ledger.json"
+
+    def _run(incremental: bool = True):
+        qdrant = StubQdrantWriter()
+        neo4j = StubNeo4jWriter()
+        config = IngestionConfig(
+            repo_root=repo,
+            dry_run=False,
+            use_dummy_embeddings=True,
+            chunk_window=64,
+            chunk_overlap=10,
+            ledger_path=ledger_path,
+            incremental=incremental,
+        )
+        pipeline = IngestionPipeline(qdrant_writer=qdrant, neo4j_writer=neo4j, config=config)
+        return pipeline.run()
+
+    first = _run()
+    assert not first.removed_artifacts
+
+    metric_before = _metric_value("km_ingest_skips_total", {"reason": "unchanged"})
+    second = _run()
+    metric_after = _metric_value("km_ingest_skips_total", {"reason": "unchanged"})
+
+    assert second.artifacts[0]["skipped"] is True
+    assert metric_after == metric_before + 1
+    assert second.chunk_count == 0
+
+    # Full rebuild should bypass incremental skip
+    third = _run(incremental=False)
+    assert all(not entry.get("skipped") for entry in third.artifacts)

@@ -6,9 +6,11 @@ import logging
 import subprocess
 import time
 import uuid
+from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Sequence
+from concurrent.futures import ThreadPoolExecutor
 
 from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode
@@ -25,6 +27,7 @@ from gateway.observability.metrics import (
     INGEST_DURATION_SECONDS,
     INGEST_LAST_RUN_STATUS,
     INGEST_LAST_RUN_TIMESTAMP,
+    INGEST_SKIPS_TOTAL,
     INGEST_STALE_RESOLVED_TOTAL,
 )
 
@@ -50,6 +53,9 @@ class IngestionConfig:
     coverage_path: Path | None = None
     coverage_history_limit: int = 5
     ledger_path: Path | None = None
+    incremental: bool = True
+    embed_parallel_workers: int = 2
+    max_pending_batches: int = 4
 
 
 @dataclass(slots=True)
@@ -131,86 +137,142 @@ class IngestionPipeline:
                     },
                 )
 
-                chunks: list[Chunk] = []
                 artifact_details: list[dict[str, object]] = []
                 chunker = Chunker(window=self.config.chunk_window, overlap=self.config.chunk_overlap)
+                max_workers = max(1, self.config.embed_parallel_workers)
+                max_pending = max(1, self.config.max_pending_batches)
+                total_chunk_count = 0
 
-                with tracer.start_as_current_span("ingestion.chunk") as chunk_span:
-                    for artifact in artifacts:
-                        artifact_counts[artifact.artifact_type] = artifact_counts.get(artifact.artifact_type, 0) + 1
-                        artifact_chunks = list(chunker.split(artifact))
-                        coverage_ratio = 1.0 if artifact_chunks else 0.0
-                        subsystem_criticality = artifact.extra_metadata.get("subsystem_criticality")
-                        coverage_missing = 1.0 - coverage_ratio
-                        artifact_digest = hashlib.sha256(artifact.content.encode("utf-8")).hexdigest()
-                        path_text = artifact.path.as_posix()
-                        for chunk in artifact_chunks:
-                            chunk.metadata["environment"] = profile
-                            if subsystem_criticality is not None:
-                                chunk.metadata["subsystem_criticality"] = subsystem_criticality
-                            chunk.metadata["coverage_ratio"] = coverage_ratio
-                            chunk.metadata["coverage_missing"] = coverage_missing
-                        chunks.extend(artifact_chunks)
-                        if self.neo4j_writer and not self.config.dry_run:
-                            self.neo4j_writer.sync_artifact(artifact)
-                        artifact_details.append(
-                            {
-                                "path": path_text,
+                embedder = self._build_embedder()
+                if self.qdrant_writer and not self.config.dry_run:
+                    self.qdrant_writer.ensure_collection(embedder.dimension)
+
+                pending_batches = deque()
+
+                def _drain_one() -> None:
+                    nonlocal total_chunk_count
+                    future, batch_chunks = pending_batches.popleft()
+                    vectors = future.result()
+                    embeddings = self._build_embeddings(batch_chunks, vectors)
+                    total_chunk_count += self._persist_embeddings(embeddings)
+
+                with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    with tracer.start_as_current_span("ingestion.chunk") as chunk_span:
+                        for artifact in artifacts:
+                            artifact_counts[artifact.artifact_type] = artifact_counts.get(artifact.artifact_type, 0) + 1
+                            artifact_digest = hashlib.sha256(artifact.content.encode("utf-8")).hexdigest()
+                            path_text = artifact.path.as_posix()
+                            existing_entry = ledger_previous.get(path_text)
+                            subsystem_criticality = artifact.extra_metadata.get("subsystem_criticality")
+
+                            chunk_count_existing = None
+                            coverage_ratio_existing = None
+                            if self.config.incremental and existing_entry and existing_entry.get("digest") == artifact_digest:
+                                existing_chunk_count_raw = existing_entry.get("chunk_count")
+                                try:
+                                    chunk_count_existing = int(existing_chunk_count_raw)
+                                except (TypeError, ValueError):
+                                    chunk_count_existing = None
+                                if chunk_count_existing is not None:
+                                    coverage_ratio_existing = existing_entry.get("coverage_ratio")
+                                    if coverage_ratio_existing is None:
+                                        coverage_ratio_existing = 1.0 if chunk_count_existing else 0.0
+                                    else:
+                                        try:
+                                            coverage_ratio_existing = float(coverage_ratio_existing)
+                                        except (TypeError, ValueError):
+                                            coverage_ratio_existing = 1.0 if chunk_count_existing else 0.0
+                            if chunk_count_existing is not None:
+                                artifact_details.append(
+                                    {
+                                        "path": path_text,
+                                        "artifact_type": artifact.artifact_type,
+                                        "subsystem": artifact.subsystem,
+                                        "chunk_count": chunk_count_existing,
+                                        "git_commit": artifact.git_commit,
+                                        "git_timestamp": artifact.git_timestamp,
+                                        "subsystem_criticality": subsystem_criticality,
+                                        "coverage_ratio": coverage_ratio_existing,
+                                        "content_digest": artifact_digest,
+                                        "skipped": True,
+                                    }
+                                )
+                                current_ledger_entries[path_text] = {
+                                    "artifact_type": artifact.artifact_type,
+                                    "subsystem": artifact.subsystem,
+                                    "digest": artifact_digest,
+                                    "git_commit": artifact.git_commit,
+                                    "git_timestamp": artifact.git_timestamp,
+                                    "chunk_count": chunk_count_existing,
+                                    "coverage_ratio": coverage_ratio_existing,
+                                    "last_seen": started,
+                                }
+                                INGEST_SKIPS_TOTAL.labels(reason="unchanged").inc()
+                                continue
+
+                            artifact_chunks = list(chunker.split(artifact))
+                            coverage_ratio = 1.0 if artifact_chunks else 0.0
+                            coverage_missing = 1.0 - coverage_ratio
+                            for chunk in artifact_chunks:
+                                chunk.metadata["environment"] = profile
+                                if subsystem_criticality is not None:
+                                    chunk.metadata["subsystem_criticality"] = subsystem_criticality
+                                chunk.metadata["coverage_ratio"] = coverage_ratio
+                                chunk.metadata["coverage_missing"] = coverage_missing
+
+                            if self.neo4j_writer and not self.config.dry_run:
+                                self.neo4j_writer.sync_artifact(artifact)
+
+                            artifact_details.append(
+                                {
+                                    "path": path_text,
+                                    "artifact_type": artifact.artifact_type,
+                                    "subsystem": artifact.subsystem,
+                                    "chunk_count": len(artifact_chunks),
+                                    "git_commit": artifact.git_commit,
+                                    "git_timestamp": artifact.git_timestamp,
+                                    "subsystem_criticality": subsystem_criticality,
+                                    "coverage_ratio": coverage_ratio,
+                                    "content_digest": artifact_digest,
+                                    "skipped": False,
+                                }
+                            )
+                            current_ledger_entries[path_text] = {
                                 "artifact_type": artifact.artifact_type,
                                 "subsystem": artifact.subsystem,
-                                "chunk_count": len(artifact_chunks),
+                                "digest": artifact_digest,
                                 "git_commit": artifact.git_commit,
                                 "git_timestamp": artifact.git_timestamp,
-                                "subsystem_criticality": subsystem_criticality,
+                                "chunk_count": len(artifact_chunks),
                                 "coverage_ratio": coverage_ratio,
-                                "content_digest": artifact_digest,
+                                "last_seen": started,
                             }
-                        )
-                        current_ledger_entries[path_text] = {
-                            "artifact_type": artifact.artifact_type,
-                            "subsystem": artifact.subsystem,
-                            "digest": artifact_digest,
-                            "git_commit": artifact.git_commit,
-                            "git_timestamp": artifact.git_timestamp,
-                            "last_seen": started,
-                        }
 
-                    chunk_count = len(chunks)
-                    chunk_span.set_attribute("km.ingest.chunk_total", chunk_count)
-                    chunk_span.set_attribute(
-                        "km.ingest.artifact_kinds",
-                        ",".join(sorted(artifact_counts.keys())) or "",
-                    )
+                            if artifact_chunks:
+                                future = executor.submit(self._encode_batch, embedder, artifact_chunks)
+                                pending_batches.append((future, artifact_chunks))
+                                if len(pending_batches) >= max_pending:
+                                    _drain_one()
+
+                        while pending_batches:
+                            _drain_one()
+
+                        chunk_span.set_attribute("km.ingest.chunk_total", total_chunk_count)
+                        chunk_span.set_attribute(
+                            "km.ingest.artifact_kinds",
+                            ",".join(sorted(artifact_counts.keys())) or "",
+                        )
 
                 logger.info(
                     "Generated chunks",
                     extra={
                         "ingest_run_id": run_id,
                         "profile": profile,
-                        "chunk_count": chunk_count,
+                        "chunk_count": total_chunk_count,
                     },
                 )
 
-                embedder = self._build_embedder()
-                if self.qdrant_writer and not self.config.dry_run:
-                    self.qdrant_writer.ensure_collection(embedder.dimension)
-
-                with tracer.start_as_current_span("ingestion.embed") as embed_span:
-                    embeddings = self._embed_chunks(embedder, chunks)
-                    embed_span.set_attribute("km.ingest.embedding_total", len(embeddings))
-
-                with tracer.start_as_current_span("ingestion.persist") as persist_span:
-                    wrote_qdrant = False
-                    wrote_neo4j = False
-                    if self.qdrant_writer and not self.config.dry_run:
-                        self.qdrant_writer.upsert_chunks(embeddings)
-                        wrote_qdrant = True
-                    if self.neo4j_writer and not self.config.dry_run:
-                        self.neo4j_writer.sync_chunks(embeddings)
-                        wrote_neo4j = True
-                    persist_span.set_attribute("km.ingest.persist.qdrant", wrote_qdrant)
-                    persist_span.set_attribute("km.ingest.persist.neo4j", wrote_neo4j)
-
+                chunk_count = total_chunk_count
                 removed_artifacts = self._handle_stale_artifacts(ledger_previous, current_ledger_entries, profile)
 
                 success = True
@@ -263,11 +325,23 @@ class IngestionPipeline:
             return DummyEmbedder()
         return Embedder(self.config.embedding_model)
 
-    def _embed_chunks(self, embedder: Embedder, chunks: Sequence[Chunk]) -> list[ChunkEmbedding]:
-        if not chunks:
-            return []
-        vectors = embedder.encode(chunk.text for chunk in chunks)
-        return [ChunkEmbedding(chunk=chunk, vector=vector) for chunk, vector in zip(chunks, vectors, strict=True)]
+    def _encode_batch(self, embedder: Embedder, chunks: Sequence[Chunk]) -> list[list[float]]:
+        return embedder.encode(chunk.text for chunk in chunks)
+
+    def _build_embeddings(self, chunks: Sequence[Chunk], vectors: Sequence[Sequence[float]]) -> list[ChunkEmbedding]:
+        embeddings: list[ChunkEmbedding] = []
+        for chunk, vector in zip(chunks, vectors, strict=True):
+            embeddings.append(ChunkEmbedding(chunk=chunk, vector=list(vector)))
+        return embeddings
+
+    def _persist_embeddings(self, embeddings: Sequence[ChunkEmbedding]) -> int:
+        if not embeddings:
+            return 0
+        if self.qdrant_writer and not self.config.dry_run:
+            self.qdrant_writer.upsert_chunks(embeddings)
+        if self.neo4j_writer and not self.config.dry_run:
+            self.neo4j_writer.sync_chunks(embeddings)
+        return len(embeddings)
 
     def _handle_stale_artifacts(
         self,
