@@ -97,9 +97,7 @@ def app(monkeypatch: pytest.MonkeyPatch) -> FastAPI:
                     }
                 ],
             },
-            "search": [
-                {"id": "Subsystem:telemetry", "label": "Subsystem", "score": 0.9, "snippet": "telemetry"}
-            ],
+            "search": [{"id": "Subsystem:telemetry", "label": "Subsystem", "score": 0.9, "snippet": "telemetry"}],
         }
     )
     app.dependency_overrides[app.state.graph_service_dependency] = lambda: dummy_service
@@ -142,9 +140,7 @@ def test_graph_node_accepts_slash_encoded_ids(app: FastAPI) -> None:
 
 
 @pytest.mark.neo4j
-def test_graph_node_endpoint_live(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: pytest.PathLike[str]
-) -> None:
+def test_graph_node_endpoint_live(monkeypatch: pytest.MonkeyPatch, tmp_path: pytest.PathLike[str]) -> None:
     uri = os.getenv("NEO4J_TEST_URI")
     user = os.getenv("NEO4J_TEST_USER", "neo4j")
     password = os.getenv("NEO4J_TEST_PASSWORD", "neo4jadmin")
@@ -193,9 +189,7 @@ def test_graph_node_endpoint_live(
 
 
 @pytest.mark.neo4j
-def test_graph_search_endpoint_live(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: pytest.PathLike[str]
-) -> None:
+def test_graph_search_endpoint_live(monkeypatch: pytest.MonkeyPatch, tmp_path: pytest.PathLike[str]) -> None:
     uri = os.getenv("NEO4J_TEST_URI")
     user = os.getenv("NEO4J_TEST_USER", "neo4j")
     password = os.getenv("NEO4J_TEST_PASSWORD", "neo4jadmin")
@@ -214,9 +208,7 @@ def test_graph_search_endpoint_live(
     (repo_root / "docs").mkdir(parents=True)
     (repo_root / "src" / "project" / "telemetry").mkdir(parents=True)
     (repo_root / "docs" / "sample.md").write_text("# Sample\nGraph validation doc.\n")
-    (repo_root / "src" / "project" / "telemetry" / "module.py").write_text(
-        "def handler():\n    return 'ok'\n"
-    )
+    (repo_root / "src" / "project" / "telemetry" / "module.py").write_text("def handler():\n    return 'ok'\n")
 
     driver = GraphDatabase.driver(uri, auth=(user, password))
     try:
@@ -256,6 +248,7 @@ def test_graph_search_endpoint(app: FastAPI) -> None:
 def test_graph_cypher_requires_maintainer_token(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("KM_AUTH_ENABLED", "true")
     monkeypatch.setenv("KM_ADMIN_TOKEN", "admin-token")
+    monkeypatch.setenv("KM_NEO4J_PASSWORD", "secure-pass")
     from gateway.config.settings import get_settings
 
     get_settings.cache_clear()
@@ -282,6 +275,7 @@ def test_graph_reader_scope(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("KM_AUTH_ENABLED", "true")
     monkeypatch.setenv("KM_READER_TOKEN", "reader-token")
     monkeypatch.setenv("KM_ADMIN_TOKEN", "admin-token")
+    monkeypatch.setenv("KM_NEO4J_PASSWORD", "secure-pass")
     from gateway.config.settings import get_settings
 
     get_settings.cache_clear()
@@ -303,10 +297,13 @@ def test_graph_reader_scope(monkeypatch: pytest.MonkeyPatch) -> None:
     client = TestClient(app)
 
     assert client.get("/graph/subsystems/kasmina").status_code == 401
-    assert client.get(
-        "/graph/subsystems/kasmina",
-        headers={"Authorization": "Bearer nope"},
-    ).status_code == 403
+    assert (
+        client.get(
+            "/graph/subsystems/kasmina",
+            headers={"Authorization": "Bearer nope"},
+        ).status_code
+        == 403
+    )
 
     ok_reader = client.get(
         "/graph/subsystems/kasmina",

@@ -191,10 +191,10 @@ Detailed mitigation activities are tracked in `docs/RISK_MITIGATION_PLAN.md`. Th
 | Risk | Impact | Likelihood | Mitigation Status |
 |------|--------|------------|-------------------|
 | Container image size | Slow downloads, adoption friction | Medium | Actions defined (multi-stage build, CI size check) — see §1 of mitigation plan. |
-| Persistence safety | Lost indexes/graph state | Medium | Actions defined (startup guard, backup scripts) — see §2. |
+| Persistence safety | Lost indexes/graph state | Medium | Actions underway: stale artifact ledger/removal shipped; backup scripts and startup guard tracked in §2. |
 | Resource contention | Ingestion/search slowdowns | Medium | Actions defined; benchmarking data still pending (open question §3). |
 | Classification accuracy | Incorrect metadata | Medium | Actions defined with outstanding need for real repos (§4). |
-| Authentication defaults | Accidental open access | Low | Actions defined; must implement before release (§5). |
+| Authentication defaults | Accidental open access | Low | Mitigated: secure mode now requires maintainer token + custom Neo4j password; docs updated with migration steps (§5). |
 | Host compatibility | Deployment failures | Low | Actions defined with pending compatibility matrix (§6). |
 | Observability coverage | Silent ingestion failures | Medium | Actions defined (§7). |
 | Release distribution integrity | Corrupted deployments | Low | Actions defined (§8). |

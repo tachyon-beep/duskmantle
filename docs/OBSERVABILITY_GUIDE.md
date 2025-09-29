@@ -7,7 +7,7 @@ This guide explains how to operate and monitor the Duskmantle Knowledge Gateway.
 - **Logs:** JSON-structured stdout/stderr streams captured by the container runtime. Each record carries `ingest_run_id`, subsystem, and key counts.
 - **Tracing:** Optional OpenTelemetry spans that capture HTTP requests and ingestion stages. Export spans to an OTLP collector, APM tool, or stdout.
 - **Audit Ledger:** SQLite database under `/opt/knowledge/var/audit/audit.db` with per-run provenance records accessible via `/audit/history`.
-- **Coverage Report:** Accessible via `/coverage` (maintainer scope) or `/opt/knowledge/var/reports/coverage_report.json`, detailing indexed artifacts and gaps. Historical snapshots live under `/opt/knowledge/var/reports/history/coverage_*.json` and are pruned to the limit defined by `KM_COVERAGE_HISTORY_LIMIT`.
+- **Coverage Report:** Accessible via `/coverage` (maintainer scope) or `/opt/knowledge/var/reports/coverage_report.json`, detailing indexed artifacts, missing coverage, and the `removed_artifacts` list for files deleted from the repo but recently cleaned from the graph. Historical snapshots live under `/opt/knowledge/var/reports/history/coverage_*.json` and are pruned to the limit defined by `KM_COVERAGE_HISTORY_LIMIT`.
 
 ## 2. Metrics Reference
 Expose metrics with:
@@ -26,6 +26,7 @@ Key time-series:
 | `km_coverage_last_run_status` | Gauge | `profile` | 1=coverage report written successfully. | Alert when `== 0` for two consecutive scrapes. |
 | `km_coverage_last_run_timestamp` | Gauge | `profile` | Epoch of last coverage report. | Alert when older than max(2× schedule interval, 1h) or >24h when scheduler disabled. |
 | `km_coverage_missing_artifacts_total` | Gauge | `profile` | Count of artifacts with zero chunks in last run. | Alert when count grows between runs. |
+| `km_coverage_stale_artifacts_total` | Gauge | `profile` | Removed/stale artifacts detected in the latest ingest. | Alert when value stays >0 for multiple runs (cleanup failing). |
 | `km_coverage_history_snapshots` | Gauge | `profile` | Number of retained coverage snapshots under `reports/history/`. | Alert when value drops below configured history limit (e.g., disk cleanup failure). |
 | `km_search_requests_total` | Counter | `status` (`success`,`failure`) | Search API requests partitioned by outcome. | Alert when failure ratio rises above baseline. |
 | `km_search_graph_cache_events_total` | Counter | `status` (`miss`,`hit`,`error`) | Tracks graph context cache utilisation. | Alert when `status="error"` climbs or hit ratio drops suddenly. |

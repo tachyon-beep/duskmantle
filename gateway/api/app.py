@@ -49,17 +49,29 @@ from uuid import uuid4
 logger = logging.getLogger(__name__)
 
 
-
 def create_app() -> FastAPI:
     """Create the FastAPI application instance."""
     configure_logging()
     settings = get_settings()
 
+    if settings.auth_enabled:
+        missing: list[str] = []
+        if not settings.maintainer_token:
+            missing.append("KM_ADMIN_TOKEN")
+        if settings.auth_mode == "secure" and settings.neo4j_password in {"neo4jadmin", "neo4j", "neo4jpass"}:
+            missing.append("KM_NEO4J_PASSWORD (non-default value)")
+        if missing:
+            formatted = ", ".join(missing)
+            raise RuntimeError(
+                "Authentication is enabled but required credentials are missing: "
+                f"{formatted}. Disable auth or provide the credentials before starting the gateway."
+            )
+        if not settings.reader_token:
+            logger.warning("Auth enabled without KM_READER_TOKEN; maintainer token will service reader endpoints")
+
     limiter = Limiter(
         key_func=get_remote_address,
-        default_limits=[
-            f"{settings.rate_limit_requests} per {settings.rate_limit_window_seconds} seconds"
-        ],
+        default_limits=[f"{settings.rate_limit_requests} per {settings.rate_limit_window_seconds} seconds"],
     )
 
     @asynccontextmanager
@@ -159,9 +171,7 @@ def create_app() -> FastAPI:
                 GRAPH_MIGRATION_LAST_STATUS.set(1)
                 GRAPH_MIGRATION_LAST_TIMESTAMP.set(time.time())
         else:
-            logger.info(
-                "Graph auto-migration disabled; run `gateway-graph migrate` during deployment"
-            )
+            logger.info("Graph auto-migration disabled; run `gateway-graph migrate` during deployment")
             GRAPH_MIGRATION_LAST_STATUS.set(-1)
             GRAPH_MIGRATION_LAST_TIMESTAMP.set(0)
     except Exception as exc:  # pragma: no cover - connection may fail in dev/test
@@ -197,9 +207,7 @@ def create_app() -> FastAPI:
         """Return readiness information suitable for container orchestration."""
         return {"status": "ready"}
 
-    metrics_limit = (
-        f"{settings.rate_limit_requests} per {settings.rate_limit_window_seconds} seconds"
-    )
+    metrics_limit = f"{settings.rate_limit_requests} per {settings.rate_limit_window_seconds} seconds"
 
     def graph_service_dependency(request: Request) -> GraphService:
         driver = getattr(request.app.state, "graph_driver", None)
@@ -226,19 +234,19 @@ def create_app() -> FastAPI:
             qdrant_client=qclient,
             collection_name=settings.qdrant_collection,
             embedder=embedder,
-        vector_weight=vector_weight,
-        lexical_weight=lexical_weight,
-        hnsw_ef_search=settings.search_hnsw_ef_search,
-        weight_subsystem=resolved_weights["weight_subsystem"],
-        weight_relationship=resolved_weights["weight_relationship"],
-        weight_support=resolved_weights["weight_support"],
-        weight_coverage_penalty=resolved_weights["weight_coverage_penalty"],
-        weight_criticality=resolved_weights["weight_criticality"],
-        scoring_mode=settings.search_scoring_mode,
-        model_artifact=getattr(request.app.state, "search_model_artifact", None),
-        weight_profile=weight_profile,
-        slow_graph_warn_seconds=max(settings.search_warn_slow_graph_ms, 0) / 1000.0,
-    )
+            vector_weight=vector_weight,
+            lexical_weight=lexical_weight,
+            hnsw_ef_search=settings.search_hnsw_ef_search,
+            weight_subsystem=resolved_weights["weight_subsystem"],
+            weight_relationship=resolved_weights["weight_relationship"],
+            weight_support=resolved_weights["weight_support"],
+            weight_coverage_penalty=resolved_weights["weight_coverage_penalty"],
+            weight_criticality=resolved_weights["weight_criticality"],
+            scoring_mode=settings.search_scoring_mode,
+            model_artifact=getattr(request.app.state, "search_model_artifact", None),
+            weight_profile=weight_profile,
+            slow_graph_warn_seconds=max(settings.search_warn_slow_graph_ms, 0) / 1000.0,
+        )
 
     app.state.graph_service_dependency = graph_service_dependency
     app.state.search_service_dependency = search_service_dependency
@@ -392,9 +400,9 @@ def create_app() -> FastAPI:
                     "graph_context": result.graph_context,
                     "scoring": result.scoring,
                 }
-            for result in response.results
-        ],
-        "metadata": response.metadata,
+                for result in response.results
+            ],
+            "metadata": response.metadata,
         }
         payload_json["metadata"]["request_id"] = request_id
         if include_graph and graph_service is None:

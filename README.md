@@ -45,7 +45,7 @@ Summary (or simply run `bin/km-bootstrap` to let the repo pull the latest image,
 
 ### Security Defaults
 
-The appliance ships with permissive defaults so it works out of the box (Neo4j user/password `neo4j` / `neo4jadmin`, API auth disabled, no maintainer tokens). If you care even slightly about privacy or are running anywhere beyond a throwaway demo, override those credentials immediately—set `KM_NEO4J_PASSWORD`, enable `KM_AUTH_ENABLED=true`, and hard-code reader/maintainer tokens before exposing the stack to real data.
+The appliance ships with permissive defaults so it works out of the box (Neo4j user/password `neo4j` / `neo4jadmin`, API auth disabled, no maintainer tokens). If you care even slightly about privacy or are running anywhere beyond a throwaway demo, rotate those credentials immediately—set `KM_NEO4J_PASSWORD` to a non-default value, enable `KM_AUTH_ENABLED=true`, and hard-code reader/maintainer tokens before exposing the stack to real data. The gateway now exits on startup if auth is enabled without a maintainer token or a custom Neo4j password.
 
 **Quick hardening checklist**
 

@@ -11,6 +11,7 @@ from gateway.ingest.artifacts import ChunkEmbedding
 
 logger = logging.getLogger(__name__)
 
+
 class QdrantWriter:
     def __init__(self, client: QdrantClient, collection_name: str) -> None:
         self.client = client
@@ -45,3 +46,19 @@ class QdrantWriter:
             return
         self.client.upsert(collection_name=self.collection_name, points=points)
         logger.info("Upserted %d chunk(s) into Qdrant", len(points))
+
+    def delete_artifact(self, artifact_path: str) -> None:
+        filter_ = qmodels.Filter(
+            must=[
+                qmodels.FieldCondition(
+                    key="path",
+                    match=qmodels.MatchValue(value=artifact_path),
+                )
+            ]
+        )
+        self.client.delete(
+            collection_name=self.collection_name,
+            points_selector=qmodels.FilterSelector(filter=filter_),
+            wait=True,
+        )
+        logger.info("Deleted chunks for artifact %s", artifact_path)

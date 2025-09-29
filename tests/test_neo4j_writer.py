@@ -82,6 +82,26 @@ def test_sync_artifact_creates_domain_relationships():
     assert "TelemetryChannel" in cypher_text and "EMITS" in cypher_text
 
 
+def test_sync_artifact_merges_subsystem_edge_once():
+    writer, driver = _make_writer()
+    artifact = Artifact(
+        path=Path("src/project/nissa/handler.py"),
+        artifact_type="code",
+        subsystem="Nissa",
+        content="",
+        git_commit="abc123",
+        git_timestamp=1700000000,
+    )
+
+    writer.sync_artifact(artifact)
+
+    queries = driver.sessions[0].queries
+    subsystem_edge_queries = [query for query, _ in queries if "BELONGS_TO" in query]
+
+    assert len(subsystem_edge_queries) == 1
+    assert "MERGE (entity" in subsystem_edge_queries[0]
+
+
 def test_sync_chunks_links_chunk_to_artifact():
     writer, driver = _make_writer()
     artifact = Artifact(

@@ -55,23 +55,11 @@ class Neo4jWriter:
                 "    node.subsystem = $subsystem",
                 **params,
             )
-            if artifact.subsystem:
-                rel = _relationship_for_label(label)
-                if rel:
-                    session.run(
-                        "MERGE (s:Subsystem {name: $name})\n"
-                        "WITH s\n"
-                        f"MATCH (f:{label} {{path: $path}})\n"
-                        f"MERGE (f)-[:{rel}]->(s)",
-                        name=artifact.subsystem,
-                        path=artifact.path.as_posix(),
-                    )
 
             if artifact.subsystem:
                 subsystem_name = artifact.subsystem
                 session.run(
-                    "MERGE (s:Subsystem {name: $name})\n"
-                    "SET s += $properties",
+                    "MERGE (s:Subsystem {name: $name})\n" "SET s += $properties",
                     name=subsystem_name,
                     properties=subsystem_properties,
                 )
@@ -79,17 +67,13 @@ class Neo4jWriter:
                 rel = _relationship_for_label(label)
                 if rel:
                     session.run(
-                        f"MATCH (entity:{label} {{path: $path}})\n"
-                        "MERGE (s:Subsystem {name: $name})\n"
-                        f"MERGE (entity)-[:{rel}]->(s)",
+                        f"MATCH (entity:{label} {{path: $path}})\n" "MATCH (s:Subsystem {name: $name})\n" f"MERGE (entity)-[:{rel}]->(s)",
                         name=subsystem_name,
                         path=artifact.path.as_posix(),
                     )
 
                 if dependencies:
-                    filtered_dependencies = [
-                        dep for dep in dependencies if dep and dep != subsystem_name
-                    ]
+                    filtered_dependencies = [dep for dep in dependencies if dep and dep != subsystem_name]
                     if filtered_dependencies:
                         session.run(
                             "MATCH (source:Subsystem {name: $name})\n"
@@ -151,6 +135,19 @@ class Neo4jWriter:
                     **params,
                 )
 
+    def delete_artifact(self, path: str) -> None:
+        """Remove an artifact node and its chunks."""
+
+        with self.driver.session(database=self.database) as session:
+            session.run(
+                "MATCH (n {path: $path})\n"
+                "OPTIONAL MATCH (n)-[:HAS_CHUNK]->(c:Chunk)\n"
+                "WITH n, collect(c) AS chunks\n"
+                "FOREACH (chunk IN chunks | DETACH DELETE chunk)\n"
+                "DETACH DELETE n",
+                path=path,
+            )
+
 
 def _artifact_label(artifact: Artifact) -> str:
     mapping = {
@@ -207,9 +204,7 @@ def _normalize_subsystem_name(value: str | None) -> str | None:
 def _extract_dependencies(metadata: Any) -> list[str]:
     if not isinstance(metadata, dict):
         return []
-    raw = metadata.get("dependencies") or metadata.get("depends_on") or metadata.get(
-        "depends_on_subsystems"
-    )
+    raw = metadata.get("dependencies") or metadata.get("depends_on") or metadata.get("depends_on_subsystems")
     dependencies = []
     if isinstance(raw, (list, tuple, set)):
         for value in raw:

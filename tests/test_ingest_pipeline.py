@@ -11,6 +11,7 @@ class StubQdrantWriter:
     def __init__(self) -> None:
         self.collection_sizes: list[int] = []
         self.upsert_payloads: list[int] = []
+        self.deleted_paths: list[str] = []
 
     def ensure_collection(self, vector_size: int) -> None:
         self.collection_sizes.append(vector_size)
@@ -18,11 +19,15 @@ class StubQdrantWriter:
     def upsert_chunks(self, chunks) -> None:
         self.upsert_payloads.append(len(list(chunks)))
 
+    def delete_artifact(self, artifact_path: str) -> None:
+        self.deleted_paths.append(artifact_path)
+
 
 class StubNeo4jWriter:
     def __init__(self) -> None:
         self.artifacts: list[str] = []
         self.chunk_ids: list[str] = []
+        self.deleted_paths: list[str] = []
 
     def ensure_constraints(self) -> None:  # pragma: no cover - not used in unit test
         pass
@@ -33,6 +38,9 @@ class StubNeo4jWriter:
     def sync_chunks(self, chunk_embeddings) -> None:
         for item in chunk_embeddings:
             self.chunk_ids.append(item.chunk.chunk_id)
+
+    def delete_artifact(self, path: str) -> None:
+        self.deleted_paths.append(path)
 
 
 @pytest.fixture()
@@ -66,3 +74,50 @@ def test_pipeline_generates_chunks(sample_repo: Path) -> None:
     assert neo4j.chunk_ids
     assert result.chunk_count == len(neo4j.chunk_ids)
     assert result.artifact_counts["doc"] >= 1
+
+
+def test_pipeline_removes_stale_artifacts(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    (repo / "docs").mkdir(parents=True)
+    (repo / "src" / "project" / "kasmina").mkdir(parents=True)
+
+    kept_path = repo / "docs" / "overview.md"
+    stale_path = repo / "docs" / "obsolete.md"
+    kept_path.write_text("Kasmina module design.\n")
+    stale_path.write_text("Legacy overview\n")
+    (repo / "src" / "project" / "kasmina" / "module.py").write_text("def run():\n    return 'ok'\n")
+
+    ledger_path = tmp_path / "state" / "reports" / "artifact_ledger.json"
+
+    def _run_pipeline() -> tuple[StubQdrantWriter, StubNeo4jWriter, IngestionPipeline]:
+        qdrant = StubQdrantWriter()
+        neo4j = StubNeo4jWriter()
+        config = IngestionConfig(
+            repo_root=repo,
+            dry_run=False,
+            use_dummy_embeddings=True,
+            chunk_window=64,
+            chunk_overlap=10,
+            ledger_path=ledger_path,
+        )
+        pipeline = IngestionPipeline(qdrant_writer=qdrant, neo4j_writer=neo4j, config=config)
+        return qdrant, neo4j, pipeline
+
+    qdrant1, neo4j1, pipeline1 = _run_pipeline()
+    result_first = pipeline1.run()
+    assert not result_first.removed_artifacts
+    assert ledger_path.exists()
+
+    stale_path.unlink()
+
+    qdrant2, neo4j2, pipeline2 = _run_pipeline()
+    result_second = pipeline2.run()
+
+    assert result_second.removed_artifacts
+    removed_entry = result_second.removed_artifacts[0]
+    assert removed_entry["path"] == "docs/obsolete.md"
+    assert removed_entry["status"] == "deleted"
+    assert "digest" in removed_entry
+    assert "artifact_type" in removed_entry
+    assert "docs/obsolete.md" in neo4j2.deleted_paths
+    assert "docs/obsolete.md" in qdrant2.deleted_paths

@@ -14,6 +14,7 @@ from gateway.observability.metrics import (
     COVERAGE_LAST_RUN_STATUS,
     COVERAGE_LAST_RUN_TIMESTAMP,
     COVERAGE_MISSING_ARTIFACTS,
+    COVERAGE_STALE_ARTIFACTS,
 )
 
 
@@ -26,6 +27,7 @@ def write_coverage_report(
 ) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     missing = [detail for detail in result.artifacts if detail.get("chunk_count", 0) == 0]
+    removed = list(result.removed_artifacts)
     generated_at = time.time()
     generated_at_iso = datetime.fromtimestamp(generated_at, tz=timezone.utc).isoformat()
     payload = {
@@ -44,6 +46,7 @@ def write_coverage_report(
         },
         "artifacts": result.artifacts,
         "missing_artifacts": missing,
+        "removed_artifacts": removed,
     }
     output_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
@@ -56,6 +59,7 @@ def write_coverage_report(
     COVERAGE_LAST_RUN_STATUS.labels(profile).set(1)
     COVERAGE_LAST_RUN_TIMESTAMP.labels(profile).set(generated_at)
     COVERAGE_MISSING_ARTIFACTS.labels(profile).set(len(missing))
+    COVERAGE_STALE_ARTIFACTS.labels(profile).set(len(removed))
     COVERAGE_HISTORY_SNAPSHOTS.labels(profile).set(len(snapshots))
 
 

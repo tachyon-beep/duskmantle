@@ -119,7 +119,7 @@ Restart the container to pick up restored state.
 
 ## 8. Environment & Authentication
 
-- Set `KM_AUTH_ENABLED=true`, `KM_READER_TOKEN`, and `KM_ADMIN_TOKEN` to secure APIs and CLIs. Maintainer tokens satisfy reader endpoints; reader tokens cannot invoke admin operations. MCP write helpers (`km-upload`, `km-storetext`) append JSON lines to `KM_STATE_PATH/audit/mcp_actions.log`, so include that file in your log rotation strategy.
+- Set `KM_AUTH_ENABLED=true`, `KM_READER_TOKEN`, and `KM_ADMIN_TOKEN` to secure APIs and CLIs. The gateway now fails fast on startup if `KM_ADMIN_TOKEN` is missing or `KM_NEO4J_PASSWORD` is left at a default value—generate fresh secrets via `bin/km-bootstrap` or rotate them manually before enabling auth. Maintainer tokens satisfy reader endpoints; reader tokens cannot invoke admin operations. MCP write helpers (`km-upload`, `km-storetext`) append JSON lines to `KM_STATE_PATH/audit/mcp_actions.log`, so include that file in your log rotation strategy.
 - Scheduler and `gateway-ingest` refuse to run without `KM_ADMIN_TOKEN` when auth is enabled.
 
 ## 9. Troubleshooting Highlights

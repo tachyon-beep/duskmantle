@@ -21,9 +21,9 @@ The knowledge gateway reads its runtime configuration from environment variables
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `KM_AUTH_ENABLED` | `false` | Require bearer tokens on HTTP and CLI entry points. |
-| `KM_READER_TOKEN` | _unset_ | Token granting read-only operations (search/graph). |
-| `KM_ADMIN_TOKEN` | _unset_ | Token granting maintainer operations (ingest, coverage, backups). |
+| `KM_AUTH_ENABLED` | `false` | Require bearer tokens on HTTP and CLI entry points. When `true`, the gateway refuses to start unless `KM_ADMIN_TOKEN` is set and the Neo4j password is non-default. |
+| `KM_READER_TOKEN` | _unset_ | Token granting read-only operations (search/graph). Optional—maintainer credentials satisfy reader endpoints when omitted. |
+| `KM_ADMIN_TOKEN` | _unset_ | Token granting maintainer operations (ingest, coverage, backups). Mandatory when `KM_AUTH_ENABLED=true`. |
 | `KM_RATE_LIMIT_REQUESTS` / `KM_RATE_LIMIT_WINDOW` | `120` / `60` | Requests allowed per window (seconds). |
 
 ## Ingestion & Search
@@ -59,7 +59,7 @@ The knowledge gateway reads its runtime configuration from environment variables
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `KM_NEO4J_URI` | `bolt://localhost:7687` | Bolt endpoint for Neo4j. |
-| `KM_NEO4J_USER` / `KM_NEO4J_PASSWORD` | `neo4j` / `neo4jadmin` | Credentials for Neo4j. |
+| `KM_NEO4J_USER` / `KM_NEO4J_PASSWORD` | `neo4j` / `neo4jadmin` | Credentials for Neo4j. Secure mode (`KM_AUTH_ENABLED=true`) requires overriding the default password. |
 | `KM_NEO4J_DATABASE` | `neo4j` | Database name (container default is `knowledge`). |
 | `KM_NEO4J_AUTH_ENABLED` | `false` | Toggle authentication for Neo4j access. |
 | `KM_GRAPH_AUTO_MIGRATE` | `false` | Auto-run graph migrations at API startup (container default `true`). |

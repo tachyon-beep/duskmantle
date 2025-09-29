@@ -50,6 +50,12 @@ COVERAGE_MISSING_ARTIFACTS = Gauge(
     labelnames=["profile"],
 )
 
+COVERAGE_STALE_ARTIFACTS = Gauge(
+    "km_coverage_stale_artifacts_total",
+    "Number of stale or removed artifacts recorded in last coverage report",
+    labelnames=["profile"],
+)
+
 SEARCH_REQUESTS_TOTAL = Counter(
     "km_search_requests_total",
     "Search API requests partitioned by outcome",

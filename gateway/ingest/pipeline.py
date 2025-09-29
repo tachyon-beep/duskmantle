@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import subprocess
 import time
@@ -46,6 +48,7 @@ class IngestionConfig:
     audit_path: Path | None = None
     coverage_path: Path | None = None
     coverage_history_limit: int = 5
+    ledger_path: Path | None = None
 
 
 @dataclass(slots=True)
@@ -59,6 +62,7 @@ class IngestionResult:
     repo_head: str | None = None
     success: bool = True
     artifacts: list[dict[str, object]] = field(default_factory=list)
+    removed_artifacts: list[dict[str, object]] = field(default_factory=list)
 
 
 class IngestionPipeline:
@@ -80,6 +84,9 @@ class IngestionPipeline:
         chunk_count = 0
         success = False
         repo_head = _current_repo_head(self.config.repo_root)
+        ledger_previous = self._load_artifact_ledger()
+        current_ledger_entries: dict[str, dict[str, object]] = {}
+        removed_artifacts: list[dict[str, object]] = []
 
         tracer = trace.get_tracer(__name__)
         ingest_span = tracer.start_span(
@@ -134,6 +141,8 @@ class IngestionPipeline:
                         coverage_ratio = 1.0 if artifact_chunks else 0.0
                         subsystem_criticality = artifact.extra_metadata.get("subsystem_criticality")
                         coverage_missing = 1.0 - coverage_ratio
+                        artifact_digest = hashlib.sha256(artifact.content.encode("utf-8")).hexdigest()
+                        path_text = artifact.path.as_posix()
                         for chunk in artifact_chunks:
                             chunk.metadata["environment"] = profile
                             if subsystem_criticality is not None:
@@ -145,7 +154,7 @@ class IngestionPipeline:
                             self.neo4j_writer.sync_artifact(artifact)
                         artifact_details.append(
                             {
-                                "path": artifact.path.as_posix(),
+                                "path": path_text,
                                 "artifact_type": artifact.artifact_type,
                                 "subsystem": artifact.subsystem,
                                 "chunk_count": len(artifact_chunks),
@@ -153,8 +162,17 @@ class IngestionPipeline:
                                 "git_timestamp": artifact.git_timestamp,
                                 "subsystem_criticality": subsystem_criticality,
                                 "coverage_ratio": coverage_ratio,
+                                "content_digest": artifact_digest,
                             }
                         )
+                        current_ledger_entries[path_text] = {
+                            "artifact_type": artifact.artifact_type,
+                            "subsystem": artifact.subsystem,
+                            "digest": artifact_digest,
+                            "git_commit": artifact.git_commit,
+                            "git_timestamp": artifact.git_timestamp,
+                            "last_seen": started,
+                        }
 
                     chunk_count = len(chunks)
                     chunk_span.set_attribute("km.ingest.chunk_total", chunk_count)
@@ -192,6 +210,8 @@ class IngestionPipeline:
                     persist_span.set_attribute("km.ingest.persist.qdrant", wrote_qdrant)
                     persist_span.set_attribute("km.ingest.persist.neo4j", wrote_neo4j)
 
+                removed_artifacts = self._handle_stale_artifacts(ledger_previous, current_ledger_entries)
+
                 success = True
                 return IngestionResult(
                     run_id=run_id,
@@ -203,6 +223,7 @@ class IngestionPipeline:
                     repo_head=repo_head,
                     success=True,
                     artifacts=artifact_details,
+                    removed_artifacts=removed_artifacts,
                 )
             except Exception as exc:  # pragma: no cover - exercised via failure scenarios
                 ingest_span.record_exception(exc)
@@ -245,10 +266,100 @@ class IngestionPipeline:
         if not chunks:
             return []
         vectors = embedder.encode(chunk.text for chunk in chunks)
-        return [
-            ChunkEmbedding(chunk=chunk, vector=vector)
-            for chunk, vector in zip(chunks, vectors, strict=True)
-        ]
+        return [ChunkEmbedding(chunk=chunk, vector=vector) for chunk, vector in zip(chunks, vectors, strict=True)]
+
+    def _handle_stale_artifacts(
+        self,
+        previous: dict[str, dict[str, object]],
+        current: dict[str, dict[str, object]],
+    ) -> list[dict[str, object]]:
+        ledger_path = self.config.ledger_path
+        if ledger_path is None:
+            return []
+
+        stale_paths = sorted(set(previous) - set(current))
+        removed: list[dict[str, object]] = []
+
+        if stale_paths:
+            logger.info(
+                "Detected %d stale artifact(s)",
+                len(stale_paths),
+                extra={"stale_artifacts": stale_paths},
+            )
+
+        for path in stale_paths:
+            entry = previous.get(path, {})
+            status = "dry-run" if self.config.dry_run else self._delete_artifact_from_backends(path)
+            removed.append(
+                {
+                    "path": path,
+                    "artifact_type": entry.get("artifact_type"),
+                    "subsystem": entry.get("subsystem"),
+                    "digest": entry.get("digest"),
+                    "status": status,
+                }
+            )
+
+        if not self.config.dry_run:
+            self._write_artifact_ledger(current)
+
+        return removed
+
+    def _delete_artifact_from_backends(self, path: str) -> str:
+        errors: list[str] = []
+
+        if self.neo4j_writer is not None:
+            try:
+                self.neo4j_writer.delete_artifact(path)
+            except Exception as exc:  # pragma: no cover - driver/network error
+                errors.append(f"neo4j: {exc}")
+
+        if self.qdrant_writer is not None:
+            try:
+                self.qdrant_writer.delete_artifact(path)
+            except Exception as exc:  # pragma: no cover - network error
+                errors.append(f"qdrant: {exc}")
+
+        if errors:
+            message = ", ".join(errors)
+            logger.error("Failed to delete stale artifact %s: %s", path, message)
+            raise RuntimeError(f"Failed to delete stale artifact {path}: {message}")
+
+        logger.info("Removed stale artifact %s", path)
+        return "deleted"
+
+    def _load_artifact_ledger(self) -> dict[str, dict[str, object]]:
+        ledger_path = self.config.ledger_path
+        if ledger_path is None or not ledger_path.exists():
+            return {}
+
+        try:
+            data = json.loads(ledger_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            logger.warning("Failed to read artifact ledger %s: %s", ledger_path, exc)
+            return {}
+
+        entries = data.get("artifacts") if isinstance(data, dict) else None
+        if not isinstance(entries, dict):
+            return {}
+
+        cleaned: dict[str, dict[str, object]] = {}
+        for path, payload in entries.items():
+            if isinstance(path, str) and isinstance(payload, dict):
+                cleaned[path] = payload
+        return cleaned
+
+    def _write_artifact_ledger(self, entries: dict[str, dict[str, object]]) -> None:
+        ledger_path = self.config.ledger_path
+        if ledger_path is None:
+            return
+
+        ledger_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "updated_at": time.time(),
+            "artifacts": entries,
+        }
+        ledger_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
 def _current_repo_head(repo_root: Path) -> str | None:
@@ -259,8 +370,7 @@ def _current_repo_head(repo_root: Path) -> str | None:
                 cwd=repo_root,
                 text=True,
                 stderr=subprocess.DEVNULL,
-            )
-            .strip()
+            ).strip()
             or None
         )
     except Exception:

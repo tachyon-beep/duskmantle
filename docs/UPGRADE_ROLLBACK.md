@@ -51,6 +51,7 @@ This document explains how to safely upgrade the Duskmantle knowledge gateway co
    ```
 
    (Include any additional env vars used previously.)
+   Secure mode now refuses to start with default credentials—rotate `KM_ADMIN_TOKEN` and set a non-default `KM_NEO4J_PASSWORD` before flipping `KM_AUTH_ENABLED=true`.
 4. **Run an ingest if required:**
 
    ```bash

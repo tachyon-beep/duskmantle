@@ -30,6 +30,8 @@ def execute_ingestion(
     dry = settings.dry_run if dry_run is None else dry_run
     use_dummy = settings.ingest_use_dummy_embeddings if use_dummy_embeddings is None else use_dummy_embeddings
 
+    state_path = settings.state_path
+
     qdrant_writer = None
     if not dry:
         qdrant_client = QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
@@ -44,8 +46,8 @@ def execute_ingestion(
     audit_logger = None
     audit_path = None
     coverage_path = None
+    ledger_path = state_path / "reports" / "artifact_ledger.json"
     if not dry:
-        state_path = settings.state_path
         audit_path = state_path / "audit" / "audit.db"
         coverage_path = state_path / "reports" / "coverage_report.json"
         audit_logger = AuditLogger(audit_path)
@@ -61,6 +63,7 @@ def execute_ingestion(
         audit_path=audit_path,
         coverage_path=coverage_path,
         coverage_history_limit=settings.coverage_history_limit,
+        ledger_path=ledger_path,
     )
 
     pipeline = IngestionPipeline(qdrant_writer=qdrant_writer, neo4j_writer=neo4j_writer, config=config)

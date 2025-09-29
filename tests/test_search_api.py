@@ -80,6 +80,8 @@ def test_search_endpoint_returns_results(monkeypatch, tmp_path):
 def test_search_requires_reader_token(monkeypatch, tmp_path):
     monkeypatch.setenv("KM_AUTH_ENABLED", "true")
     monkeypatch.setenv("KM_READER_TOKEN", "reader-token")
+    monkeypatch.setenv("KM_ADMIN_TOKEN", "admin-token")
+    monkeypatch.setenv("KM_NEO4J_PASSWORD", "secure-pass")
     monkeypatch.setenv("KM_STATE_PATH", str(tmp_path))
     from gateway.config.settings import get_settings
 
@@ -104,6 +106,7 @@ def test_search_allows_maintainer_token(monkeypatch, tmp_path):
     monkeypatch.setenv("KM_AUTH_ENABLED", "true")
     monkeypatch.setenv("KM_READER_TOKEN", "reader-token")
     monkeypatch.setenv("KM_ADMIN_TOKEN", "admin-token")
+    monkeypatch.setenv("KM_NEO4J_PASSWORD", "secure-pass")
     monkeypatch.setenv("KM_STATE_PATH", str(tmp_path))
     from gateway.config.settings import get_settings
 
@@ -274,6 +277,7 @@ def test_search_filters_invalid_max_age(monkeypatch, tmp_path):
 def test_search_weights_endpoint(monkeypatch, tmp_path):
     monkeypatch.setenv("KM_AUTH_ENABLED", "true")
     monkeypatch.setenv("KM_ADMIN_TOKEN", "maintainer-token")
+    monkeypatch.setenv("KM_NEO4J_PASSWORD", "secure-pass")
     monkeypatch.setenv("KM_STATE_PATH", str(tmp_path))
 
     from gateway.config.settings import get_settings
