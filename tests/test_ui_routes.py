@@ -27,6 +27,8 @@ def test_ui_landing_served(tmp_path: Path, monkeypatch) -> None:
     assert response.status_code == 200
     assert "Duskmantle Knowledge Console" in response.text
     assert "Overview" in response.text
+    assert 'data-dm-toggle-contrast' in response.text
+    assert 'data-dm-toggle-motion' in response.text
 
     after = REGISTRY.get_sample_value("km_ui_requests_total", {"view": "landing"}) or 0.0
     assert after == before + 1.0
@@ -50,6 +52,7 @@ def test_ui_search_view(tmp_path: Path, monkeypatch) -> None:
     assert response.status_code == 200
     assert "Hybrid Search" in response.text
     assert "dm-search-form" in response.text
+    assert 'data-dm-search-actions' in response.text
 
     after = REGISTRY.get_sample_value("km_ui_requests_total", {"view": "search"}) or 0.0
     assert after == before + 1.0
@@ -74,6 +77,7 @@ def test_ui_subsystems_view(tmp_path: Path, monkeypatch) -> None:
     assert response.status_code == 200
     assert 'Subsystem Explorer' in response.text
     assert 'dm-subsystem-form' in response.text
+    assert 'data-dm-subsystem-actions' in response.text
 
     after = REGISTRY.get_sample_value("km_ui_requests_total", {"view": "subsystems"}) or 0.0
     assert after == before + 1.0

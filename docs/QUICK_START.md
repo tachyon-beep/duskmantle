@@ -76,6 +76,7 @@ Head to the Search tab to issue hybrid queries without leaving the container, su
 Review dependencies from the Subsystems tab — start with `ReleaseTooling` or any subsystem defined in your ingest.
 Spark lines on the Lifecycle tab appear after at least one completed ingest so you can visualise stale docs and isolated nodes over time.
 Use the console actions to copy MCP commands or download JSON snapshots when filing issues.
+Tokens entered via the Tokens menu are stored only for the current browser session; clear them after use.
 
 ## 4. Run an Ingest
 

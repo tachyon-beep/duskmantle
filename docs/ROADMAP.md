@@ -161,12 +161,12 @@ A single work package covers both file and text-based content ingestion via MCP.
 
 ### Phase 3 – Accessibility & Hardened UX
 
-- **Step 3.1 Accessibility audit**
-  - Task 3.1.1 Ensure keyboard navigation, focus states, and ARIA roles cover all interactive elements.
-  - Task 3.1.2 Add high-contrast and reduced-motion toggles with persisted preferences.
-- **Step 3.2 Localisation & resilience**
-  - Task 3.2.1 Centralise UI strings for future localisation; document token-handling behaviour in README/Quick Start.
-  - Task 3.2.2 Improve error surfaces (offline, 401/403, 5xx) with retry and support guidance.
+- **Step 3.1 Accessibility audit** **(Completed)**
+  - Task 3.1.1 Ensure keyboard navigation, focus states, and ARIA roles cover all interactive elements. **(Completed)**
+  - Task 3.1.2 Add high-contrast and reduced-motion toggles with persisted preferences. **(Completed)**
+- **Step 3.2 Localisation & resilience** **(Completed)**
+  - Task 3.2.1 Centralise UI strings for future localisation; document token-handling behaviour in README/Quick Start. **(Completed)**
+  - Task 3.2.2 Improve error surfaces (offline, 401/403, 5xx) with retry and support guidance. **(Completed)**
 - **Step 3.3 Automated testing**
   - Task 3.3.1 Add Playwright smoke tests covering navigation, lifecycle refresh, and recipe launch buttons.
   - Task 3.3.2 Integrate UI tests into CI (nightly slice) with optional container spin-up.
