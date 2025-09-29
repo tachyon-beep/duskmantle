@@ -87,26 +87,31 @@ def dummy_driver() -> tuple[GraphService, DummySession, DummyDriver]:
 
 
 def test_get_subsystem_paginates_and_includes_artifacts(monkeypatch: pytest.MonkeyPatch, dummy_driver):
-    service, session, _ = dummy_driver
+    service, _, _ = dummy_driver
 
     subsystem = DummyNode(["Subsystem"], "Subsystem:Kasmina", name="Kasmina", description="Analysis")
     related_node = DummyNode(["DesignDoc"], "DesignDoc:docs/design.md", path="docs/design.md")
     relationship = DummyRelationship(subsystem, related_node, "DESCRIBES")
+    sibling_node = DummyNode(["DesignDoc"], "DesignDoc:docs/other.md", path="docs/other.md")
+    sibling_relationship = DummyRelationship(subsystem, sibling_node, "DESCRIBES")
     artifact_node = DummyNode(["SourceFile"], "SourceFile:gateway/api.py", path="gateway/api.py")
 
     def fake_fetch_subsystem_node(tx, name: str):
         assert name == "Kasmina"
         return subsystem
 
-    def fake_fetch_related_nodes(tx, name: str, depth: int, skip: int, limit: int):
-        assert (depth, skip, limit) == (2, 0, 1)
-        return [{"relationship": relationship, "node": related_node}]
+    def fake_fetch_paths(tx, name: str, depth: int):
+        assert depth == 2
+        return [
+            {"node": related_node, "nodes": [subsystem, related_node], "relationships": [relationship]},
+            {"node": sibling_node, "nodes": [subsystem, sibling_node], "relationships": [sibling_relationship]},
+        ]
 
     def fake_fetch_artifacts(tx, name: str):
         return [artifact_node]
 
     monkeypatch.setattr(graph_service, "_fetch_subsystem_node", fake_fetch_subsystem_node)
-    monkeypatch.setattr(graph_service, "_fetch_related_nodes", fake_fetch_related_nodes)
+    monkeypatch.setattr(graph_service, "_fetch_subsystem_paths", fake_fetch_paths)
     monkeypatch.setattr(graph_service, "_fetch_artifacts_for_subsystem", fake_fetch_artifacts)
 
     result = service.get_subsystem(
@@ -118,8 +123,11 @@ def test_get_subsystem_paginates_and_includes_artifacts(monkeypatch: pytest.Monk
     )
 
     assert result["subsystem"]["properties"]["name"] == "Kasmina"
-    assert result["related"]["nodes"][0]["relationship"] == "DESCRIBES"
-    assert result["related"]["cursor"] is not None  # limit reached -> pagination cursor emitted
+    assert result["related"]["total"] == 2
+    first_related = result["related"]["nodes"][0]
+    assert first_related["relationship"] == "DESCRIBES"
+    assert first_related["path"][0]["target"] == "DesignDoc:docs/design.md"
+    assert result["related"]["cursor"] is not None  # pagination cursor emitted when more records remain
     assert result["artifacts"][0]["properties"]["path"] == "gateway/api.py"
 
 
@@ -133,6 +141,42 @@ def test_get_subsystem_missing_raises(monkeypatch: pytest.MonkeyPatch, dummy_dri
 
     with pytest.raises(GraphNotFoundError):
         service.get_subsystem("Unknown", depth=1, limit=5, cursor=None, include_artifacts=False)
+
+
+def test_get_subsystem_graph_returns_nodes_and_edges(monkeypatch: pytest.MonkeyPatch, dummy_driver):
+    service, _, _ = dummy_driver
+
+    subsystem = DummyNode(["Subsystem"], "Subsystem:Kasmina", name="Kasmina")
+    mid = DummyNode(["Subsystem"], "Subsystem:Telemetry", name="Telemetry")
+    target = DummyNode(["IntegrationMessage"], "IntegrationMessage:Sync", name="Sync")
+    rel_one = DummyRelationship(subsystem, mid, "DEPENDS_ON")
+    rel_two = DummyRelationship(mid, target, "IMPLEMENTS")
+    artifact_node = DummyNode(["DesignDoc"], "DesignDoc:docs/telemetry.md", path="docs/telemetry.md")
+
+    def fake_fetch_subsystem_node(tx, name: str):
+        assert name == "Kasmina"
+        return subsystem
+
+    def fake_fetch_paths(tx, name: str, depth: int):
+        assert depth == 3
+        return [
+            {"node": target, "nodes": [subsystem, mid, target], "relationships": [rel_one, rel_two]},
+        ]
+
+    def fake_fetch_artifacts(tx, name: str):
+        return [artifact_node]
+
+    monkeypatch.setattr(graph_service, "_fetch_subsystem_node", fake_fetch_subsystem_node)
+    monkeypatch.setattr(graph_service, "_fetch_subsystem_paths", fake_fetch_paths)
+    monkeypatch.setattr(graph_service, "_fetch_artifacts_for_subsystem", fake_fetch_artifacts)
+
+    graph_payload = service.get_subsystem_graph("Kasmina", depth=3)
+
+    edge_types = {edge["type"] for edge in graph_payload["edges"]}
+    assert {"DEPENDS_ON", "IMPLEMENTS"}.issubset(edge_types)
+    node_ids = {node["id"] for node in graph_payload["nodes"]}
+    assert node_ids.issuperset({"Subsystem:Kasmina", "Subsystem:Telemetry", "IntegrationMessage:Sync"})
+    assert graph_payload["artifacts"][0]["id"] == "DesignDoc:docs/telemetry.md"
 
 
 def test_get_node_with_relationships(monkeypatch: pytest.MonkeyPatch, dummy_driver):
@@ -158,6 +202,30 @@ def test_get_node_with_relationships(monkeypatch: pytest.MonkeyPatch, dummy_driv
 
     assert result["node"]["properties"]["path"] == "gateway/app.py"
     assert result["relationships"][0]["type"] == "BELONGS_TO"
+
+
+def test_list_orphan_nodes_rejects_unknown_label(dummy_driver):
+    service, _, _ = dummy_driver
+    with pytest.raises(GraphQueryError):
+        service.list_orphan_nodes(label="Unknown", cursor=None, limit=5)
+
+
+def test_list_orphan_nodes_serializes_results(monkeypatch: pytest.MonkeyPatch, dummy_driver):
+    service, _, _ = dummy_driver
+
+    orphan = DummyNode(["DesignDoc"], "DesignDoc:docs/orphan.md", path="docs/orphan.md")
+
+    def fake_fetch_orphans(tx, label: str | None, skip: int, limit: int):
+        assert label is None
+        assert skip == 0
+        assert limit == 5
+        return [orphan]
+
+    monkeypatch.setattr(graph_service, "_fetch_orphan_nodes", fake_fetch_orphans)
+
+    payload = service.list_orphan_nodes(label=None, cursor=None, limit=5)
+    assert payload["nodes"][0]["id"] == "DesignDoc:docs/orphan.md"
+    assert payload["cursor"] is None
 
 
 def test_get_node_missing_raises(monkeypatch: pytest.MonkeyPatch, dummy_driver):

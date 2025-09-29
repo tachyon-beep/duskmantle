@@ -83,13 +83,13 @@ class AppSettings(BaseSettings):
     tracing_enabled: bool = Field(False, alias="KM_TRACING_ENABLED")
     tracing_endpoint: str | None = Field(None, alias="KM_TRACING_ENDPOINT")
     tracing_headers: str | None = Field(None, alias="KM_TRACING_HEADERS")
-    tracing_service_name: str = Field(
-        "duskmantle-knowledge-gateway", alias="KM_TRACING_SERVICE_NAME"
-    )
+    tracing_service_name: str = Field("duskmantle-knowledge-gateway", alias="KM_TRACING_SERVICE_NAME")
     tracing_sample_ratio: float = Field(1.0, alias="KM_TRACING_SAMPLE_RATIO")
     tracing_console_export: bool = Field(False, alias="KM_TRACING_CONSOLE_EXPORT")
 
     graph_auto_migrate: bool = Field(False, alias="KM_GRAPH_AUTO_MIGRATE")
+    graph_subsystem_cache_ttl_seconds: int = Field(30, alias="KM_GRAPH_SUBSYSTEM_CACHE_TTL")
+    graph_subsystem_cache_max_entries: int = Field(128, alias="KM_GRAPH_SUBSYSTEM_CACHE_MAX")
 
     search_weight_profile: Literal[
         "default",
@@ -103,9 +103,7 @@ class AppSettings(BaseSettings):
     search_weight_coverage_penalty: float = Field(0.15, alias="KM_SEARCH_W_COVERAGE_PENALTY")
     search_weight_criticality: float = Field(0.12, alias="KM_SEARCH_W_CRITICALITY")
     search_sort_by_vector: bool = Field(False, alias="KM_SEARCH_SORT_BY_VECTOR")
-    search_scoring_mode: Literal["heuristic", "ml"] = Field(
-        "heuristic", alias="KM_SEARCH_SCORING_MODE"
-    )
+    search_scoring_mode: Literal["heuristic", "ml"] = Field("heuristic", alias="KM_SEARCH_SCORING_MODE")
     search_model_path: Path | None = Field(None, alias="KM_SEARCH_MODEL_PATH")
     search_warn_slow_graph_ms: int = Field(250, alias="KM_SEARCH_WARN_GRAPH_MS")
     search_vector_weight: float = Field(1.0, alias="KM_SEARCH_VECTOR_WEIGHT")
@@ -157,6 +155,20 @@ class AppSettings(BaseSettings):
         if value <= 0:
             return None
         return int(value)
+
+    @field_validator("graph_subsystem_cache_ttl_seconds")
+    @classmethod
+    def _sanitize_graph_cache_ttl(cls, value: int) -> int:
+        if value < 0:
+            return 0
+        return value
+
+    @field_validator("graph_subsystem_cache_max_entries")
+    @classmethod
+    def _sanitize_graph_cache_max(cls, value: int) -> int:
+        if value < 1:
+            return 1
+        return value
 
     def resolved_search_weights(self) -> tuple[str, dict[str, float]]:
         """Return the active search weight profile name and resolved weights."""

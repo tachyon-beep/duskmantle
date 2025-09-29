@@ -240,7 +240,18 @@ def create_app() -> FastAPI:
         driver = getattr(request.app.state, "graph_driver", None)
         if driver is None:
             raise HTTPException(status_code=503, detail="Graph service unavailable")
-        return get_graph_service(driver, settings.neo4j_database)
+        service = getattr(request.app.state, "_graph_service_instance", None)
+        if service is None or service.driver is not driver:
+            cache_ttl = settings.graph_subsystem_cache_ttl_seconds
+            cache_max = settings.graph_subsystem_cache_max_entries
+            service = get_graph_service(
+                driver,
+                settings.neo4j_database,
+                cache_ttl=cache_ttl,
+                cache_max_entries=cache_max,
+            )
+            request.app.state._graph_service_instance = service
+        return service
 
     def search_service_dependency(request: Request) -> SearchService | None:
         qclient = getattr(request.app.state, "qdrant_client", None)
@@ -392,10 +403,11 @@ def create_app() -> FastAPI:
                     raise HTTPException(status_code=422, detail="filters.max_age_days must be a positive integer")
                 filters_resolved["max_age_days"] = max_age_value
 
-        driver = getattr(request.app.state, "graph_driver", None)
         graph_service = None
-        if include_graph and driver is not None:
-            graph_service = get_graph_service(driver, settings.neo4j_database)
+        if include_graph:
+            driver = getattr(request.app.state, "graph_driver", None)
+            if driver is not None:
+                graph_service = graph_service_dependency(request)
 
         request_id = getattr(request.state, "request_id", None) or str(uuid4())
 
@@ -524,6 +536,23 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return JSONResponse(payload)
 
+    @app.get("/graph/subsystems/{name}/graph", dependencies=[Depends(require_reader)], tags=["graph"])
+    @limiter.limit(metrics_limit)
+    def graph_subsystem_graph(
+        name: str,
+        request: Request,  # noqa: ARG001
+        depth: int = 2,
+        service: GraphService = Depends(graph_service_dependency),
+    ) -> JSONResponse:
+        depth = max(1, depth)
+        try:
+            payload = service.get_subsystem_graph(name, depth=depth)
+        except GraphNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except GraphQueryError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return JSONResponse(payload)
+
     @app.get(
         "/graph/nodes/{node_id:path}",
         dependencies=[Depends(require_reader)],
@@ -563,6 +592,22 @@ def create_app() -> FastAPI:
     ) -> JSONResponse:
         limit = max(1, min(limit, 50))
         payload = service.search(q, limit=limit)
+        return JSONResponse(payload)
+
+    @app.get("/graph/orphans", dependencies=[Depends(require_reader)], tags=["graph"])
+    @limiter.limit(metrics_limit)
+    def graph_orphans(
+        request: Request,  # noqa: ARG001
+        label: str | None = None,
+        cursor: str | None = None,
+        limit: int = 50,
+        service: GraphService = Depends(graph_service_dependency),
+    ) -> JSONResponse:
+        limit = max(1, min(limit, 200))
+        try:
+            payload = service.list_orphan_nodes(label=label, cursor=cursor, limit=limit)
+        except GraphQueryError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         return JSONResponse(payload)
 
     @app.post("/graph/cypher", dependencies=[Depends(require_maintainer)], tags=["graph"])

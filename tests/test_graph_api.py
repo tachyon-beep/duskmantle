@@ -38,6 +38,12 @@ class DummyGraphService:
     def search(self, term: str, *, limit: int) -> dict[str, Any]:
         return {"results": self._responses.get("search", [])}
 
+    def get_subsystem_graph(self, name: str, *, depth: int) -> dict[str, Any]:
+        return self._responses["subsystem_graph"]
+
+    def list_orphan_nodes(self, *, label: str | None, cursor: str | None, limit: int) -> dict[str, Any]:
+        return self._responses["orphans"]
+
     def run_cypher(self, query: str, parameters: dict[str, Any] | None) -> dict[str, Any]:
         return {"data": [{"row": ["ok"]}], "summary": {"resultConsumedAfterMs": 1, "database": "knowledge"}}
 
@@ -67,9 +73,19 @@ def app(monkeypatch: pytest.MonkeyPatch) -> FastAPI:
                                 "labels": ["Subsystem"],
                                 "properties": {"name": "analytics"},
                             },
+                            "hops": 1,
+                            "path": [
+                                {
+                                    "type": "DEPENDS_ON",
+                                    "direction": "OUT",
+                                    "source": "Subsystem:telemetry",
+                                    "target": "Subsystem:analytics",
+                                }
+                            ],
                         }
                     ],
                     "cursor": None,
+                    "total": 1,
                 },
                 "artifacts": [
                     {
@@ -78,6 +94,50 @@ def app(monkeypatch: pytest.MonkeyPatch) -> FastAPI:
                         "properties": {"path": "docs/telemetry.md"},
                     }
                 ],
+            },
+            "subsystem_graph": {
+                "subsystem": {
+                    "id": "Subsystem:telemetry",
+                    "labels": ["Subsystem"],
+                    "properties": {"name": "telemetry", "criticality": "high"},
+                },
+                "nodes": [
+                    {
+                        "id": "Subsystem:telemetry",
+                        "labels": ["Subsystem"],
+                        "properties": {"name": "telemetry", "criticality": "high"},
+                    },
+                    {
+                        "id": "Subsystem:analytics",
+                        "labels": ["Subsystem"],
+                        "properties": {"name": "analytics"},
+                    },
+                ],
+                "edges": [
+                    {
+                        "type": "DEPENDS_ON",
+                        "direction": "OUT",
+                        "source": "Subsystem:telemetry",
+                        "target": "Subsystem:analytics",
+                    }
+                ],
+                "artifacts": [
+                    {
+                        "id": "DesignDoc:docs/telemetry.md",
+                        "labels": ["DesignDoc"],
+                        "properties": {"path": "docs/telemetry.md"},
+                    }
+                ],
+            },
+            "orphans": {
+                "nodes": [
+                    {
+                        "id": "DesignDoc:docs/orphan.md",
+                        "labels": ["DesignDoc"],
+                        "properties": {"path": "docs/orphan.md"},
+                    }
+                ],
+                "cursor": None,
             },
             "node": {
                 "node": {
@@ -112,7 +172,10 @@ def test_graph_subsystem_returns_payload(app: FastAPI) -> None:
     body = response.json()
     assert body["subsystem"]["id"] == "Subsystem:telemetry"
     assert body["subsystem"]["properties"]["criticality"] == "high"
-    assert body["related"]["nodes"][0]["relationship"] == "DEPENDS_ON"
+    assert body["related"]["total"] == 1
+    related_entry = body["related"]["nodes"][0]
+    assert related_entry["relationship"] == "DEPENDS_ON"
+    assert related_entry["path"][0]["target"] == "Subsystem:analytics"
     assert body["artifacts"][0]["id"].startswith("DesignDoc:")
 
 
@@ -120,6 +183,23 @@ def test_graph_subsystem_not_found(app: FastAPI) -> None:
     client = TestClient(app)
     response = client.get("/graph/subsystems/missing")
     assert response.status_code == 404
+
+
+def test_graph_subsystem_graph_endpoint(app: FastAPI) -> None:
+    client = TestClient(app)
+    response = client.get("/graph/subsystems/telemetry/graph")
+    assert response.status_code == 200
+    data = response.json()
+    assert any(edge["type"] == "DEPENDS_ON" for edge in data["edges"])
+    assert data["nodes"][0]["id"] == "Subsystem:telemetry"
+
+
+def test_graph_orphans_endpoint(app: FastAPI) -> None:
+    client = TestClient(app)
+    response = client.get("/graph/orphans")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["nodes"][0]["id"] == "DesignDoc:docs/orphan.md"
 
 
 def test_graph_node_endpoint(app: FastAPI) -> None:

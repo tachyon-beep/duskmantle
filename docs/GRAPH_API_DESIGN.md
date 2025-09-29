@@ -20,11 +20,11 @@ This document specifies the read-only HTTP interface that exposes graph insights
 
 ### 3.1 `GET /graph/subsystems/{name}` *(Reader scope)*
 
-Returns rich context for a named subsystem.
+Returns rich context for a named subsystem and prefetches its dependency chains.
 
 **Query Parameters**
 
-- `depth` (int, default `1`): how many hops to traverse for related subsystems.
+- `depth` (int, default `2`): number of hops to traverse when discovering related nodes. Depth is clamped to a safe maximum to avoid runaway graph expansions.
 - `includeArtifacts` (bool, default `true`): whether to embed associated documents/tests within the response.
 - `cursor` (string, optional): pagination cursor for large neighbor sets.
 - `limit` (int, 1-100, default `25`): page size for related nodes/edges.
@@ -35,36 +35,82 @@ Returns rich context for a named subsystem.
 {
   "subsystem": {
     "id": "Subsystem:telemetry",
-    "name": "telemetry",
-    "description": "Streams sensor data to processing cluster",
-    "repo_head": "a1b2c3",
-    "metadata": {"owner": "observability"}
+    "labels": ["Subsystem"],
+    "properties": {"name": "telemetry", "criticality": "high"}
   },
   "related": {
     "nodes": [
-      {"id": "Subsystem:analytics", "name": "analytics", "relationship": "DEPENDS_ON"}
+      {
+        "relationship": "DEPENDS_ON",
+        "direction": "OUT",
+        "hops": 2,
+        "target": {
+          "id": "IntegrationMessage:CoverageReport",
+          "labels": ["IntegrationMessage"],
+          "properties": {"name": "CoverageReport"}
+        },
+        "path": [
+          {
+            "type": "DEPENDS_ON",
+            "direction": "OUT",
+            "source": "Subsystem:telemetry",
+            "target": "Subsystem:analytics"
+          },
+          {
+            "type": "IMPLEMENTS",
+            "direction": "OUT",
+            "source": "Subsystem:analytics",
+            "target": "IntegrationMessage:CoverageReport"
+          }
+        ]
+      }
     ],
-    "cursor": "opaque-cursor-or-null"
+    "cursor": null,
+    "total": 6
   },
   "artifacts": [
     {
-      "id": "SourceFile:src/telemetry/ingest.py",
-      "path": "src/telemetry/ingest.py",
-      "repo_head": "a1b2c3",
-      "chunk_ids": ["chunk:abc"],
-      "doc_refs": ["docs/design/telemetry.md"],
-      "last_updated": "2025-09-12T15:03:00Z"
+      "id": "DesignDoc:docs/telemetry.md",
+      "labels": ["DesignDoc"],
+      "properties": {"path": "docs/telemetry.md"}
     }
   ]
 }
 ```
 
+**Notes**
+
+- Multi-hop traversal results are cached for `KM_GRAPH_SUBSYSTEM_CACHE_TTL` seconds (default `30`). Cache size is controlled via `KM_GRAPH_SUBSYSTEM_CACHE_MAX`.
+- Each `related.nodes[]` entry retains the short-hop compatibility fields (`relationship`, `direction`, `target`) and now reports `hops` plus the explicit `path` of edge identifiers so agents can visualise or replay the dependency chain.
+
 **Errors**
 
-- `404` when subsystem not found.
-- `400` when `depth` exceeds configured maximum (default `3`).
+- `404` when the subsystem is not found.
+- `400` when supplied parameters are invalid (e.g., negative limits).
 
-### 3.2 `GET /graph/nodes/{nodeId}` *(Reader scope)*
+### 3.2 `GET /graph/subsystems/{name}/graph` *(Reader scope)*
+
+Produces a condensed subgraph for the requested subsystem, suitable for visualisation and analytics. The response reuses the cached multi-hop snapshot from `/graph/subsystems/{name}`.
+
+```json
+{
+  "subsystem": {"id": "Subsystem:telemetry", "labels": ["Subsystem"], "properties": {"name": "telemetry"}},
+  "nodes": [
+    {"id": "Subsystem:telemetry", "labels": ["Subsystem"], "properties": {"name": "telemetry"}},
+    {"id": "Subsystem:analytics", "labels": ["Subsystem"], "properties": {"name": "analytics"}},
+    {"id": "IntegrationMessage:CoverageReport", "labels": ["IntegrationMessage"], "properties": {"name": "CoverageReport"}}
+  ],
+  "edges": [
+    {"type": "DEPENDS_ON", "direction": "OUT", "source": "Subsystem:telemetry", "target": "Subsystem:analytics"},
+    {"type": "IMPLEMENTS", "direction": "OUT", "source": "Subsystem:analytics", "target": "IntegrationMessage:CoverageReport"}
+  ],
+  "artifacts": [
+    {"id": "DesignDoc:docs/telemetry.md", "labels": ["DesignDoc"], "properties": {"path": "docs/telemetry.md"}}
+  ]
+}
+```
+
+### 3.3 `GET /graph/nodes/{nodeId}` *(Reader scope)*
 
 Fetches a single node by compound identifier (`Label:identifier`). Supports generic inspection of files, tests, design docs, etc.
 
@@ -98,16 +144,16 @@ Fetches a single node by compound identifier (`Label:identifier`). Supports gene
 
 **Errors**
 
-- `404` when node cannot be resolved.
+- `404` when the node cannot be resolved.
 
-### 3.3 `GET /graph/search`
+### 3.4 `GET /graph/search`
 
 Lightweight search across graph entities, intended for UI autocomplete.
 
 **Query Parameters**
 
 - `q` (string, required): case-insensitive term matched against node names, aliases, or file paths.
-- `limit` (int, default `20`)
+- `limit` (int, default `20`).
 
 **Response**
 
@@ -120,7 +166,36 @@ Lightweight search across graph entities, intended for UI autocomplete.
 }
 ```
 
-### 3.4 `POST /graph/cypher` *(Maintainer scope)*
+### 3.5 `GET /graph/orphans`
+
+Lists artifacts that have no BELONGS_TO/DESCRIBES/VALIDATES edge to any subsystem. Useful for catching ingestion drift or newly-uploaded files that still need tagging.
+
+**Query Parameters**
+
+- `label` (string, optional): restrict results to a specific label from the supported set (`DesignDoc`, `SourceFile`, `Chunk`, `TestCase`, `IntegrationMessage`).
+- `cursor` (string, optional): pagination cursor.
+- `limit` (int, 1-200, default `50`).
+
+**Response**
+
+```json
+{
+  "nodes": [
+    {
+      "id": "DesignDoc:docs/orphan.md",
+      "labels": ["DesignDoc"],
+      "properties": {"path": "docs/orphan.md"}
+    }
+  ],
+  "cursor": null
+}
+```
+
+**Errors**
+
+- `400` when the label filter is not supported.
+
+### 3.6 `POST /graph/cypher` *(Maintainer scope)*
 
 Executes read-only Cypher queries for power users and troubleshooting.
 
@@ -138,33 +213,11 @@ Executes read-only Cypher queries for power users and troubleshooting.
 ```json
 {
   "data": [
-    {
-      "row": [
-        {"id": "Subsystem:telemetry", "labels": ["Subsystem"], "properties": {...}},
-        {"type": "DEPENDS_ON", "properties": {}},
-        {"id": "Subsystem:analytics", "labels": ["Subsystem"], "properties": {...}}
-      ]
-    }
+    {"row": [{"id": "Subsystem:telemetry", "labels": ["Subsystem"], "properties": {"name": "telemetry"}}, {"type": "DEPENDS_ON", "direction": "OUT", "target": {"id": "Subsystem:analytics", "labels": ["Subsystem"], "properties": {"name": "analytics"}}}]}
   ],
-  "summary": {
-    "resultConsumedAfterMs": 5,
-    "database": "knowledge"
-  }
+  "summary": {"resultConsumedAfterMs": 1, "database": "knowledge"}
 }
 ```
-
-**Constraints**
-
-- Only `MATCH`, `RETURN`, `WITH`, `UNWIND`, `ORDER BY`, `LIMIT` clauses allowed (enforced with allowlist regex).
-- `LIMIT` is required and clamped to `100` to protect the database.
-- `400` when query fails validation; `500` when Neo4j raises runtime errors.
-
-### 3.5 Future (Deferred) Endpoint Ideas
-
-- `GET /graph/coverage/{subsystem}`: overlay coverage stats per subsystem.
-- `POST /graph/path`: compute shortest path between two nodes.
-- `GET /graph/stats`: expose summary counts for dashboards.
-
 ## 4. Pagination Format
 
 Cursor responses follow the pattern:

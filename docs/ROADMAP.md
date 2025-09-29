@@ -140,9 +140,9 @@ A single work package covers both file and text-based content ingestion via MCP.
 ### Phase 4 – Graph analytics & lifecycle views
 
 - **Step 4.1 Multi-hop graph features**
-  - Task 4.1.1 Extend `/graph/subsystems` to prefetch multi-hop dependency chains with caching.
-  - Task 4.1.2 Add endpoints for orphan nodes and subsystem dependency graphs.
-  - Task 4.1.3 Document new graph queries and provide recipe examples.
+  - Task 4.1.1 Extend `/graph/subsystems` to prefetch multi-hop dependency chains with caching. **(Completed)**
+  - Task 4.1.2 Add endpoints for orphan nodes and subsystem dependency graphs. **(Completed)**
+  - Task 4.1.3 Document new graph queries and provide recipe examples. **(Completed)**
 - **Step 4.2 Coverage & lifecycle dashboards**
   - Task 4.2.1 Generate reports highlighting isolated nodes, stale docs, missing tests.
   - Task 4.2.2 Expose summaries via MCP/CLI recipe (e.g., `km-lifecycle-report`).

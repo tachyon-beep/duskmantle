@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import base64
+from collections import OrderedDict
 from dataclasses import dataclass
+from threading import Lock
+from time import monotonic
 from typing import Any
 
 from neo4j import Driver, Transaction
@@ -21,11 +24,69 @@ class GraphQueryError(GraphServiceError):
 
 
 @dataclass(slots=True)
+class SubsystemGraphSnapshot:
+    subsystem: dict[str, Any]
+    related: list[dict[str, Any]]
+    nodes: list[dict[str, Any]]
+    edges: list[dict[str, Any]]
+    artifacts: list[dict[str, Any]]
+
+
+ORPHAN_DEFAULT_LABELS: tuple[str, ...] = (
+    "DesignDoc",
+    "SourceFile",
+    "Chunk",
+    "TestCase",
+    "IntegrationMessage",
+)
+
+
+class SubsystemGraphCache:
+    """Simple TTL cache for subsystem graph snapshots."""
+
+    def __init__(self, ttl_seconds: float, max_entries: int) -> None:
+        self._ttl = max(0.0, ttl_seconds)
+        self._max_entries = max(1, max_entries)
+        self._entries: OrderedDict[tuple[str, int], tuple[float, SubsystemGraphSnapshot]] = OrderedDict()
+        self._lock = Lock()
+
+    def get(self, key: tuple[str, int]) -> SubsystemGraphSnapshot | None:
+        if self._ttl <= 0:
+            return None
+        now = monotonic()
+        with self._lock:
+            entry = self._entries.get(key)
+            if entry is None:
+                return None
+            expires_at, snapshot = entry
+            if expires_at <= now:
+                del self._entries[key]
+                return None
+            self._entries.move_to_end(key)
+            return snapshot
+
+    def set(self, key: tuple[str, int], snapshot: SubsystemGraphSnapshot) -> None:
+        if self._ttl <= 0:
+            return
+        expires_at = monotonic() + self._ttl
+        with self._lock:
+            self._entries[key] = (expires_at, snapshot)
+            self._entries.move_to_end(key)
+            while len(self._entries) > self._max_entries:
+                self._entries.popitem(last=False)
+
+    def clear(self) -> None:
+        with self._lock:
+            self._entries.clear()
+
+
+@dataclass(slots=True)
 class GraphService:
     """Service layer for read-only graph queries."""
 
     driver: Driver
     database: str
+    subsystem_cache: SubsystemGraphCache | None = None
 
     def get_subsystem(
         self,
@@ -36,38 +97,168 @@ class GraphService:
         cursor: str | None,
         include_artifacts: bool,
     ) -> dict[str, Any]:
-        offset = _decode_cursor(cursor)
+        offset = max(0, _decode_cursor(cursor))
+        limit = max(1, limit)
+        snapshot = self._load_subsystem_snapshot(name, depth)
+
+        related = snapshot.related
+        total = len(related)
+        window = related[offset : offset + limit]
+        next_cursor = None
+        if offset + limit < total:
+            next_cursor = _encode_cursor(offset + limit)
+
+        artifacts = snapshot.artifacts if include_artifacts else []
+
+        return {
+            "subsystem": snapshot.subsystem,
+            "related": {
+                "nodes": window,
+                "cursor": next_cursor,
+                "total": total,
+            },
+            "artifacts": artifacts,
+        }
+
+    def get_subsystem_graph(self, name: str, *, depth: int) -> dict[str, Any]:
+        snapshot = self._load_subsystem_snapshot(name, depth)
+        return {
+            "subsystem": snapshot.subsystem,
+            "nodes": snapshot.nodes,
+            "edges": snapshot.edges,
+            "artifacts": snapshot.artifacts,
+        }
+
+    def list_orphan_nodes(
+        self,
+        *,
+        label: str | None,
+        cursor: str | None,
+        limit: int,
+    ) -> dict[str, Any]:
+        if label and label not in ORPHAN_DEFAULT_LABELS:
+            raise GraphQueryError(f"Unsupported orphan label '{label}'")
+        offset = max(0, _decode_cursor(cursor))
+        limit = max(1, limit)
+        with self.driver.session(database=self.database) as session:
+            records = session.execute_read(
+                _fetch_orphan_nodes,
+                label,
+                offset,
+                limit,
+            )
+        nodes = [_serialize_node(record) for record in records]
+        next_cursor = None
+        if len(nodes) == limit:
+            next_cursor = _encode_cursor(offset + limit)
+        return {"nodes": nodes, "cursor": next_cursor}
+
+    def clear_cache(self) -> None:
+        if self.subsystem_cache is not None:
+            self.subsystem_cache.clear()
+
+    def _load_subsystem_snapshot(self, name: str, depth: int) -> SubsystemGraphSnapshot:
+        depth = max(1, depth)
+        cache_key = (name, depth)
+        if self.subsystem_cache is not None:
+            cached = self.subsystem_cache.get(cache_key)
+            if cached is not None:
+                return cached
+        snapshot = self._build_subsystem_snapshot(name, depth)
+        if self.subsystem_cache is not None:
+            self.subsystem_cache.set(cache_key, snapshot)
+        return snapshot
+
+    def _build_subsystem_snapshot(self, name: str, depth: int) -> SubsystemGraphSnapshot:
         with self.driver.session(database=self.database) as session:
             subsystem_node = session.execute_read(_fetch_subsystem_node, name)
             if subsystem_node is None:
                 raise GraphNotFoundError(f"Subsystem '{name}' not found")
 
-            related_records = session.execute_read(
-                _fetch_related_nodes,
+            path_records = session.execute_read(
+                _fetch_subsystem_paths,
                 name,
                 depth,
-                offset,
-                limit,
             )
-            related = [_serialize_related(record, subsystem_node) for record in related_records]
+            artifact_records = session.execute_read(_fetch_artifacts_for_subsystem, name)
 
-            next_cursor = None
-            if len(related) == limit:
-                next_cursor = _encode_cursor(offset + limit)
+        subsystem_serialized = _serialize_node(subsystem_node)
+        nodes_by_id: OrderedDict[str, dict[str, Any]] = OrderedDict()
+        nodes_by_id[subsystem_serialized["id"]] = subsystem_serialized
+        edges_by_key: OrderedDict[tuple[str, str, str], dict[str, Any]] = OrderedDict()
+        related_entries: list[dict[str, Any]] = []
+        related_order: list[str] = []
 
-            artifacts: list[dict[str, Any]] = []
-            if include_artifacts:
-                artifact_records = session.execute_read(_fetch_artifacts_for_subsystem, name)
-                artifacts = [_serialize_node(node) for node in artifact_records]
+        for record in path_records:
+            target_node: Node = record["node"]
+            path_nodes: list[Node] = record["nodes"]
+            relationships: list[Relationship] = record["relationships"]
+            if not relationships:
+                continue
 
-        return {
-            "subsystem": _serialize_node(subsystem_node),
-            "related": {
-                "nodes": related,
-                "cursor": next_cursor,
-            },
-            "artifacts": artifacts,
-        }
+            path_edges: list[dict[str, Any]] = []
+            for idx, relationship in enumerate(relationships):
+                source_node = path_nodes[idx]
+                target_step = path_nodes[idx + 1]
+                source_id = _canonical_node_id(source_node)
+                if source_id not in nodes_by_id:
+                    nodes_by_id[source_id] = _serialize_node(source_node)
+                source_serialized = nodes_by_id[source_id]
+
+                target_id = _canonical_node_id(target_step)
+                if target_id not in nodes_by_id:
+                    nodes_by_id[target_id] = _serialize_node(target_step)
+                target_serialized_step = nodes_by_id[target_id]
+
+                if relationship.start_node.element_id == source_node.element_id:
+                    direction = "OUT"
+                else:
+                    direction = "IN"
+                edge_key = (
+                    source_serialized["id"],
+                    target_serialized_step["id"],
+                    relationship.type,
+                )
+                if edge_key not in edges_by_key:
+                    edges_by_key[edge_key] = {
+                        "type": relationship.type,
+                        "direction": direction,
+                        "source": source_serialized["id"],
+                        "target": target_serialized_step["id"],
+                    }
+                path_edges.append(
+                    {
+                        "type": relationship.type,
+                        "direction": direction,
+                        "source": source_serialized["id"],
+                        "target": target_serialized_step["id"],
+                    }
+                )
+
+            target_id = _canonical_node_id(target_node)
+            if target_id not in nodes_by_id:
+                nodes_by_id[target_id] = _serialize_node(target_node)
+            target_serialized = nodes_by_id[target_id]
+            entry = {
+                "target": target_serialized,
+                "hops": len(relationships),
+                "path": path_edges,
+                "relationship": path_edges[0]["type"],
+                "direction": path_edges[0]["direction"],
+            }
+            if target_id not in related_order:
+                related_entries.append(entry)
+                related_order.append(target_id)
+
+        artifacts = [_serialize_node(node) for node in artifact_records]
+
+        return SubsystemGraphSnapshot(
+            subsystem=subsystem_serialized,
+            related=related_entries,
+            nodes=list(nodes_by_id.values()),
+            edges=list(edges_by_key.values()),
+            artifacts=artifacts,
+        )
 
     def get_node(self, node_id: str, *, relationships: str, limit: int) -> dict[str, Any]:
         label, key, value = _parse_node_id(node_id)
@@ -181,8 +372,17 @@ class GraphService:
         }
 
 
-def get_graph_service(driver: Driver, database: str) -> GraphService:
-    return GraphService(driver=driver, database=database)
+def get_graph_service(
+    driver: Driver,
+    database: str,
+    *,
+    cache_ttl: float | None = None,
+    cache_max_entries: int = 128,
+) -> GraphService:
+    cache = None
+    if cache_ttl is not None and cache_ttl > 0:
+        cache = SubsystemGraphCache(cache_ttl, cache_max_entries)
+    return GraphService(driver=driver, database=database, subsystem_cache=cache)
 
 
 # --- Neo4j read helpers ----------------------------------------------------
@@ -194,23 +394,31 @@ def _fetch_subsystem_node(tx: Transaction, name: str) -> Node | None:
     return record["s"] if record else None
 
 
-def _fetch_related_nodes(
+def _fetch_subsystem_paths(
     tx: Transaction,
     name: str,
     depth: int,
-    skip: int,
-    limit: int,
 ) -> list[dict[str, Any]]:
-    _ = depth  # reserved for future expansion; currently depth=1
+    bounded_depth = max(1, int(depth))
     query = (
-        "MATCH (s:Subsystem {name: $name})-[rel]-(n) "
+        "MATCH p=(s:Subsystem {name: $name})-[rel*1..$depth]-(n) "
         "WHERE n <> s "
-        "RETURN rel AS relationship, n AS node "
-        "ORDER BY n.name "
-        "SKIP $skip LIMIT $limit"
+        "WITH n, p "
+        "ORDER BY length(p) ASC "
+        "WITH n, collect(p) AS paths "
+        "WITH n, head(paths) AS path "
+        "RETURN n AS node, nodes(path) AS nodes, relationships(path) AS relationships "
+        "ORDER BY coalesce(n.name, n.title, n.path, elementId(n))"
     )
-    result = tx.run(query, name=name, skip=skip, limit=limit)
-    return [{"relationship": record["relationship"], "node": record["node"]} for record in result]
+    result = tx.run(query, name=name, depth=bounded_depth)
+    return [
+        {
+            "node": record["node"],
+            "nodes": record["nodes"],
+            "relationships": record["relationships"],
+        }
+        for record in result
+    ]
 
 
 def _fetch_artifacts_for_subsystem(tx: Transaction, name: str) -> list[Node]:
@@ -221,6 +429,31 @@ def _fetch_artifacts_for_subsystem(tx: Transaction, name: str) -> list[Node]:
     )
     result = tx.run(query, name=name)
     return [record["artifact"] for record in result]
+
+
+def _fetch_orphan_nodes(
+    tx: Transaction,
+    label: str | None,
+    skip: int,
+    limit: int,
+) -> list[Node]:
+    params: dict[str, Any] = {
+        "allowed": ORPHAN_DEFAULT_LABELS,
+        "skip": max(0, int(skip)),
+        "limit": max(1, int(limit)),
+    }
+    clauses = [
+        "MATCH (n)",
+        "WHERE any(l IN labels(n) WHERE l IN $allowed)",
+        "  AND NOT (n)-[:BELONGS_TO|DESCRIBES|VALIDATES]->(:Subsystem)",
+    ]
+    if label:
+        params["label"] = label
+        clauses.append("  AND $label IN labels(n)")
+    clauses.append("RETURN n ORDER BY coalesce(n.name, n.title, n.path, elementId(n)) SKIP $skip LIMIT $limit")
+    query = " ".join(clauses)
+    result = tx.run(query, **params)
+    return [record["n"] for record in result]
 
 
 def _fetch_node_by_id(tx: Transaction, label: str, key: str, value: Any) -> Node | None:
@@ -238,23 +471,11 @@ def _fetch_node_relationships(
     limit: int,
 ) -> list[dict[str, Any]]:
     if direction == "incoming":
-        query = (
-            f"MATCH (n:{label} {{{key}: $value}})<-[rel]-(other) "
-            "RETURN rel AS relationship, other AS node "
-            "LIMIT $limit"
-        )
+        query = f"MATCH (n:{label} {{{key}: $value}})<-[rel]-(other) RETURN rel AS relationship, other AS node LIMIT $limit"
     elif direction == "all":
-        query = (
-            f"MATCH (n:{label} {{{key}: $value}})-[rel]-(other) "
-            "RETURN rel AS relationship, other AS node "
-            "LIMIT $limit"
-        )
+        query = f"MATCH (n:{label} {{{key}: $value}})-[rel]-(other) RETURN rel AS relationship, other AS node LIMIT $limit"
     else:  # outgoing
-        query = (
-            f"MATCH (n:{label} {{{key}: $value}})-[rel]->(other) "
-            "RETURN rel AS relationship, other AS node "
-            "LIMIT $limit"
-        )
+        query = f"MATCH (n:{label} {{{key}: $value}})-[rel]->(other) RETURN rel AS relationship, other AS node LIMIT $limit"
     result = tx.run(query, value=value, limit=limit)
     return [{"relationship": record["relationship"], "node": record["node"]} for record in result]
 
@@ -296,11 +517,7 @@ def _serialize_related(record: dict[str, Any], subsystem_node: Node) -> dict[str
     relationship = record["relationship"]
     node: Node = record["node"]
     if isinstance(relationship, Relationship):
-        direction = (
-            "OUT"
-            if relationship.start_node.element_id == subsystem_node.element_id
-            else "IN"
-        )
+        direction = "OUT" if relationship.start_node.element_id == subsystem_node.element_id else "IN"
         rel_type = relationship.type
     else:  # tolerate legacy tuple/dict encodings emitted by Neo4j drivers
         direction = "OUT"

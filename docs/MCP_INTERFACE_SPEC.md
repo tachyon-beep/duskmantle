@@ -99,8 +99,8 @@ The MCP server exposes the following helper summaries. These mirror the metadata
 - **Response:** node serialization plus relationship list. Errors: `not_found`, `invalid_identifier`.
 
 ### 3.3 `km-graph-subsystem`
-- **Request:** `{ "name": "Kasmina", "depth": 1, "limit": 25, "cursor": null, "include_artifacts": true }`
-- **Response:** subsystem node, related nodes (with cursor), artifacts array.
+- **Request:** `{ "name": "Kasmina", "depth": 2, "limit": 25, "cursor": null, "include_artifacts": true }`
+- **Response:** subsystem node, related nodes (now including `hops`, `path`, `cursor`, `total`), artifacts array.
 
 ### 3.4 `km-graph-search`
 - **Request:** `{ "term": "ingest", "limit": 10 }`
