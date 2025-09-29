@@ -36,8 +36,12 @@ opt/knowledge/var/
 .DS_Store
 Thumbs.db
 
-
 #Ignore vscode AI rules
 .github/instructions/codacy.instructions.md
 .mypy_cache/
 .pytest_cache/
+.ruff_cache/
+.codex/
+.codacy/
+
+backups/
