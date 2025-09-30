@@ -81,7 +81,7 @@ jobs:
             duskmantle/km:${{ github.ref_name }}
           trap 'docker rm -f km-gateway-ci >/dev/null 2>&1 || true' EXIT
           docker exec km-gateway-ci bash -lc '. /opt/knowledge/.venv/bin/activate && pip install -e "/opt/knowledge/app[dev]"'
-          docker exec -e NEO4J_TEST_URI="${NEO4J_TEST_URI}" km-gateway-ci bash -lc '. /opt/knowledge/.venv/bin/activate && python - <<'"'"'PY'"'"'
+          docker exec -e NEO4J_TEST_URI="${NEO4J_TEST_URI}" km-gateway-ci /opt/knowledge/.venv/bin/python - <<'PY'
 import os
 import time
 from neo4j import GraphDatabase
@@ -100,7 +100,7 @@ while time.time() < deadline:
     break
 else:
     raise SystemExit("Neo4j did not become ready in time")
-PY'
+PY
           docker exec -e NEO4J_TEST_URI="${NEO4J_TEST_URI}" km-gateway-ci bash -lc '. /opt/knowledge/.venv/bin/activate && cd /opt/knowledge/app && pytest -m neo4j -ra'
 
       - name: Upload release artifacts
