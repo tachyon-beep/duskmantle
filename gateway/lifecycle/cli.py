@@ -4,6 +4,7 @@ import argparse
 import json
 from datetime import datetime
 from pathlib import Path
+from typing import Iterable, Mapping
 
 from rich.console import Console
 from rich.table import Table
@@ -34,58 +35,70 @@ def render_table(payload: dict[str, object]) -> None:
     header = f"Lifecycle Report ({generated})"
     console.print(f"[bold]{header}[/bold]")
 
-    isolated_raw = payload.get("isolated")
-    isolated = isolated_raw if isinstance(isolated_raw, dict) else {}
-    if isolated:
-        table = Table(title="Isolated Graph Nodes", show_lines=False)
-        table.add_column("Label")
-        table.add_column("Entries", justify="right")
-        for label, nodes in isolated.items():
-            if not isinstance(label, str):
-                continue
-            if isinstance(nodes, list):
-                table.add_row(label, str(len(nodes)))
-        console.print(table)
-    else:
+    _render_isolated_nodes(payload.get("isolated"))
+    _render_stale_docs(payload.get("stale_docs"))
+    _render_missing_tests(payload.get("missing_tests"))
+
+
+def _render_isolated_nodes(value: object) -> None:
+    isolated = value if isinstance(value, Mapping) else {}
+    if not isolated:
         console.print("No isolated nodes detected.", style="green")
+        return
 
-    stale_docs_raw = payload.get("stale_docs")
-    stale_docs = stale_docs_raw if isinstance(stale_docs_raw, list) else []
-    if stale_docs:
-        table = Table(title="Stale Design Docs", show_lines=False)
-        table.add_column("Path")
-        table.add_column("Subsystem")
-        table.add_column("Last Commit")
-        for entry in stale_docs:
-            if not isinstance(entry, dict):
-                continue
-            ts = entry.get("git_timestamp")
-            ts_render = "-"
-            if isinstance(ts, (int, float)) and ts > 0:
-                ts_render = datetime.fromtimestamp(ts).isoformat(sep=" ", timespec="seconds")
-            table.add_row(str(entry.get("path")), str(entry.get("subsystem")), ts_render)
-        console.print(table)
-    else:
+    table = Table(title="Isolated Graph Nodes", show_lines=False)
+    table.add_column("Label")
+    table.add_column("Entries", justify="right")
+    for label, nodes in isolated.items():
+        if isinstance(label, str) and isinstance(nodes, Iterable):
+            table.add_row(label, str(sum(1 for _ in nodes)))
+    console.print(table)
+
+
+def _render_stale_docs(value: object) -> None:
+    docs = value if isinstance(value, list) else []
+    rows = [entry for entry in docs if isinstance(entry, Mapping)]
+    if not rows:
         console.print("No stale design docs beyond threshold.", style="green")
+        return
 
-    missing_tests_raw = payload.get("missing_tests")
-    missing_tests = missing_tests_raw if isinstance(missing_tests_raw, list) else []
-    if missing_tests:
-        table = Table(title="Subsystems Missing Tests", show_lines=False)
-        table.add_column("Subsystem")
-        table.add_column("Source Files", justify="right")
-        table.add_column("Test Cases", justify="right")
-        for entry in missing_tests:
-            if not isinstance(entry, dict):
-                continue
-            table.add_row(
-                str(entry.get("subsystem")),
-                str(entry.get("source_files", 0)),
-                str(entry.get("test_cases", 0)),
-            )
-        console.print(table)
-    else:
+    table = Table(title="Stale Design Docs", show_lines=False)
+    table.add_column("Path")
+    table.add_column("Subsystem")
+    table.add_column("Last Commit")
+    for entry in rows:
+        table.add_row(
+            str(entry.get("path")),
+            str(entry.get("subsystem")),
+            _format_timestamp(entry.get("git_timestamp")),
+        )
+    console.print(table)
+
+
+def _render_missing_tests(value: object) -> None:
+    candidates = value if isinstance(value, list) else []
+    rows = [entry for entry in candidates if isinstance(entry, Mapping)]
+    if not rows:
         console.print("All subsystems with source files have test coverage.", style="green")
+        return
+
+    table = Table(title="Subsystems Missing Tests", show_lines=False)
+    table.add_column("Subsystem")
+    table.add_column("Source Files", justify="right")
+    table.add_column("Test Cases", justify="right")
+    for entry in rows:
+        table.add_row(
+            str(entry.get("subsystem")),
+            str(entry.get("source_files", 0)),
+            str(entry.get("test_cases", 0)),
+        )
+    console.print(table)
+
+
+def _format_timestamp(value: object) -> str:
+    if isinstance(value, (int, float)) and value > 0:
+        return datetime.fromtimestamp(value).isoformat(sep=" ", timespec="seconds")
+    return "-"
 
 
 def main(argv: list[str] | None = None) -> None:

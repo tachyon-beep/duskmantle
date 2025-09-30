@@ -7,6 +7,7 @@ import logging
 import re
 import subprocess
 from collections.abc import Iterable
+from typing import Mapping
 from dataclasses import dataclass
 from fnmatch import fnmatch
 from pathlib import Path
@@ -211,81 +212,119 @@ def _detect_source_prefixes(repo_root: Path) -> list[tuple[str, ...]]:
         return _SOURCE_PREFIX_CACHE[root]
 
     prefixes: set[tuple[str, ...]] = set()
-
-    def _add_prefix(include: str | None, base: str = "src") -> None:
-        if not include:
-            return
-        include = include.strip()
-        if not include or include == "*":
-            return
-        include = include.replace(".", "/").replace("-", "_")
-        base = base.strip()
-        path = Path(base) / include if base else Path(include)
-        parts = tuple(part for part in path.parts if part)
-        if parts:
-            prefixes.add(parts)
-
-    pyproject = root / "pyproject.toml"
-    if pyproject.exists():
-        try:
-            data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
-        except Exception as exc:  # pragma: no cover - defensive
-            logger.debug("Failed to parse pyproject.toml: %s", exc)
-            data = {}
-
-        tool_cfg = data.get("tool", {}) if isinstance(data, dict) else {}
-        poetry = tool_cfg.get("poetry") if isinstance(tool_cfg, dict) else None
-        if isinstance(poetry, dict):
-            packages = poetry.get("packages")
-            if isinstance(packages, list):
-                for entry in packages:
-                    if isinstance(entry, dict):
-                        _add_prefix(entry.get("include"), entry.get("from", "src"))
-            else:
-                _add_prefix(poetry.get("name"))
-
-        project_cfg = data.get("project") if isinstance(data, dict) else None
-        if isinstance(project_cfg, dict):
-            packages = project_cfg.get("packages")
-            if isinstance(packages, list):
-                for entry in packages:
-                    if isinstance(entry, dict):
-                        include = entry.get("include") or entry.get("name")
-                        _add_prefix(include, entry.get("from", "src"))
-            else:
-                _add_prefix(project_cfg.get("name"))
-
-        setuptools_cfg = tool_cfg.get("setuptools") if isinstance(tool_cfg, dict) else None
-        if isinstance(setuptools_cfg, dict):
-            packages_cfg = setuptools_cfg.get("packages")
-            if isinstance(packages_cfg, dict):
-                find_cfg = packages_cfg.get("find")
-                if isinstance(find_cfg, dict):
-                    includes = find_cfg.get("include")
-                    wheres = find_cfg.get("where", ["src"])
-                    if isinstance(wheres, str):
-                        wheres = [wheres]
-                    include_list: list[str] = []
-                    if isinstance(includes, list):
-                        include_list = [item for item in includes if isinstance(item, str)]
-                    elif isinstance(includes, str):
-                        include_list = [includes]
-                    for include in include_list:
-                        for where in wheres or ["src"]:
-                            _add_prefix(include, where)
-
-    # Fallback: directories under src/
-    src_dir = root / "src"
-    if src_dir.exists():
-        for child in src_dir.iterdir():
-            if child.is_dir():
-                prefixes.add(("src", child.name))
-
+    _collect_pyproject_prefixes(root, prefixes)
+    _collect_src_directory_prefixes(root, prefixes)
     prefixes.add(("src",))
 
     resolved = sorted(prefixes)
     _SOURCE_PREFIX_CACHE[root] = resolved
     return resolved
+
+
+def _collect_pyproject_prefixes(root: Path, prefixes: set[tuple[str, ...]]) -> None:
+    pyproject = root / "pyproject.toml"
+    if not pyproject.exists():
+        return
+
+    data = _load_pyproject(pyproject)
+    if not isinstance(data, Mapping):
+        return
+
+    tool_cfg = data.get("tool", {}) if isinstance(data, Mapping) else {}
+    if isinstance(tool_cfg, Mapping):
+        _collect_poetry_prefixes(tool_cfg, prefixes)
+        _collect_setuptools_prefixes(tool_cfg, prefixes)
+
+    project_cfg = data.get("project") if isinstance(data, Mapping) else None
+    if isinstance(project_cfg, Mapping):
+        _collect_project_prefixes(project_cfg, prefixes)
+
+
+def _load_pyproject(path: Path) -> Mapping[str, Any] | dict[str, Any]:
+    try:
+        return tomllib.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.debug("Failed to parse pyproject.toml: %s", exc)
+        return {}
+
+
+def _collect_poetry_prefixes(tool_cfg: Mapping[str, Any], prefixes: set[tuple[str, ...]]) -> None:
+    poetry_cfg = tool_cfg.get("poetry")
+    if not isinstance(poetry_cfg, Mapping):
+        return
+
+    packages = poetry_cfg.get("packages")
+    if isinstance(packages, list):
+        for entry in packages:
+            if isinstance(entry, Mapping):
+                _add_prefix(prefixes, entry.get("include"), entry.get("from", "src"))
+        return
+
+    _add_prefix(prefixes, poetry_cfg.get("name"))
+
+
+def _collect_project_prefixes(project_cfg: Mapping[str, Any], prefixes: set[tuple[str, ...]]) -> None:
+    packages = project_cfg.get("packages")
+    if isinstance(packages, list):
+        for entry in packages:
+            if isinstance(entry, Mapping):
+                include = entry.get("include") or entry.get("name")
+                _add_prefix(prefixes, include, entry.get("from", "src"))
+        return
+
+    _add_prefix(prefixes, project_cfg.get("name"))
+
+
+def _collect_setuptools_prefixes(tool_cfg: Mapping[str, Any], prefixes: set[tuple[str, ...]]) -> None:
+    setuptools_cfg = tool_cfg.get("setuptools")
+    if not isinstance(setuptools_cfg, Mapping):
+        return
+
+    packages_cfg = setuptools_cfg.get("packages")
+    if not isinstance(packages_cfg, Mapping):
+        return
+
+    find_cfg = packages_cfg.get("find")
+    if not isinstance(find_cfg, Mapping):
+        return
+
+    includes = _ensure_str_list(find_cfg.get("include"))
+    wheres = _ensure_str_list(find_cfg.get("where", "src")) or ["src"]
+
+    for include in includes:
+        for where in wheres:
+            _add_prefix(prefixes, include, where)
+
+
+def _collect_src_directory_prefixes(root: Path, prefixes: set[tuple[str, ...]]) -> None:
+    src_dir = root / "src"
+    if not src_dir.exists():
+        return
+    for child in src_dir.iterdir():
+        if child.is_dir():
+            prefixes.add(("src", child.name))
+
+
+def _add_prefix(prefixes: set[tuple[str, ...]], include: str | None, base: str | None = "src") -> None:
+    if not include:
+        return
+    include = include.strip()
+    if not include or include == "*":
+        return
+    include = include.replace(".", "/").replace("-", "_")
+    base_normalized = (base or "").strip()
+    path = Path(base_normalized) / include if base_normalized else Path(include)
+    parts = tuple(part for part in path.parts if part)
+    if parts:
+        prefixes.add(parts)
+
+
+def _ensure_str_list(value: object) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, list):
+        return [item for item in value if isinstance(item, str)]
+    return []
 
 
 def _infer_subsystem(path: Path, repo_root: Path, source_prefixes: list[tuple[str, ...]]) -> str | None:
@@ -331,20 +370,38 @@ def _match_catalog_entry(path: Path, repo_root: Path, catalog: dict[str, dict[st
     rel_posix = path.relative_to(repo_root).as_posix()
     for entry in catalog.values():
         metadata = entry.get("metadata", {})
-        patterns = metadata.get("paths") or metadata.get("includes") or []
-        if not isinstance(patterns, (list, tuple, set)):
+        if not isinstance(metadata, Mapping):
             continue
-        for pattern in patterns:
-            if not isinstance(pattern, str):
-                continue
-            cleaned = pattern.strip()
-            if not cleaned:
-                continue
-            prefix_match = rel_posix.startswith(cleaned.rstrip("*/"))
-            glob_match = fnmatch(rel_posix, cleaned)
-            if prefix_match or glob_match:
-                return entry
+        if any(_pattern_matches(rel_posix, pattern) for pattern in _iter_metadata_patterns(metadata)):
+            return entry
     return None
+
+
+def _iter_metadata_patterns(metadata: Mapping[str, Any]) -> Iterable[str]:
+    raw_patterns = metadata.get("paths") or metadata.get("includes") or []
+    candidates: Iterable[object]
+    if isinstance(raw_patterns, str):
+        candidates = [raw_patterns]
+    elif isinstance(raw_patterns, (list, tuple, set)):
+        candidates = raw_patterns
+    else:
+        return []
+
+    cleaned: list[str] = []
+    for pattern in candidates:
+        if not isinstance(pattern, str):
+            continue
+        stripped = pattern.strip()
+        if stripped:
+            cleaned.append(stripped)
+    return cleaned
+
+
+def _pattern_matches(target: str, pattern: str) -> bool:
+    base = pattern.rstrip("*/")
+    if base and target.startswith(base):
+        return True
+    return fnmatch(target, pattern)
 
 
 def dump_artifacts(artifacts: Iterable[Artifact]) -> str:
