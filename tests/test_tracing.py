@@ -32,9 +32,7 @@ def test_tracing_enabled_instruments_app(monkeypatch: MonkeyPatch) -> None:
 
     instrument_calls: dict[str, int] = {"count": 0}
 
-    def fake_instrument_app(  # type: ignore[override]
-        self: object, app: object, tracer_provider: TracerProvider | None = None
-    ) -> None:
+    def fake_instrument_app(self: object, app: object, tracer_provider: TracerProvider | None = None) -> None:  # type: ignore[override]
         instrument_calls["count"] += 1
 
     from gateway.observability import tracing

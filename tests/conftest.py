@@ -85,8 +85,7 @@ def neo4j_test_environment() -> Iterator[dict[str, str | None]]:
             driver.verify_connectivity()
     except Exception as exc:  # pragma: no cover - connection failures must surface
         pytest.fail(
-            "Neo4j integration tests expect the packaged database to be running. "
-            f"Failed to connect to {uri}: {exc}",
+            "Neo4j integration tests expect the packaged database to be running. " f"Failed to connect to {uri}: {exc}",
         )
 
     yield {"uri": uri, "user": user, "password": password, "database": database}

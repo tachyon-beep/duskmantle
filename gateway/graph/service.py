@@ -206,9 +206,7 @@ class GraphService:
             relationships_raw = record["relationships"]
             if not isinstance(relationships_raw, list):
                 continue
-            relationships: list[Relationship] = [
-                rel for rel in relationships_raw if isinstance(rel, Relationship)
-            ]
+            relationships: list[Relationship] = [rel for rel in relationships_raw if isinstance(rel, Relationship)]
             if not relationships:
                 continue
             if not relationships:

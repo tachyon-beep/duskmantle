@@ -205,9 +205,7 @@ class SearchService:
             )
 
             subsystem_value = (payload.get("subsystem") or "").lower()
-            subsystem_direct_match = bool(
-                filter_state.allowed_subsystems and subsystem_value in filter_state.allowed_subsystems
-            )
+            subsystem_direct_match = bool(filter_state.allowed_subsystems and subsystem_value in filter_state.allowed_subsystems)
 
             graph_context_internal, path_depth_value = self._resolve_graph_context(
                 payload=payload,

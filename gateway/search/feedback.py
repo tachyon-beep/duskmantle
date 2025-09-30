@@ -64,9 +64,7 @@ class SearchFeedbackStore:
     def _append(self, rows: Sequence[Mapping[str, object]]) -> None:
         if not rows:
             return
-        payload = "\n".join(
-            json.dumps(dict(row), separators=(",", ":"), ensure_ascii=False) for row in rows
-        )
+        payload = "\n".join(json.dumps(dict(row), separators=(",", ":"), ensure_ascii=False) for row in rows)
         with self._lock:
             with self.events_path.open("a", encoding="utf-8") as handle:
                 handle.write(payload)
