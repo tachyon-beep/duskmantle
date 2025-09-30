@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import csv
 import json
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
-from typing import Any, Iterable, List, Mapping, Sequence, Tuple
+from typing import Any
 
 from gateway.search.exporter import FIELDNAMES
 
@@ -52,16 +53,16 @@ def load_dataset_records(path: Path) -> list[Mapping[str, Any]]:
 def build_feature_matrix(
     records: Iterable[Mapping[str, Any]],
     feature_names: Sequence[str],
-) -> Tuple[List[List[float]], List[float], List[str]]:
-    features: List[List[float]] = []
-    targets: List[float] = []
-    request_ids: List[str] = []
+) -> tuple[list[list[float]], list[float], list[str]]:
+    features: list[list[float]] = []
+    targets: list[float] = []
+    request_ids: list[str] = []
 
     for record in records:
         vote = _parse_float(record.get(TARGET_FIELD))
         if vote is None:
             continue
-        row_features: List[float] = []
+        row_features: list[float] = []
         for name in feature_names:
             value = record.get(name)
             row_features.append(_parse_float(value) or 0.0)

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import sqlite3
 import time
-from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -83,4 +82,4 @@ class AuditLogger:
             "success",
             "created_at",
         ]
-        return [dict(zip(columns, row)) for row in rows]
+        return [dict(zip(columns, row, strict=False)) for row in rows]

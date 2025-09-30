@@ -456,7 +456,7 @@ def _fetch_orphan_nodes(
     return [record["n"] for record in result]
 
 
-def _fetch_node_by_id(tx: Transaction, label: str, key: str, value: Any) -> Node | None:
+def _fetch_node_by_id(tx: Transaction, label: str, key: str, value: object) -> Node | None:
     query = f"MATCH (n:{label} {{{key}: $value}}) RETURN n LIMIT 1"
     record = tx.run(query, value=value).single()
     return record["n"] if record else None
@@ -466,7 +466,7 @@ def _fetch_node_relationships(
     tx: Transaction,
     label: str,
     key: str,
-    value: Any,
+    value: object,
     direction: str,
     limit: int,
 ) -> list[dict[str, Any]]:
@@ -558,7 +558,7 @@ def _serialize_relationship(record: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _serialize_value(value: Any) -> Any:
+def _serialize_value(value: object) -> object:
     if isinstance(value, Node):
         return _serialize_node(value)
     if isinstance(value, Relationship):

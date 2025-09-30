@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from gateway.search.maintenance import PruneOptions, RedactOptions, prune_feedback_log, redact_dataset
@@ -24,7 +24,7 @@ def _write_events(path: Path, requests: list[tuple[str, datetime, list[dict[str,
 
 
 def test_prune_feedback_log_by_age(tmp_path):
-    now = datetime(2024, 9, 1, 12, 0, tzinfo=timezone.utc)
+    now = datetime(2024, 9, 1, 12, 0, tzinfo=UTC)
     older = now - timedelta(days=40)
     recent = now - timedelta(days=5)
 

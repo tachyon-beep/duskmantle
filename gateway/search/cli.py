@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from rich.console import Console
@@ -155,7 +155,7 @@ def export_training_data(
 
     datasets_dir = feedback_dir / "datasets"
     if output is None:
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
         suffix = "jsonl" if fmt == "jsonl" else "csv"
         output = datasets_dir / f"training-{timestamp}.{suffix}"
 
@@ -191,7 +191,7 @@ def train_model(
     models_dir = feedback_dir / "models"
 
     if output is None:
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
         output = models_dir / f"model-{timestamp}.json"
 
     try:

@@ -6,9 +6,9 @@ import os
 import re
 import shutil
 import unicodedata
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
 SUPPORTED_EXTENSIONS = {".md", ".docx", ".txt", ".doc", ".pdf"}
 

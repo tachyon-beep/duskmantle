@@ -4,7 +4,7 @@ import json
 import os
 import shutil
 import signal
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import uvicorn
@@ -21,7 +21,7 @@ def _prepare_state(state_path: Path) -> None:
     history_dir = reports_dir / "lifecycle_history"
     history_dir.mkdir(parents=True, exist_ok=True)
 
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     earlier = now - timedelta(days=7)
     midpoint = now - timedelta(days=3)
     later = now - timedelta(days=1)

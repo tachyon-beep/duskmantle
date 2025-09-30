@@ -7,15 +7,15 @@ import subprocess
 import time
 import uuid
 from collections import deque
+from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Sequence
 
 from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode
 
-from gateway.ingest.artifacts import Artifact, Chunk, ChunkEmbedding
+from gateway.ingest.artifacts import Chunk, ChunkEmbedding
 from gateway.ingest.chunking import Chunker
 from gateway.ingest.discovery import DiscoveryConfig, discover
 from gateway.ingest.embedding import DummyEmbedder, Embedder

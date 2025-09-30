@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from statistics import mean
-from typing import Dict, Iterable, List, Sequence
 
 import numpy as np
 
@@ -54,11 +54,11 @@ def evaluate_model(dataset_path: Path, model_path: Path) -> EvaluationMetrics:
 
 
 def _mean_ndcg(request_ids: Sequence[str], relevance: np.ndarray, scores: np.ndarray, *, k: int) -> float:
-    groups: Dict[str, List[int]] = {}
+    groups: dict[str, list[int]] = {}
     for idx, rid in enumerate(request_ids):
         groups.setdefault(rid, []).append(idx)
 
-    ndcgs: List[float] = []
+    ndcgs: list[float] = []
     for indices in groups.values():
         if not indices:
             continue

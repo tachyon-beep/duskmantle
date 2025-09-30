@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from gateway import get_version
 from gateway.api.app import create_app
 from gateway.config.settings import get_settings
-from gateway.search.service import SearchResponse, SearchResult
+from gateway.search.service import SearchResponse
 
 
 @pytest.fixture(autouse=True)

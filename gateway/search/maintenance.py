@@ -3,10 +3,11 @@ from __future__ import annotations
 import json
 import logging
 import shutil
+from collections.abc import MutableMapping
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Mapping, MutableMapping
+from typing import Any
 
 from gateway.search.exporter import iter_feedback_events
 
@@ -48,8 +49,8 @@ def prune_feedback_log(events_path: Path, *, options: PruneOptions) -> PruneStat
     if options.max_age_days is None and options.max_requests is None:
         raise ValueError("At least one of max_age_days or max_requests must be provided")
 
-    events_by_request: MutableMapping[str, List[Dict[str, Any]]] = {}
-    order: List[str] = []
+    events_by_request: MutableMapping[str, list[dict[str, Any]]] = {}
+    order: list[str] = []
     for event in iter_feedback_events(events_path):
         rid = str(event.get("request_id"))
         if rid == "None":  # pragma: no cover - defensive guard
@@ -59,19 +60,19 @@ def prune_feedback_log(events_path: Path, *, options: PruneOptions) -> PruneStat
             order.append(rid)
         events_by_request[rid].append(event)
 
-    timestamps: Dict[str, datetime] = {}
+    timestamps: dict[str, datetime] = {}
     for rid, entries in events_by_request.items():
         first = entries[0]
         ts = _parse_timestamp(first.get("timestamp"))
         if ts is None:
-            ts = datetime.fromordinal(1).replace(tzinfo=timezone.utc)
+            ts = datetime.fromordinal(1).replace(tzinfo=UTC)
         timestamps[rid] = ts
 
     total_requests = len(events_by_request)
     if total_requests == 0:
         return PruneStats(total_requests=0, retained_requests=0, removed_requests=0)
 
-    now = options.current_time or datetime.now(timezone.utc)
+    now = options.current_time or datetime.now(UTC)
     selected_ids = list(order)
 
     if options.max_age_days is not None:
@@ -129,7 +130,7 @@ def _parse_timestamp(value: Any) -> datetime | None:
     if not value:
         return None
     if isinstance(value, (int, float)):
-        return datetime.fromtimestamp(float(value), tz=timezone.utc)
+        return datetime.fromtimestamp(float(value), tz=UTC)
     text = str(value)
     if text.endswith("Z"):
         text = text[:-1] + "+00:00"

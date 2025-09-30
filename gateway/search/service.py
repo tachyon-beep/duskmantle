@@ -3,9 +3,10 @@ from __future__ import annotations
 import logging
 import re
 import time
+from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-from typing import Any, Iterable, List, Literal, Set
+from datetime import UTC, datetime, timedelta
+from typing import Any, Literal
 
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import ScoredPoint, SearchParams
@@ -27,7 +28,7 @@ class SearchResult:
 @dataclass
 class SearchResponse:
     query: str
-    results: List[SearchResult]
+    results: list[SearchResult]
     metadata: dict[str, Any]
 
 
@@ -147,7 +148,7 @@ class SearchService:
 
         parsed_updated_after: datetime | None = None
         if isinstance(updated_after_filter, datetime):
-            parsed_updated_after = updated_after_filter.astimezone(timezone.utc)
+            parsed_updated_after = updated_after_filter.astimezone(UTC)
         elif isinstance(updated_after_filter, str):
             parsed_updated_after = _parse_iso_datetime(updated_after_filter)
 
@@ -159,7 +160,7 @@ class SearchService:
             except (TypeError, ValueError):
                 recency_max_age_days = None
         if recency_max_age_days is not None:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             age_cutoff = now - timedelta(days=recency_max_age_days)
             if recency_cutoff is None or age_cutoff > recency_cutoff:
                 recency_cutoff = age_cutoff
@@ -182,7 +183,7 @@ class SearchService:
                 {str(value).strip() for value in raw_tags if isinstance(value, str) and value.strip()},
             )
         if parsed_updated_after is not None:
-            filters_applied["updated_after"] = parsed_updated_after.astimezone(timezone.utc).isoformat()
+            filters_applied["updated_after"] = parsed_updated_after.astimezone(UTC).isoformat()
         if max_age_filter is not None:
             try:
                 filters_applied["max_age_days"] = int(max_age_filter)
@@ -506,7 +507,7 @@ class SearchService:
             raise ValueError(f"Missing features for model scoring: {missing}")
         contributions: dict[str, float] = {}
         score = self._model_intercept
-        for coeff, name in zip(self._model_coefficients, self._model_feature_names):
+        for coeff, name in zip(self._model_coefficients, self._model_feature_names, strict=False):
             value = features[name]
             contrib = coeff * value
             contributions[name] = contrib
@@ -573,7 +574,7 @@ def _subsystems_from_context(graph_context: dict[str, Any] | None) -> set[str]:
     return subsystems
 
 
-def _detect_query_subsystems(query: str) -> Set[str]:
+def _detect_query_subsystems(query: str) -> set[str]:
     tokens = {token for token in re.split(r"[^a-zA-Z0-9]+", query.lower()) if token}
     return tokens
 
@@ -652,7 +653,7 @@ def _compute_scoring(
     lexical_score: float,
     vector_weight: float,
     lexical_weight: float,
-    query_tokens: Set[str],
+    query_tokens: set[str],
     chunk: dict[str, Any],
     graph_context: dict[str, Any],
     weight_subsystem: float,
@@ -824,7 +825,7 @@ def _compute_freshness_days(
     parsed = _parse_iso_datetime(timestamp)
     if parsed is None:
         return None
-    delta = datetime.now(timezone.utc) - parsed
+    delta = datetime.now(UTC) - parsed
     return max(delta.total_seconds() / 86400.0, 0.0)
 
 
@@ -860,7 +861,7 @@ def _parse_iso_datetime(value: Any) -> datetime | None:
         return None
     if isinstance(value, (int, float)):
         try:
-            return datetime.fromtimestamp(float(value), tz=timezone.utc)
+            return datetime.fromtimestamp(float(value), tz=UTC)
         except (OverflowError, ValueError):
             return None
     text = str(value).strip()

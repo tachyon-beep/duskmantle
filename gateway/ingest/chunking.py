@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import math
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from gateway.ingest.artifacts import Artifact, Chunk
 
@@ -34,7 +35,7 @@ class Chunker:
         for idx, start in enumerate(range(0, len(text), step)):
             end = start + self.window
             chunk_text = text[start:end]
-            digest = hashlib.sha256(f"{artifact.path}:{idx}:{chunk_text}".encode("utf-8")).hexdigest()
+            digest = hashlib.sha256(f"{artifact.path}:{idx}:{chunk_text}".encode()).hexdigest()
             chunk_id = f"{artifact.path.as_posix()}::{idx}"
             metadata = {
                 "path": artifact.path.as_posix(),

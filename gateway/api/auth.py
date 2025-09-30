@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
+
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
@@ -8,10 +10,12 @@ from gateway.config.settings import get_settings
 _security = HTTPBearer(auto_error=False)
 
 
-def require_scope(scope: str):
+def require_scope(scope: str) -> Callable[[HTTPAuthorizationCredentials | None], Awaitable[None]]:
     """Return a dependency enforcing the given scope."""
 
-    async def dependency(credentials: HTTPAuthorizationCredentials = Depends(_security)) -> None:
+    async def dependency(
+        credentials: HTTPAuthorizationCredentials = Depends(_security),  # noqa: B008
+    ) -> None:
         settings = get_settings()
         if not settings.auth_enabled:
             return

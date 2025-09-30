@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from typing import Iterable
+from collections.abc import Iterable
 
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as qmodels

@@ -15,7 +15,7 @@ class RecordingSession:
         self.queries.append((query, params))
         return SimpleNamespace(single=lambda: None)
 
-    def __enter__(self) -> "RecordingSession":  # pragma: no cover - trivial
+    def __enter__(self) -> RecordingSession:  # pragma: no cover - trivial
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:  # pragma: no cover - trivial

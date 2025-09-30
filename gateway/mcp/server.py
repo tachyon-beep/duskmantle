@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
 from textwrap import dedent
@@ -628,7 +628,7 @@ def _append_audit_entry(settings: MCPSettings, *, tool: str, payload: dict[str, 
         audit_dir.mkdir(parents=True, exist_ok=True)
         record = {
             "tool": tool,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             **payload,
         }
         audit_file = audit_dir / "mcp_actions.log"

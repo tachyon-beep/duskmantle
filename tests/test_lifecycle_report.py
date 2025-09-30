@@ -9,15 +9,6 @@ from prometheus_client import REGISTRY
 
 from gateway.ingest.lifecycle import LifecycleConfig, write_lifecycle_report
 from gateway.ingest.pipeline import IngestionResult
-from gateway.observability.metrics import (
-    LIFECYCLE_HISTORY_SNAPSHOTS,
-    LIFECYCLE_ISOLATED_NODES_TOTAL,
-    LIFECYCLE_LAST_RUN_STATUS,
-    LIFECYCLE_LAST_RUN_TIMESTAMP,
-    LIFECYCLE_MISSING_TEST_SUBSYSTEMS_TOTAL,
-    LIFECYCLE_REMOVED_ARTIFACTS_TOTAL,
-    LIFECYCLE_STALE_DOCS_TOTAL,
-)
 
 
 class DummyGraphService:

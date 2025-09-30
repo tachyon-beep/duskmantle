@@ -3,9 +3,10 @@ from __future__ import annotations
 import csv
 import json
 import logging
+from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, Iterator, Literal, Sequence
+from typing import Any, Literal
 
 logger = logging.getLogger(__name__)
 
@@ -132,7 +133,7 @@ def _write_jsonl(events: Iterable[dict[str, Any]], options: ExportOptions) -> Ex
     return ExportStats(total_events=total, written_rows=written, skipped_without_vote=skipped_without_vote)
 
 
-def _flatten_event(event: Dict[str, Any]) -> Dict[str, Any]:
+def _flatten_event(event: dict[str, Any]) -> dict[str, Any]:
     signals = event.get("signals") or {}
     metadata = event.get("metadata") or {}
 
@@ -152,7 +153,7 @@ def _flatten_event(event: Dict[str, Any]) -> Dict[str, Any]:
     else:
         context_json = str(context_value)
 
-    row: Dict[str, Any] = {
+    row: dict[str, Any] = {
         "request_id": event.get("request_id"),
         "timestamp": event.get("timestamp"),
         "rank": event.get("rank"),

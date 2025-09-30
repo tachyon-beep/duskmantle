@@ -3,11 +3,12 @@ from __future__ import annotations
 import json
 import threading
 import uuid
-from datetime import datetime, timezone
+from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any
 
-from gateway.search.service import SearchResponse, SearchResult
+from gateway.search.service import SearchResponse
 
 
 class SearchFeedbackStore:
@@ -31,7 +32,7 @@ class SearchFeedbackStore:
             return
 
         event_request_id = request_id or str(uuid.uuid4())
-        timestamp = datetime.now(timezone.utc).isoformat()
+        timestamp = datetime.now(UTC).isoformat()
 
         vote = None
         if feedback is not None:

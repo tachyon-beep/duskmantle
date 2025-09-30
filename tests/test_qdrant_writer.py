@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from unittest import mock
 
-import pytest
-
 from gateway.ingest.artifacts import Artifact, Chunk, ChunkEmbedding
 from gateway.ingest.qdrant_writer import QdrantWriter
 

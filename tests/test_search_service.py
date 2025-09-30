@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -570,8 +570,8 @@ def test_search_service_filters_tags() -> None:
 
 
 def test_search_service_filters_recency_updated_after() -> None:
-    recent_ts = datetime.now(timezone.utc) - timedelta(days=5)
-    old_ts = datetime.now(timezone.utc) - timedelta(days=120)
+    recent_ts = datetime.now(UTC) - timedelta(days=5)
+    old_ts = datetime.now(UTC) - timedelta(days=120)
     points = [
         FakePoint(
             {
@@ -607,7 +607,7 @@ def test_search_service_filters_recency_updated_after() -> None:
         embedder=FakeEmbedder(),
     )
 
-    cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+    cutoff = datetime.now(UTC) - timedelta(days=30)
     response = search_service.search(
         query="core",
         limit=5,
@@ -625,7 +625,7 @@ def test_search_service_filters_recency_updated_after() -> None:
 
 
 def test_search_service_filters_recency_max_age_days() -> None:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     points = [
         FakePoint(
             {

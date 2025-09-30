@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from types import SimpleNamespace
-from typing import Any, Iterable
+from typing import Any
 
 import pytest
 
@@ -37,7 +38,7 @@ class DummySession:
             single=lambda: None,
         )
 
-    def __enter__(self) -> "DummySession":  # pragma: no cover - trivial
+    def __enter__(self) -> DummySession:  # pragma: no cover - trivial
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:  # pragma: no cover - trivial
