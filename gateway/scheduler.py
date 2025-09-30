@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import subprocess
 import time
+from collections.abc import Mapping
 from contextlib import suppress
 from pathlib import Path
 
@@ -135,7 +136,7 @@ def _current_repo_head(repo_root: Path) -> str | None:
         return None
 
 
-def _build_trigger(config: dict[str, object]):
+def _build_trigger(config: Mapping[str, object]) -> CronTrigger | IntervalTrigger:
     trigger_type = config.get("type")
     if trigger_type == "cron":
         expression = str(config.get("expression", "")).strip()
@@ -149,7 +150,7 @@ def _build_trigger(config: dict[str, object]):
     raise ValueError(f"Unsupported scheduler trigger type: {trigger_type}")
 
 
-def _describe_trigger(config: dict[str, object]) -> str:
+def _describe_trigger(config: Mapping[str, object]) -> str:
     if config.get("type") == "cron":
         return f"cron:{config.get('expression')}"
     if config.get("type") == "interval":

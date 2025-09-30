@@ -9,7 +9,12 @@ from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.requests import RequestsInstrumentor
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter, SimpleSpanProcessor
+from opentelemetry.sdk.trace.export import (
+    BatchSpanProcessor,
+    ConsoleSpanExporter,
+    SimpleSpanProcessor,
+    SpanExporter,
+)
 from opentelemetry.sdk.trace.sampling import ParentBased, TraceIdRatioBased
 
 from gateway.config.settings import AppSettings
@@ -46,7 +51,7 @@ def configure_tracing(app: FastAPI | None, settings: AppSettings) -> None:
     _TRACING_CONFIGURED = True
 
 
-def _select_exporter(settings: AppSettings):
+def _select_exporter(settings: AppSettings) -> SpanExporter:
     headers = _parse_headers(settings.tracing_headers)
     if settings.tracing_endpoint:
         return OTLPSpanExporter(endpoint=settings.tracing_endpoint, headers=headers)

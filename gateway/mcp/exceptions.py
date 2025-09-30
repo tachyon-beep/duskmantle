@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 
 class MCPAdapterError(Exception):
     """Base error raised by the MCP bridge."""
@@ -12,7 +10,7 @@ class MCPAdapterError(Exception):
 class GatewayRequestError(MCPAdapterError):
     """Raised when the gateway API returns an error response."""
 
-    def __init__(self, *, status_code: int, detail: str, payload: Any | None = None) -> None:
+    def __init__(self, *, status_code: int, detail: str, payload: object | None = None) -> None:
         self.status_code = status_code
         self.detail = detail
         self.payload = payload

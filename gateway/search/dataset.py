@@ -4,7 +4,6 @@ import csv
 import json
 from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
-from typing import Any
 
 from gateway.search.exporter import FIELDNAMES
 
@@ -15,11 +14,11 @@ class DatasetLoadError(RuntimeError):
     """Raised when a dataset cannot be parsed."""
 
 
-def load_dataset_records(path: Path) -> list[Mapping[str, Any]]:
+def load_dataset_records(path: Path) -> list[Mapping[str, object]]:
     if not path.exists():
         raise DatasetLoadError(f"Dataset not found: {path}")
 
-    rows: list[Mapping[str, Any]] = []
+    rows: list[Mapping[str, object]] = []
     suffix = path.suffix.lower()
     if suffix == ".csv":
         with path.open("r", encoding="utf-8") as handle:
@@ -51,7 +50,7 @@ def load_dataset_records(path: Path) -> list[Mapping[str, Any]]:
 
 
 def build_feature_matrix(
-    records: Iterable[Mapping[str, Any]],
+    records: Iterable[Mapping[str, object]],
     feature_names: Sequence[str],
 ) -> tuple[list[list[float]], list[float], list[str]]:
     features: list[list[float]] = []
@@ -75,7 +74,7 @@ def build_feature_matrix(
     return features, targets, request_ids
 
 
-def _parse_float(value: Any) -> float | None:
+def _parse_float(value: object) -> float | None:
     if value is None or value == "":
         return None
     if isinstance(value, (int, float)):

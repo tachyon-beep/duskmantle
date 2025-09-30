@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from functools import lru_cache
@@ -165,9 +166,9 @@ class MCPServerState:
             raise RuntimeError("Gateway client is not initialised")
         return self.client
 
-    def lifespan(self):  # noqa: ANN201 - FastMCP expects this signature
+    def lifespan(self) -> AsyncIterator[MCPServerState]:
         @asynccontextmanager
-        async def _lifespan(_server: FastMCP):
+        async def _lifespan(_server: FastMCP) -> AsyncIterator[MCPServerState]:
             async with GatewayClient(self.settings) as client:
                 self.client = client
                 try:

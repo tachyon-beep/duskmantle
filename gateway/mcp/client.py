@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Mapping
+from types import TracebackType
 from typing import Any
 from urllib.parse import quote as _quote
 
@@ -33,7 +35,12 @@ class GatewayClient:
         )
         return self
 
-    async def __aexit__(self, exc_type, exc, tb) -> None:  # noqa: D401 - required signature
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:  # noqa: D401 - required signature
         if self._client is not None:
             await self._client.aclose()
         self._client = None
@@ -119,11 +126,11 @@ class GatewayClient:
         method: str,
         path: str,
         *,
-        json_payload: Any | None = None,
-        params: dict[str, Any] | None = None,
+        json_payload: Mapping[str, object] | list[object] | None = None,
+        params: Mapping[str, object] | None = None,
         require_admin: bool = False,
         require_reader: bool = False,
-    ) -> Any:
+    ) -> object:
         if self._client is None:
             raise RuntimeError("GatewayClient is not running")
 
@@ -176,7 +183,7 @@ def _extract_error_detail(response: httpx.Response) -> str:
     return response.text or "Unknown error"
 
 
-def _safe_json(response: httpx.Response) -> Any | None:
+def _safe_json(response: httpx.Response) -> Mapping[str, object] | list[object] | None:
     try:
         return response.json()
     except json.JSONDecodeError:

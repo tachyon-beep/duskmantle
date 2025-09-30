@@ -1,0 +1,12 @@
+{
+  "$schema": "https://raw.githubusercontent.com/DavidAnson/markdownlint/main/schema/markdownlint-config-schema.json",
+  "MD013": {
+    "line_length": 140,
+    "code_block_line_length": 0,
+    "code_blocks": false,
+    "tables": false
+  },
+  "MD024": {
+    "allow_different_nesting": true
+  }
+}

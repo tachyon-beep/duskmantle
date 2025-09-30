@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable
-from typing import Any
+from collections.abc import Iterable, Mapping, Sequence
 
 from neo4j import Driver
 
@@ -179,8 +178,10 @@ def _relationship_for_label(label: str) -> str | None:
     }.get(label)
 
 
-def _clean_string_list(values: Any) -> list[str]:
-    if not isinstance(values, (list, tuple, set)):
+def _clean_string_list(values: Sequence[object] | None) -> list[str]:
+    if values is None:
+        return []
+    if not isinstance(values, Sequence) or isinstance(values, (str, bytes, bytearray)):
         return []
     seen: dict[str, None] = {}
     for value in values:
@@ -202,8 +203,8 @@ def _normalize_subsystem_name(value: str | None) -> str | None:
     return text
 
 
-def _extract_dependencies(metadata: Any) -> list[str]:
-    if not isinstance(metadata, dict):
+def _extract_dependencies(metadata: Mapping[str, object] | None) -> list[str]:
+    if not isinstance(metadata, Mapping):
         return []
     raw = metadata.get("dependencies") or metadata.get("depends_on") or metadata.get("depends_on_subsystems")
     dependencies = []
@@ -221,10 +222,10 @@ def _extract_dependencies(metadata: Any) -> list[str]:
     return list(dict.fromkeys(dependencies))
 
 
-def _subsystem_properties(metadata: Any) -> dict[str, Any]:
-    if not isinstance(metadata, dict):
+def _subsystem_properties(metadata: Mapping[str, object] | None) -> dict[str, object]:
+    if not isinstance(metadata, Mapping):
         return {}
-    properties: dict[str, Any] = {}
+    properties: dict[str, object] = {}
     for key in ("description", "criticality", "owner", "domain"):
         value = metadata.get(key)
         if value:

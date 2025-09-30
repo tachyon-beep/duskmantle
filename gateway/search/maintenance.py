@@ -7,7 +7,6 @@ from collections.abc import MutableMapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
 
 from gateway.search.exporter import iter_feedback_events
 
@@ -49,7 +48,7 @@ def prune_feedback_log(events_path: Path, *, options: PruneOptions) -> PruneStat
     if options.max_age_days is None and options.max_requests is None:
         raise ValueError("At least one of max_age_days or max_requests must be provided")
 
-    events_by_request: MutableMapping[str, list[dict[str, Any]]] = {}
+    events_by_request: MutableMapping[str, list[dict[str, object]]] = {}
     order: list[str] = []
     for event in iter_feedback_events(events_path):
         rid = str(event.get("request_id"))
@@ -96,7 +95,7 @@ def prune_feedback_log(events_path: Path, *, options: PruneOptions) -> PruneStat
     tmp_path = destination.with_suffix(".tmp")
     with tmp_path.open("w", encoding="utf-8") as handle:
         for rid in retained_order:
-            entries = events_by_request[rid]
+            entries: list[dict[str, object]] = events_by_request[rid]
             for entry in entries:
                 handle.write(json.dumps(entry, separators=(",", ":"), ensure_ascii=False))
                 handle.write("\n")
@@ -126,7 +125,7 @@ def redact_dataset(dataset_path: Path, *, options: RedactOptions) -> RedactStats
     return stats
 
 
-def _parse_timestamp(value: Any) -> datetime | None:
+def _parse_timestamp(value: object) -> datetime | None:
     if not value:
         return None
     if isinstance(value, (int, float)):

@@ -14,6 +14,7 @@ from qdrant_client.http.models import ScoredPoint, SearchParams
 from gateway.graph.service import GraphService, GraphServiceError
 from gateway.ingest.embedding import Embedder
 from gateway.observability import SEARCH_GRAPH_CACHE_EVENTS, SEARCH_GRAPH_LOOKUP_SECONDS, SEARCH_SCORE_DELTA
+from gateway.search.trainer import ModelArtifact
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +51,7 @@ class SearchService:
         lexical_weight: float = 0.25,
         hnsw_ef_search: int | None = None,
         scoring_mode: Literal["heuristic", "ml"] = "heuristic",
-        model_artifact: Any | None = None,
+        model_artifact: ModelArtifact | None = None,
         weight_profile: str = "custom",
         slow_graph_warn_seconds: float = 0.25,
     ) -> None:
@@ -856,7 +857,7 @@ def _resolve_chunk_datetime(
     return None
 
 
-def _parse_iso_datetime(value: Any) -> datetime | None:
+def _parse_iso_datetime(value: object) -> datetime | None:
     if value is None:
         return None
     if isinstance(value, (int, float)):
