@@ -1,19 +1,26 @@
+"""End-to-end validation of ingestion and graph-backed search."""
+
 from __future__ import annotations
 
 import os
+from pathlib import Path
+from typing import Any, Sequence, cast
 
 import pytest
 from neo4j import GraphDatabase
+from qdrant_client import QdrantClient
 
 from gateway.graph.migrations.runner import MigrationRunner
 from gateway.graph.service import get_graph_service
+from gateway.ingest.embedding import Embedder
 from gateway.ingest.neo4j_writer import Neo4jWriter
 from gateway.ingest.pipeline import IngestionConfig, IngestionPipeline
 from gateway.search import SearchService
 
 
 @pytest.mark.neo4j
-def test_ingestion_populates_graph(tmp_path: pytest.TempPathFactory) -> None:
+def test_ingestion_populates_graph(tmp_path: Path) -> None:
+    """Run ingestion and verify graph nodes, edges, and metadata."""
     uri = os.getenv("NEO4J_TEST_URI")
     user = os.getenv("NEO4J_TEST_USER", "neo4j")
     password = os.getenv("NEO4J_TEST_PASSWORD", "neo4jadmin")
@@ -109,9 +116,18 @@ def test_ingestion_populates_graph(tmp_path: pytest.TempPathFactory) -> None:
         driver.close()
 
 
-class _DummyEmbedder:
-    def encode(self, texts):  # noqa: ANN001 - match interface
-        return [[0.1, 0.2, 0.3]]
+class _DummyEmbedder(Embedder):
+    """Minimal embedder returning deterministic vectors for tests."""
+
+    def __init__(self) -> None:
+        self.model_name = "test"
+
+    @property
+    def dimension(self) -> int:
+        return 3
+
+    def encode(self, texts: Sequence[str]) -> list[list[float]]:
+        return [[0.1, 0.2, 0.3] for _ in texts]
 
 
 class _FakePoint:
@@ -121,15 +137,18 @@ class _FakePoint:
 
 
 class _DummyQdrantClient:
+    """Stub Qdrant client that returns pre-seeded points."""
+
     def __init__(self, points: list[_FakePoint]) -> None:
         self._points = points
 
-    def search(self, **kwargs):  # noqa: ANN001 - mimic qdrant interface
+    def search(self, **_kwargs: Any) -> list[_FakePoint]:
         return self._points
 
 
 @pytest.mark.neo4j
-def test_search_replay_against_real_graph(tmp_path: pytest.TempPathFactory) -> None:
+def test_search_replay_against_real_graph(tmp_path: Path) -> None:
+    """Replay saved search results against the populated knowledge graph."""
     uri = os.getenv("NEO4J_TEST_URI")
     user = os.getenv("NEO4J_TEST_USER", "neo4j")
     password = os.getenv("NEO4J_TEST_PASSWORD", "neo4jadmin")
@@ -202,7 +221,7 @@ def test_search_replay_against_real_graph(tmp_path: pytest.TempPathFactory) -> N
         ]
 
         search_service = SearchService(
-            qdrant_client=_DummyQdrantClient(qdrant_points),
+            qdrant_client=cast(QdrantClient, _DummyQdrantClient(qdrant_points)),
             collection_name="collection",
             embedder=_DummyEmbedder(),
         )

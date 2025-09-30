@@ -92,14 +92,43 @@ jobs:
           fi
           docker exec -e NEO4J_TEST_URI="${NEO4J_TEST_URI}" km-gateway-ci bash -lc '. /opt/knowledge/.venv/bin/activate && cd /opt/knowledge/app && pytest -m neo4j -ra'
 
-      - name: Upload release artifacts
-        uses: softprops/action-gh-release@v2
-        with:
-          name: ${{ github.ref_name }}
-          draft: true
-          files: |
+      - name: Create or update GitHub Release
+        env:
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${TAG}"
+          repo="${REPO}"
+          # Ensure files exist; allow glob expansion to fail gracefully if no wheels yet
+          files=(
             dist/release/*.whl
             dist/SHA256SUMS
             dist/IMAGE_SHA256SUMS
             CHANGELOG.md
             docs/dashboards/gateway_overview.json
+          )
+          # Filter only existing files
+          upload_files=()
+          for f in "${files[@]}"; do
+            for match in $f; do
+              if [ -f "$match" ]; then
+                upload_files+=("$match")
+              fi
+            done
+          done
+          if gh release view "$tag" -R "$repo" >/dev/null 2>&1; then
+            # Update existing draft or release and upload files
+            gh release edit "$tag" --title "$tag" --draft --notes-file CHANGELOG.md -R "$repo"
+            if [ ${#upload_files[@]} -gt 0 ]; then
+              gh release upload "$tag" "${upload_files[@]}" --clobber -R "$repo"
+            fi
+          else
+            # Create a new draft release with assets
+            if [ ${#upload_files[@]} -gt 0 ]; then
+              gh release create "$tag" --title "$tag" --draft --notes-file CHANGELOG.md -R "$repo" "${upload_files[@]}"
+            else
+              gh release create "$tag" --title "$tag" --draft --notes-file CHANGELOG.md -R "$repo"
+            fi
+          fi
