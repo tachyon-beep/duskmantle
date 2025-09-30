@@ -94,5 +94,10 @@ def neo4j_test_environment() -> Iterator[dict[str, str | None]]:
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
     for item in items:
-        if "neo4j" in item.keywords and "neo4j_test_environment" not in item.fixturenames:
-            item.fixturenames.insert(0, "neo4j_test_environment")
+        if "neo4j" not in item.keywords:
+            continue
+        fixturenames = getattr(item, "fixturenames", None)
+        if not isinstance(fixturenames, list):
+            continue
+        if "neo4j_test_environment" not in fixturenames:
+            fixturenames.insert(0, "neo4j_test_environment")
