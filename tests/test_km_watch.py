@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import os
 import runpy
 import sys
 from pathlib import Path
 
 from prometheus_client import REGISTRY
 
-module = runpy.run_path("bin/km-watch", run_name="km_watch")
+_root_dir = Path(__file__).resolve().parents[1]
+_bin_dir = Path(os.environ.get("KM_BIN", _root_dir / "bin"))
+module = runpy.run_path(str(_bin_dir / "km-watch"), run_name="km_watch")
 
 
 def _metric_value(name: str, labels: dict[str, str]) -> float:
