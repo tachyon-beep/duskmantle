@@ -6,8 +6,10 @@ Use the `gateway-recipes` CLI (or `bin/km-recipe-run`) to execute YAML-based wor
 # list available recipes
 gateway-recipes list
 
-# run release prep with a custom profile
-km-recipe-run release-prep --var profile=staging
+# run release prep with a custom profile (MCP payload form)
+km-recipe-run {"recipe": "release-prep", "vars": {"profile": "staging"}}
+# CLI equivalent (shell invocation)
+# km-recipe-run release-prep --var profile=staging
 ```
 
 Each run records a transcript under `/opt/knowledge/var/audit/recipes.log`. Recipes mutate state through MCP tools, so ensure you have maintainer credentials loaded (`KM_ADMIN_TOKEN`).

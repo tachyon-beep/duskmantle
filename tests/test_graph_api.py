@@ -237,8 +237,7 @@ def test_graph_node_endpoint_live(monkeypatch: pytest.MonkeyPatch, tmp_path: pyt
     doc_path = repo_root / "docs" / "sample.md"
     doc_path.write_text("# Sample\nGraph validation doc.\n")
 
-    driver = GraphDatabase.driver(uri, auth=(user, password))
-    try:
+    with GraphDatabase.driver(uri, auth=(user, password)) as driver:
         MigrationRunner(driver=driver, database=database).run()
         writer = Neo4jWriter(driver, database=database)
         writer.ensure_constraints()
@@ -252,8 +251,6 @@ def test_graph_node_endpoint_live(monkeypatch: pytest.MonkeyPatch, tmp_path: pyt
             ),
         )
         assert pipeline.run().success
-    finally:
-        driver.close()
 
     get_settings.cache_clear()
     app = create_app()
@@ -287,8 +284,7 @@ def test_graph_search_endpoint_live(monkeypatch: pytest.MonkeyPatch, tmp_path: p
     (repo_root / "docs" / "sample.md").write_text("# Sample\nGraph validation doc.\n")
     (repo_root / "src" / "project" / "telemetry" / "module.py").write_text("def handler():\n    return 'ok'\n")
 
-    driver = GraphDatabase.driver(uri, auth=(user, password))
-    try:
+    with GraphDatabase.driver(uri, auth=(user, password)) as driver:
         MigrationRunner(driver=driver, database=database).run()
         writer = Neo4jWriter(driver, database=database)
         writer.ensure_constraints()
@@ -302,8 +298,6 @@ def test_graph_search_endpoint_live(monkeypatch: pytest.MonkeyPatch, tmp_path: p
             ),
         )
         assert pipeline.run().success
-    finally:
-        driver.close()
 
     get_settings.cache_clear()
     app = create_app()

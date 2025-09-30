@@ -32,8 +32,7 @@ def test_ingestion_populates_graph(tmp_path: pytest.TempPathFactory) -> None:
     sample_code = repo_root / "src" / "project" / "telemetry" / "module.py"
     sample_code.write_text("def handler():\n    return 'ok'\n")
 
-    driver = GraphDatabase.driver(uri, auth=(user, password))
-    try:
+    with GraphDatabase.driver(uri, auth=(user, password)) as driver:
         with driver.session(database=database) as session:
             session.run("MATCH (n) DETACH DELETE n")
 
@@ -105,8 +104,6 @@ def test_ingestion_populates_graph(tmp_path: pytest.TempPathFactory) -> None:
             )
             subsystem_search = graph_service.search("telemetry", limit=5)
             assert any(result["label"] == "Subsystem" for result in subsystem_search["results"])
-    finally:
-        driver.close()
 
 
 class _DummyEmbedder:
@@ -148,8 +145,7 @@ def test_search_replay_against_real_graph(tmp_path: pytest.TempPathFactory) -> N
     code_path = repo_root / "src" / "project" / "telemetry" / "module.py"
     code_path.write_text("def handler():\n    return 'ok'\n")
 
-    driver = GraphDatabase.driver(uri, auth=(user, password))
-    try:
+    with GraphDatabase.driver(uri, auth=(user, password)) as driver:
         with driver.session(database=database) as session:
             session.run("MATCH (n) DETACH DELETE n")
 
@@ -224,5 +220,3 @@ def test_search_replay_against_real_graph(tmp_path: pytest.TempPathFactory) -> N
 
         # Ensure ranking favours the higher vector score but still exposes metadata
         assert response.results[0].chunk["artifact_type"] == "code"
-    finally:
-        driver.close()
