@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import os
+import shutil
+import subprocess
+import time
 import warnings
 from collections.abc import Iterator
 from types import SimpleNamespace, TracebackType
 from typing import NoReturn
+from uuid import uuid4
 
 import pytest
 from neo4j import GraphDatabase
@@ -73,6 +77,68 @@ def neo4j_test_environment() -> Iterator[dict[str, str | None]]:
     password = os.getenv("NEO4J_TEST_PASSWORD")
     database = os.getenv("NEO4J_TEST_DATABASE", "knowledge")
 
+    container_name: str | None = None
+    cleanup_container = False
+
+    if os.getenv("NEO4J_TEST_URI") is None:
+        docker_path = shutil.which("docker")
+        if docker_path is None:
+            pytest.fail(
+                "Neo4j integration tests require Docker unless NEO4J_TEST_URI is provided. "
+                "Install Docker or point NEO4J_TEST_URI at a running instance.",
+            )
+
+        container_name = f"neo4j-test-{uuid4().hex[:8]}"
+        user = "neo4j"
+        password = "neo4jadmin"
+        database = "knowledge"
+        cleanup_container = True
+
+        cmd = [
+            docker_path,
+            "run",
+            "-d",
+            "--name",
+            container_name,
+            "--network",
+            "host",
+            "-e",
+            "NEO4J_AUTH=neo4j/neo4jadmin",
+            "-e",
+            "NEO4J_dbms_default__database=knowledge",
+            "-e",
+            "NEO4J_server_default__listen__address=0.0.0.0",
+            "-e",
+            "NEO4J_server_default__advertised__address=127.0.0.1",
+            "neo4j:5",
+        ]
+        try:
+            subprocess.run(
+                cmd,
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+        except subprocess.CalledProcessError as exc:  # pragma: no cover - environment dependent
+            pytest.fail(
+                "Failed to launch Neo4j test container. "
+                f"Command: {' '.join(cmd)}\nstdout: {exc.stdout}\nstderr: {exc.stderr}"
+            )
+
+        deadline = time.time() + 60
+        while True:
+            try:
+                with GraphDatabase.driver(uri, auth=(user, password)) as driver:
+                    driver.verify_connectivity()
+                break
+            except Exception as exc:  # pragma: no cover - retry loop
+                if time.time() > deadline:
+                    if cleanup_container:
+                        subprocess.run([docker_path, "rm", "-f", container_name], check=False)
+                    pytest.fail(f"Timed out waiting for Neo4j test container to start: {exc}")
+                time.sleep(1)
+
     if user is None:
         auth = None
     else:
@@ -88,7 +154,23 @@ def neo4j_test_environment() -> Iterator[dict[str, str | None]]:
             "Neo4j integration tests expect the packaged database to be running. " f"Failed to connect to {uri}: {exc}",
         )
 
-    yield {"uri": uri, "user": user, "password": password, "database": database}
+    os.environ.setdefault("NEO4J_TEST_URI", uri)
+    if user:
+        os.environ.setdefault("NEO4J_TEST_USER", user)
+    if password:
+        os.environ.setdefault("NEO4J_TEST_PASSWORD", password)
+    os.environ.setdefault("NEO4J_TEST_DATABASE", database)
+
+    try:
+        yield {"uri": uri, "user": user, "password": password, "database": database}
+    finally:
+        if cleanup_container and container_name is not None:
+            subprocess.run(
+                ["docker", "rm", "-f", container_name],
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:

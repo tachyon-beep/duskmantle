@@ -14,7 +14,7 @@ from uuid import uuid4
 from fastapi import Body, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from neo4j import GraphDatabase
+from neo4j import Driver, GraphDatabase
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from qdrant_client import QdrantClient
 from slowapi import Limiter
@@ -46,26 +46,25 @@ from gateway.ui import router as ui_router
 logger = logging.getLogger(__name__)
 
 
-def create_app() -> FastAPI:
-    """Create the FastAPI application instance."""
-    configure_logging()
-    settings = get_settings()
+def _validate_auth_settings(settings: AppSettings) -> None:
+    if not settings.auth_enabled:
+        return
+    missing: list[str] = []
+    if not settings.maintainer_token:
+        missing.append("KM_ADMIN_TOKEN")
+    if settings.auth_mode == "secure" and settings.neo4j_password in {"neo4jadmin", "neo4j", "neo4jpass"}:
+        missing.append("KM_NEO4J_PASSWORD (non-default value)")
+    if missing:
+        formatted = ", ".join(missing)
+        raise RuntimeError(
+            "Authentication is enabled but required credentials are missing: "
+            f"{formatted}. Disable auth or provide the credentials before starting the gateway."
+        )
+    if not settings.reader_token:
+        logger.warning("Auth enabled without KM_READER_TOKEN; maintainer token will service reader endpoints")
 
-    if settings.auth_enabled:
-        missing: list[str] = []
-        if not settings.maintainer_token:
-            missing.append("KM_ADMIN_TOKEN")
-        if settings.auth_mode == "secure" and settings.neo4j_password in {"neo4jadmin", "neo4j", "neo4jpass"}:
-            missing.append("KM_NEO4J_PASSWORD (non-default value)")
-        if missing:
-            formatted = ", ".join(missing)
-            raise RuntimeError(
-                "Authentication is enabled but required credentials are missing: "
-                f"{formatted}. Disable auth or provide the credentials before starting the gateway."
-            )
-        if not settings.reader_token:
-            logger.warning("Auth enabled without KM_READER_TOKEN; maintainer token will service reader endpoints")
 
+def _log_startup_configuration(settings: AppSettings) -> None:
     weight_profile_name, resolved_weights = settings.resolved_search_weights()
     logger.info(
         "Gateway startup configuration initialised",
@@ -83,11 +82,8 @@ def create_app() -> FastAPI:
         },
     )
 
-    limiter = Limiter(
-        key_func=get_remote_address,
-        default_limits=[f"{settings.rate_limit_requests} per {settings.rate_limit_window_seconds} seconds"],
-    )
 
+def _build_lifespan(settings: AppSettings) -> Callable[[FastAPI], AsyncIterator[None]]:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         scheduler = IngestionScheduler(settings)
@@ -103,12 +99,128 @@ def create_app() -> FastAPI:
                 with suppress(Exception):
                     driver.close()
 
+    return lifespan
+
+
+def _configure_rate_limits(app: FastAPI, settings: AppSettings) -> Limiter:
+    limiter = Limiter(
+        key_func=get_remote_address,
+        default_limits=[f"{settings.rate_limit_requests} per {settings.rate_limit_window_seconds} seconds"],
+    )
+    app.state.limiter = limiter
+    app.add_middleware(SlowAPIMiddleware)
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_handler)
+    return limiter
+
+
+def _init_feedback_store(settings: AppSettings) -> SearchFeedbackStore | None:
+    try:
+        return SearchFeedbackStore(settings.state_path / "feedback")
+    except Exception as exc:  # pragma: no cover - defensive guard
+        logger.warning("Search feedback logging disabled: %s", exc)
+        return None
+
+
+def _load_search_model(settings: AppSettings) -> ModelArtifact | None:
+    if settings.search_scoring_mode != "ml":
+        return None
+    model_path = settings.search_model_path or settings.state_path / "feedback" / "models" / "model.json"
+    try:
+        model_artifact = load_artifact(model_path)
+        logger.info("Loaded search ranking model from %s", model_path)
+        return model_artifact
+    except FileNotFoundError:
+        logger.warning(
+            "Search scoring mode set to 'ml' but model file %s not found; falling back to heuristic",
+            model_path,
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to load search ranking model: %s", exc)
+    return None
+
+
+def _init_graph_driver(settings: AppSettings) -> Driver | None:
+    try:
+        driver = GraphDatabase.driver(
+            settings.neo4j_uri,
+            auth=(settings.neo4j_user, settings.neo4j_password),
+        )
+    except Exception as exc:  # pragma: no cover - connection may fail in dev/test
+        logger.warning("Neo4j driver initialization failed: %s", exc)
+        GRAPH_MIGRATION_LAST_STATUS.set(0)
+        GRAPH_MIGRATION_LAST_TIMESTAMP.set(time.time())
+        return None
+
+    if settings.graph_auto_migrate:
+        runner = MigrationRunner(driver=driver, database=settings.neo4j_database)
+        pending: list[str] | None
+        try:
+            pending = runner.pending_ids()
+        except Exception as exc:  # pragma: no cover - defensive preflight
+            pending = None
+            logger.warning(
+                "Graph auto-migration preflight failed; attempting run anyway: %s",
+                exc,
+            )
+
+        if pending is None:
+            logger.info("Graph auto-migration enabled; running without pending summary")
+        elif pending:
+            logger.info(
+                "Graph auto-migration enabled; applying %d pending migration(s): %s",
+                len(pending),
+                ", ".join(pending),
+            )
+        else:
+            logger.info("Graph auto-migration enabled; schema already current")
+
+        try:
+            runner.run()
+        except Exception:  # pragma: no cover - defensive
+            logger.exception("Graph auto-migration failed")
+            GRAPH_MIGRATION_LAST_STATUS.set(0)
+            GRAPH_MIGRATION_LAST_TIMESTAMP.set(time.time())
+        else:
+            if pending is None:
+                logger.info("Graph auto-migration completed")
+            elif pending:
+                logger.info(
+                    "Graph auto-migration completed; applied %d migration(s)",
+                    len(pending),
+                )
+            else:
+                logger.info("Graph auto-migration completed; no migrations were pending")
+            GRAPH_MIGRATION_LAST_STATUS.set(1)
+            GRAPH_MIGRATION_LAST_TIMESTAMP.set(time.time())
+    else:
+        logger.info("Graph auto-migration disabled; run `gateway-graph migrate` during deployment")
+        GRAPH_MIGRATION_LAST_STATUS.set(-1)
+        GRAPH_MIGRATION_LAST_TIMESTAMP.set(0)
+
+    return driver
+
+
+def _init_qdrant_client(settings: AppSettings) -> QdrantClient | None:
+    try:
+        return QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
+    except Exception as exc:  # pragma: no cover - offline scenarios
+        logger.warning("Qdrant client initialization failed: %s", exc)
+        return None
+
+
+def create_app() -> FastAPI:
+    """Create the FastAPI application instance."""
+    configure_logging()
+    settings = get_settings()
+    _validate_auth_settings(settings)
+    _log_startup_configuration(settings)
+
     app = FastAPI(
         title="Duskmantle Knowledge Gateway",
         version=get_version(),
         docs_url="/docs",
         redoc_url="/redoc",
-        lifespan=lifespan,
+        lifespan=_build_lifespan(settings),
     )
     app.mount("/ui/static", StaticFiles(directory=str(get_static_path())), name="ui-static")
     app.include_router(ui_router)
@@ -128,100 +240,19 @@ def create_app() -> FastAPI:
 
     configure_tracing(app, settings)
 
-    feedback_store: SearchFeedbackStore | None = None
-    try:
-        feedback_store = SearchFeedbackStore(settings.state_path / "feedback")
-    except Exception as exc:  # pragma: no cover - defensive guard
-        logger.warning("Search feedback logging disabled: %s", exc)
+    app.state.search_feedback_store = _init_feedback_store(settings)
 
-    app.state.search_feedback_store = feedback_store
+    model_artifact = _load_search_model(settings)
 
-    model_artifact: ModelArtifact | None = None
-    if settings.search_scoring_mode == "ml":
-        model_path = settings.search_model_path
-        if model_path is None:
-            model_path = settings.state_path / "feedback" / "models" / "model.json"
-        try:
-            model_artifact = load_artifact(model_path)
-            logger.info("Loaded search ranking model from %s", model_path)
-        except FileNotFoundError:
-            logger.warning(
-                "Search scoring mode set to 'ml' but model file %s not found; falling back to heuristic",
-                model_path,
-            )
-        except Exception as exc:  # pragma: no cover - defensive
-            logger.warning("Failed to load search ranking model: %s", exc)
+    graph_driver = _init_graph_driver(settings)
+    app.state.graph_driver = graph_driver
 
-    try:
-        graph_driver = GraphDatabase.driver(
-            settings.neo4j_uri,
-            auth=(settings.neo4j_user, settings.neo4j_password),
-        )
-        app.state.graph_driver = graph_driver
-        if settings.graph_auto_migrate:
-            runner = MigrationRunner(driver=graph_driver, database=settings.neo4j_database)
-            pending: list[str] | None
-            try:
-                pending = runner.pending_ids()
-            except Exception as exc:  # pragma: no cover - defensive preflight
-                pending = None
-                logger.warning(
-                    "Graph auto-migration preflight failed; attempting run anyway: %s",
-                    exc,
-                )
-
-            if pending is None:
-                logger.info("Graph auto-migration enabled; running without pending summary")
-            elif pending:
-                logger.info(
-                    "Graph auto-migration enabled; applying %d pending migration(s): %s",
-                    len(pending),
-                    ", ".join(pending),
-                )
-            else:
-                logger.info("Graph auto-migration enabled; schema already current")
-
-            try:
-                runner.run()
-            except Exception:  # pragma: no cover - defensive
-                logger.exception("Graph auto-migration failed")
-                GRAPH_MIGRATION_LAST_STATUS.set(0)
-                GRAPH_MIGRATION_LAST_TIMESTAMP.set(time.time())
-            else:
-                if pending is None:
-                    logger.info("Graph auto-migration completed")
-                elif pending:
-                    logger.info(
-                        "Graph auto-migration completed; applied %d migration(s)",
-                        len(pending),
-                    )
-                else:
-                    logger.info("Graph auto-migration completed; no migrations were pending")
-                GRAPH_MIGRATION_LAST_STATUS.set(1)
-                GRAPH_MIGRATION_LAST_TIMESTAMP.set(time.time())
-        else:
-            logger.info("Graph auto-migration disabled; run `gateway-graph migrate` during deployment")
-            GRAPH_MIGRATION_LAST_STATUS.set(-1)
-            GRAPH_MIGRATION_LAST_TIMESTAMP.set(0)
-    except Exception as exc:  # pragma: no cover - connection may fail in dev/test
-        logger.warning("Neo4j driver initialization failed: %s", exc)
-        app.state.graph_driver = None
-        GRAPH_MIGRATION_LAST_STATUS.set(0)
-        GRAPH_MIGRATION_LAST_TIMESTAMP.set(time.time())
-
-    try:
-        qdrant_client = QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
-        app.state.qdrant_client = qdrant_client
-    except Exception as exc:  # pragma: no cover - offline scenarios
-        logger.warning("Qdrant client initialization failed: %s", exc)
-        app.state.qdrant_client = None
+    app.state.qdrant_client = _init_qdrant_client(settings)
 
     app.state.search_embedder = None
     app.state.search_model_artifact = model_artifact
 
-    app.state.limiter = limiter
-    app.add_middleware(SlowAPIMiddleware)
-    app.add_exception_handler(RateLimitExceeded, _rate_limit_handler)
+    limiter = _configure_rate_limits(app, settings)
     app.state.scheduler = None
 
     @app.get("/healthz", tags=["health"])
