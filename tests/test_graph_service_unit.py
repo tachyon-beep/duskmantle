@@ -1,29 +1,30 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
-from types import SimpleNamespace
-from typing import Any
+from collections.abc import Callable, Iterable
+from types import SimpleNamespace, TracebackType
 
 import pytest
 
 from gateway.graph import service as graph_service
 from gateway.graph.service import GraphNotFoundError, GraphQueryError, GraphService
 
+DriverFixture = tuple[GraphService, "DummySession", "DummyDriver"]
 
-class DummyNode(dict):
-    def __init__(self, labels: Iterable[str], element_id: str, **props: Any) -> None:
+
+class DummyNode(dict[str, object]):
+    def __init__(self, labels: Iterable[str], element_id: str, **props: object) -> None:
         super().__init__(props)
         self.labels = frozenset(labels)
         self.element_id = element_id
 
 
-class DummyRelationship(dict):
+class DummyRelationship(dict[str, object]):
     def __init__(
         self,
         start_node: DummyNode,
         end_node: DummyNode,
         rel_type: str,
-        **props: Any,
+        **props: object,
     ) -> None:
         super().__init__(props)
         self.start_node = start_node
@@ -33,7 +34,7 @@ class DummyRelationship(dict):
 
 class DummySession:
     def __init__(self) -> None:
-        self.run_calls: list[tuple[str, dict[str, Any]]] = []
+        self.run_calls: list[tuple[str, dict[str, object]]] = []
         self.run_result = SimpleNamespace(
             single=lambda: None,
         )
@@ -41,13 +42,18 @@ class DummySession:
     def __enter__(self) -> DummySession:  # pragma: no cover - trivial
         return self
 
-    def __exit__(self, exc_type, exc, tb) -> None:  # pragma: no cover - trivial
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:  # pragma: no cover - trivial
         return None
 
-    def execute_read(self, func, *args: Any, **kwargs: Any) -> Any:
+    def execute_read(self, func: Callable[..., object], *args: object, **kwargs: object) -> object:
         return func(None, *args, **kwargs)
 
-    def run(self, query: str, **params: Any):
+    def run(self, query: str, **params: object) -> SimpleNamespace:
         self.run_calls.append((query, params))
         return self.run_result
 
@@ -55,16 +61,16 @@ class DummySession:
 class DummyDriver:
     def __init__(self, session: DummySession) -> None:
         self._session = session
-        self.last_execute_query: tuple[str, dict[str, Any], str] | None = None
+        self.last_execute_query: tuple[str, dict[str, object], str] | None = None
         self.execute_query_result = SimpleNamespace(
             records=[],
             summary=SimpleNamespace(result_available_after=None, database=None),
         )
 
-    def session(self, **kwargs: Any) -> DummySession:
+    def session(self, **kwargs: object) -> DummySession:
         return self._session
 
-    def execute_query(self, query: str, parameters: dict[str, Any], database_: str):
+    def execute_query(self, query: str, parameters: dict[str, object], database_: str) -> SimpleNamespace:
         self.last_execute_query = (query, parameters, database_)
         return self.execute_query_result
 
@@ -76,14 +82,17 @@ def patch_graph_types(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture
-def dummy_driver() -> tuple[GraphService, DummySession, DummyDriver]:
+def dummy_driver() -> DriverFixture:
     session = DummySession()
     driver = DummyDriver(session)
     service = GraphService(driver=driver, database="knowledge")
     return service, session, driver
 
 
-def test_get_subsystem_paginates_and_includes_artifacts(monkeypatch: pytest.MonkeyPatch, dummy_driver):
+def test_get_subsystem_paginates_and_includes_artifacts(
+    monkeypatch: pytest.MonkeyPatch,
+    dummy_driver: DriverFixture,
+) -> None:
     service, _, _ = dummy_driver
 
     subsystem = DummyNode(["Subsystem"], "Subsystem:Kasmina", name="Kasmina", description="Analysis")
@@ -93,18 +102,18 @@ def test_get_subsystem_paginates_and_includes_artifacts(monkeypatch: pytest.Monk
     sibling_relationship = DummyRelationship(subsystem, sibling_node, "DESCRIBES")
     artifact_node = DummyNode(["SourceFile"], "SourceFile:gateway/api.py", path="gateway/api.py")
 
-    def fake_fetch_subsystem_node(tx, name: str):
+    def fake_fetch_subsystem_node(_tx: object, name: str) -> DummyNode:
         assert name == "Kasmina"
         return subsystem
 
-    def fake_fetch_paths(tx, name: str, depth: int):
+    def fake_fetch_paths(_tx: object, name: str, depth: int) -> list[dict[str, object]]:
         assert depth == 2
         return [
             {"node": related_node, "nodes": [subsystem, related_node], "relationships": [relationship]},
             {"node": sibling_node, "nodes": [subsystem, sibling_node], "relationships": [sibling_relationship]},
         ]
 
-    def fake_fetch_artifacts(tx, name: str):
+    def fake_fetch_artifacts(_tx: object, name: str) -> list[DummyNode]:
         return [artifact_node]
 
     monkeypatch.setattr(graph_service, "_fetch_subsystem_node", fake_fetch_subsystem_node)
@@ -128,10 +137,13 @@ def test_get_subsystem_paginates_and_includes_artifacts(monkeypatch: pytest.Monk
     assert result["artifacts"][0]["properties"]["path"] == "gateway/api.py"
 
 
-def test_get_subsystem_missing_raises(monkeypatch: pytest.MonkeyPatch, dummy_driver):
+def test_get_subsystem_missing_raises(
+    monkeypatch: pytest.MonkeyPatch,
+    dummy_driver: DriverFixture,
+) -> None:
     service, _, _ = dummy_driver
 
-    def fake_fetch_subsystem_node(tx, name: str):
+    def fake_fetch_subsystem_node(_tx: object, name: str) -> DummyNode:
         return None
 
     monkeypatch.setattr(graph_service, "_fetch_subsystem_node", fake_fetch_subsystem_node)
@@ -140,7 +152,10 @@ def test_get_subsystem_missing_raises(monkeypatch: pytest.MonkeyPatch, dummy_dri
         service.get_subsystem("Unknown", depth=1, limit=5, cursor=None, include_artifacts=False)
 
 
-def test_get_subsystem_graph_returns_nodes_and_edges(monkeypatch: pytest.MonkeyPatch, dummy_driver):
+def test_get_subsystem_graph_returns_nodes_and_edges(
+    monkeypatch: pytest.MonkeyPatch,
+    dummy_driver: DriverFixture,
+) -> None:
     service, _, _ = dummy_driver
 
     subsystem = DummyNode(["Subsystem"], "Subsystem:Kasmina", name="Kasmina")
@@ -150,17 +165,17 @@ def test_get_subsystem_graph_returns_nodes_and_edges(monkeypatch: pytest.MonkeyP
     rel_two = DummyRelationship(mid, target, "IMPLEMENTS")
     artifact_node = DummyNode(["DesignDoc"], "DesignDoc:docs/telemetry.md", path="docs/telemetry.md")
 
-    def fake_fetch_subsystem_node(tx, name: str):
+    def fake_fetch_subsystem_node(_tx: object, name: str) -> DummyNode:
         assert name == "Kasmina"
         return subsystem
 
-    def fake_fetch_paths(tx, name: str, depth: int):
+    def fake_fetch_paths(_tx: object, name: str, depth: int) -> list[dict[str, object]]:
         assert depth == 3
         return [
             {"node": target, "nodes": [subsystem, mid, target], "relationships": [rel_one, rel_two]},
         ]
 
-    def fake_fetch_artifacts(tx, name: str):
+    def fake_fetch_artifacts(_tx: object, name: str) -> list[DummyNode]:
         return [artifact_node]
 
     monkeypatch.setattr(graph_service, "_fetch_subsystem_node", fake_fetch_subsystem_node)
@@ -176,18 +191,28 @@ def test_get_subsystem_graph_returns_nodes_and_edges(monkeypatch: pytest.MonkeyP
     assert graph_payload["artifacts"][0]["id"] == "DesignDoc:docs/telemetry.md"
 
 
-def test_get_node_with_relationships(monkeypatch: pytest.MonkeyPatch, dummy_driver):
+def test_get_node_with_relationships(
+    monkeypatch: pytest.MonkeyPatch,
+    dummy_driver: DriverFixture,
+) -> None:
     service, _, _ = dummy_driver
 
     primary = DummyNode(["SourceFile"], "SourceFile:gateway/app.py", path="gateway/app.py")
     neighbor = DummyNode(["Subsystem"], "Subsystem:Kasmina", name="Kasmina")
     relationship = DummyRelationship(primary, neighbor, "BELONGS_TO")
 
-    def fake_fetch_node_by_id(tx, label: str, key: str, value: Any):
+    def fake_fetch_node_by_id(_tx: object, label: str, key: str, value: str) -> DummyNode:
         assert (label, key, value) == ("SourceFile", "path", "gateway/app.py")
         return primary
 
-    def fake_fetch_node_relationships(tx, label, key, value, direction, limit):
+    def fake_fetch_node_relationships(
+        _tx: object,
+        label: str,
+        key: str,
+        value: str,
+        direction: str,
+        limit: int,
+    ) -> list[dict[str, object]]:
         assert direction == "all"
         assert limit == 3
         return [{"relationship": relationship, "node": neighbor}]
@@ -201,18 +226,21 @@ def test_get_node_with_relationships(monkeypatch: pytest.MonkeyPatch, dummy_driv
     assert result["relationships"][0]["type"] == "BELONGS_TO"
 
 
-def test_list_orphan_nodes_rejects_unknown_label(dummy_driver):
+def test_list_orphan_nodes_rejects_unknown_label(dummy_driver: DriverFixture) -> None:
     service, _, _ = dummy_driver
     with pytest.raises(GraphQueryError):
         service.list_orphan_nodes(label="Unknown", cursor=None, limit=5)
 
 
-def test_list_orphan_nodes_serializes_results(monkeypatch: pytest.MonkeyPatch, dummy_driver):
+def test_list_orphan_nodes_serializes_results(
+    monkeypatch: pytest.MonkeyPatch,
+    dummy_driver: DriverFixture,
+) -> None:
     service, _, _ = dummy_driver
 
     orphan = DummyNode(["DesignDoc"], "DesignDoc:docs/orphan.md", path="docs/orphan.md")
 
-    def fake_fetch_orphans(tx, label: str | None, skip: int, limit: int):
+    def fake_fetch_orphans(_tx: object, label: str | None, skip: int, limit: int) -> list[DummyNode]:
         assert label is None
         assert skip == 0
         assert limit == 5
@@ -225,10 +253,13 @@ def test_list_orphan_nodes_serializes_results(monkeypatch: pytest.MonkeyPatch, d
     assert payload["cursor"] is None
 
 
-def test_get_node_missing_raises(monkeypatch: pytest.MonkeyPatch, dummy_driver):
+def test_get_node_missing_raises(
+    monkeypatch: pytest.MonkeyPatch,
+    dummy_driver: DriverFixture,
+) -> None:
     service, _, _ = dummy_driver
 
-    def fake_fetch_node_by_id(tx, label: str, key: str, value: Any):
+    def fake_fetch_node_by_id(_tx: object, label: str, key: str, value: str) -> DummyNode:
         return None
 
     monkeypatch.setattr(graph_service, "_fetch_node_by_id", fake_fetch_node_by_id)
@@ -237,12 +268,15 @@ def test_get_node_missing_raises(monkeypatch: pytest.MonkeyPatch, dummy_driver):
         service.get_node("SourceFile:missing.py", relationships="all", limit=5)
 
 
-def test_search_serializes_results(monkeypatch: pytest.MonkeyPatch, dummy_driver):
+def test_search_serializes_results(
+    monkeypatch: pytest.MonkeyPatch,
+    dummy_driver: DriverFixture,
+) -> None:
     service, _, _ = dummy_driver
 
     node = DummyNode(["Subsystem"], "Subsystem:Kasmina", name="Kasmina")
 
-    def fake_search_entities(tx, term: str, limit: int):
+    def fake_search_entities(_tx: object, term: str, limit: int) -> list[dict[str, object]]:
         assert term == "kasmina"
         assert limit == 4
         return [{"node": node, "label": "Subsystem", "score": 0.95, "snippet": "Kasmina"}]
@@ -255,7 +289,7 @@ def test_search_serializes_results(monkeypatch: pytest.MonkeyPatch, dummy_driver
     assert result["results"][0]["score"] == 0.95
 
 
-def test_shortest_path_depth(monkeypatch: pytest.MonkeyPatch, dummy_driver):
+def test_shortest_path_depth(monkeypatch: pytest.MonkeyPatch, dummy_driver: DriverFixture) -> None:
     service, session, _ = dummy_driver
 
     session.run_result = SimpleNamespace(
@@ -270,7 +304,7 @@ def test_shortest_path_depth(monkeypatch: pytest.MonkeyPatch, dummy_driver):
     assert depth == 3
 
 
-def test_shortest_path_depth_none(monkeypatch: pytest.MonkeyPatch, dummy_driver):
+def test_shortest_path_depth_none(monkeypatch: pytest.MonkeyPatch, dummy_driver: DriverFixture) -> None:
     service, session, _ = dummy_driver
 
     session.run_result = SimpleNamespace(single=lambda: None)
@@ -278,16 +312,16 @@ def test_shortest_path_depth_none(monkeypatch: pytest.MonkeyPatch, dummy_driver)
     assert service.shortest_path_depth("SourceFile:missing.py", max_depth=2) is None
 
 
-def test_run_cypher_serializes_records(monkeypatch: pytest.MonkeyPatch, dummy_driver):
+def test_run_cypher_serializes_records(monkeypatch: pytest.MonkeyPatch, dummy_driver: DriverFixture) -> None:
     service, _, driver = dummy_driver
 
     node = DummyNode(["Subsystem"], "Subsystem:Kasmina", name="Kasmina")
 
     class DummyRecord:
-        def __init__(self, values: list[Any]) -> None:
+        def __init__(self, values: list[object]) -> None:
             self._values = values
 
-        def values(self) -> list[Any]:
+        def values(self) -> list[object]:
             return self._values
 
     driver.execute_query_result = SimpleNamespace(
@@ -302,7 +336,7 @@ def test_run_cypher_serializes_records(monkeypatch: pytest.MonkeyPatch, dummy_dr
     assert driver.last_execute_query[0] == "MATCH (n) RETURN n LIMIT 1"
 
 
-def test_run_cypher_rejects_non_read_queries(dummy_driver):
+def test_run_cypher_rejects_non_read_queries(dummy_driver: DriverFixture) -> None:
     service, _, _ = dummy_driver
 
     with pytest.raises(GraphQueryError):

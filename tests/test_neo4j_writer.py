@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from types import SimpleNamespace
+from types import SimpleNamespace, TracebackType
 
 from gateway.ingest.artifacts import Artifact, Chunk, ChunkEmbedding
 from gateway.ingest.neo4j_writer import Neo4jWriter
@@ -11,14 +11,19 @@ class RecordingSession:
     def __init__(self) -> None:
         self.queries: list[tuple[str, dict[str, object]]] = []
 
-    def run(self, query: str, **params):
+    def run(self, query: str, **params: object) -> SimpleNamespace:
         self.queries.append((query, params))
         return SimpleNamespace(single=lambda: None)
 
     def __enter__(self) -> RecordingSession:  # pragma: no cover - trivial
         return self
 
-    def __exit__(self, exc_type, exc, tb) -> None:  # pragma: no cover - trivial
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:  # pragma: no cover - trivial
         return None
 
 
@@ -26,7 +31,7 @@ class RecordingDriver:
     def __init__(self) -> None:
         self.sessions: list[RecordingSession] = []
 
-    def session(self, database: str):  # noqa: ARG002 - database unused
+    def session(self, database: str) -> RecordingSession:  # noqa: ARG002 - database unused
         session = RecordingSession()
         self.sessions.append(session)
         return session
@@ -37,7 +42,7 @@ def _make_writer() -> tuple[Neo4jWriter, RecordingDriver]:
     return Neo4jWriter(driver=driver, database="knowledge"), driver
 
 
-def test_sync_artifact_creates_domain_relationships():
+def test_sync_artifact_creates_domain_relationships() -> None:
     writer, driver = _make_writer()
     artifact = Artifact(
         path=Path("src/project/nissa/handler.py"),
@@ -82,7 +87,7 @@ def test_sync_artifact_creates_domain_relationships():
     assert "TelemetryChannel" in cypher_text and "EMITS" in cypher_text
 
 
-def test_sync_artifact_merges_subsystem_edge_once():
+def test_sync_artifact_merges_subsystem_edge_once() -> None:
     writer, driver = _make_writer()
     artifact = Artifact(
         path=Path("src/project/nissa/handler.py"),
@@ -102,7 +107,7 @@ def test_sync_artifact_merges_subsystem_edge_once():
     assert "MERGE (entity" in subsystem_edge_queries[0]
 
 
-def test_sync_chunks_links_chunk_to_artifact():
+def test_sync_chunks_links_chunk_to_artifact() -> None:
     writer, driver = _make_writer()
     artifact = Artifact(
         path=Path("src/project/nissa/handler.py"),

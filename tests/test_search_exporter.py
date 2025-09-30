@@ -4,6 +4,8 @@ import csv
 import json
 from pathlib import Path
 
+import pytest
+
 from gateway.config.settings import get_settings
 from gateway.search.cli import export_training_data, train_model
 from gateway.search.exporter import ExportOptions, export_training_dataset
@@ -45,7 +47,7 @@ def _sample_event(request_id: str, vote: float | None) -> dict[str, object]:
     }
 
 
-def test_export_training_dataset_csv(tmp_path):
+def test_export_training_dataset_csv(tmp_path: Path) -> None:
     events_path = tmp_path / "events.log"
     _write_events(events_path, [_sample_event("req-1", 4.0), _sample_event("req-2", None)])
 
@@ -65,7 +67,7 @@ def test_export_training_dataset_csv(tmp_path):
     assert rows[0]["signal_relationship_count"] == "3"
 
 
-def test_export_training_data_cli(tmp_path, monkeypatch):
+def test_export_training_data_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     feedback_dir = tmp_path / "feedback"
     feedback_dir.mkdir(parents=True, exist_ok=True)
     events_path = feedback_dir / "events.log"
@@ -89,7 +91,7 @@ def test_export_training_data_cli(tmp_path, monkeypatch):
     assert lines[0]["metadata_request_id"] == "req-3"
 
 
-def test_train_model_from_dataset(tmp_path):
+def test_train_model_from_dataset(tmp_path: Path) -> None:
     events_path = tmp_path / "events.log"
     _write_events(
         events_path,
@@ -112,7 +114,7 @@ def test_train_model_from_dataset(tmp_path):
     assert artifact.metrics["mse"] >= 0
 
 
-def test_train_model_cli(tmp_path, monkeypatch):
+def test_train_model_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     feedback_dir = tmp_path / "feedback"
     datasets_dir = feedback_dir / "datasets"
     models_dir = feedback_dir / "models"

@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from typing import Any
+from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from gateway.api.app import create_app
@@ -12,7 +13,7 @@ from gateway.search.service import SearchResponse, SearchResult
 
 class DummySearchService:
     def __init__(self) -> None:
-        self.last_filters: dict[str, Any] | None = None
+        self.last_filters: dict[str, object] | None = None
 
     def search(
         self,
@@ -20,11 +21,11 @@ class DummySearchService:
         query: str,
         limit: int,
         include_graph: bool,
-        graph_service,
+        graph_service: object,
         sort_by_vector: bool = False,
         request_id: str | None = None,
-        filters: dict[str, Any] | None = None,
-    ):
+        filters: dict[str, object] | None = None,
+    ) -> SearchResponse:
         self.last_filters = filters or {}
         return SearchResponse(
             query=query,
@@ -55,7 +56,7 @@ class DummySearchService:
         )
 
 
-def test_search_endpoint_returns_results(monkeypatch, tmp_path):
+def test_search_endpoint_returns_results(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("KM_AUTH_ENABLED", "false")
     monkeypatch.setenv("KM_STATE_PATH", str(tmp_path))
     from gateway.config.settings import get_settings
@@ -79,7 +80,7 @@ def test_search_endpoint_returns_results(monkeypatch, tmp_path):
     assert data["metadata"]["request_id"] == request_id_header
 
 
-def test_search_reuses_incoming_request_id(monkeypatch, tmp_path):
+def test_search_reuses_incoming_request_id(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("KM_AUTH_ENABLED", "false")
     monkeypatch.setenv("KM_STATE_PATH", str(tmp_path))
     from gateway.config.settings import get_settings
@@ -102,7 +103,7 @@ def test_search_reuses_incoming_request_id(monkeypatch, tmp_path):
     assert data["metadata"]["request_id"] == custom_request_id
 
 
-def test_search_requires_reader_token(monkeypatch, tmp_path):
+def test_search_requires_reader_token(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("KM_AUTH_ENABLED", "true")
     monkeypatch.setenv("KM_READER_TOKEN", "reader-token")
     monkeypatch.setenv("KM_ADMIN_TOKEN", "admin-token")
@@ -127,7 +128,7 @@ def test_search_requires_reader_token(monkeypatch, tmp_path):
     assert resp.status_code == 200
 
 
-def test_search_allows_maintainer_token(monkeypatch, tmp_path):
+def test_search_allows_maintainer_token(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("KM_AUTH_ENABLED", "true")
     monkeypatch.setenv("KM_READER_TOKEN", "reader-token")
     monkeypatch.setenv("KM_ADMIN_TOKEN", "admin-token")
@@ -149,7 +150,7 @@ def test_search_allows_maintainer_token(monkeypatch, tmp_path):
     assert resp.status_code == 200
 
 
-def test_search_feedback_logged(monkeypatch, tmp_path):
+def test_search_feedback_logged(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("KM_AUTH_ENABLED", "false")
     monkeypatch.setenv("KM_STATE_PATH", str(tmp_path))
 
@@ -182,7 +183,7 @@ def test_search_feedback_logged(monkeypatch, tmp_path):
     assert row["request_id"] == resp.json()["metadata"]["request_id"]
 
 
-def test_search_filters_passed_to_service(monkeypatch, tmp_path):
+def test_search_filters_passed_to_service(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("KM_AUTH_ENABLED", "false")
     monkeypatch.setenv("KM_STATE_PATH", str(tmp_path))
 
@@ -220,7 +221,7 @@ def test_search_filters_passed_to_service(monkeypatch, tmp_path):
     assert filters["max_age_days"] == 14
 
 
-def test_search_filters_invalid_type(monkeypatch, tmp_path):
+def test_search_filters_invalid_type(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("KM_AUTH_ENABLED", "false")
     monkeypatch.setenv("KM_STATE_PATH", str(tmp_path))
 
@@ -240,7 +241,7 @@ def test_search_filters_invalid_type(monkeypatch, tmp_path):
     assert resp.status_code == 422
 
 
-def test_search_filters_invalid_namespaces(monkeypatch, tmp_path):
+def test_search_filters_invalid_namespaces(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("KM_AUTH_ENABLED", "false")
     monkeypatch.setenv("KM_STATE_PATH", str(tmp_path))
 
@@ -260,7 +261,7 @@ def test_search_filters_invalid_namespaces(monkeypatch, tmp_path):
     assert resp.status_code == 422
 
 
-def test_search_filters_invalid_updated_after(monkeypatch, tmp_path):
+def test_search_filters_invalid_updated_after(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("KM_AUTH_ENABLED", "false")
     monkeypatch.setenv("KM_STATE_PATH", str(tmp_path))
 
@@ -280,7 +281,7 @@ def test_search_filters_invalid_updated_after(monkeypatch, tmp_path):
     assert resp.status_code == 422
 
 
-def test_search_filters_invalid_max_age(monkeypatch, tmp_path):
+def test_search_filters_invalid_max_age(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("KM_AUTH_ENABLED", "false")
     monkeypatch.setenv("KM_STATE_PATH", str(tmp_path))
 
@@ -300,7 +301,7 @@ def test_search_filters_invalid_max_age(monkeypatch, tmp_path):
     assert resp.status_code == 422
 
 
-def test_search_weights_endpoint(monkeypatch, tmp_path):
+def test_search_weights_endpoint(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("KM_AUTH_ENABLED", "true")
     monkeypatch.setenv("KM_ADMIN_TOKEN", "maintainer-token")
     monkeypatch.setenv("KM_NEO4J_PASSWORD", "secure-pass")

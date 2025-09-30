@@ -1,16 +1,21 @@
+from __future__ import annotations
+
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from prometheus_client import generate_latest
+from prometheus_client import Counter, Histogram, generate_latest
 
 from gateway.mcp.config import MCPSettings
 from gateway.mcp.exceptions import GatewayRequestError
-from gateway.mcp.server import build_server
+from gateway.mcp.server import FastMCP, MCPServerState, build_server
 from gateway.observability.metrics import MCP_FAILURES_TOTAL, MCP_REQUEST_SECONDS, MCP_REQUESTS_TOTAL, MCP_STORETEXT_TOTAL, MCP_UPLOAD_TOTAL
+
+ServerFixture = tuple[FastMCP, MCPServerState]
 
 
 @pytest.fixture(autouse=True)
-def _reset_mcp_metrics():
+def _reset_mcp_metrics() -> Iterator[None]:
     MCP_REQUESTS_TOTAL.clear()
     MCP_FAILURES_TOTAL.clear()
     MCP_REQUEST_SECONDS.clear()
@@ -25,18 +30,18 @@ def _reset_mcp_metrics():
 
 
 @pytest.fixture
-def mcp_server():
+def mcp_server() -> Iterator[ServerFixture]:
     server = build_server(settings=MCPSettings())
     state = server._duskmantle_state
     yield server, state
     state.client = None
 
 
-def _counter_value(counter, *labels: str) -> float:
+def _counter_value(counter: Counter, *labels: str) -> float:
     return counter.labels(*labels)._value.get()
 
 
-def _histogram_sum(histogram, *labels: str) -> float:
+def _histogram_sum(histogram: Histogram, *labels: str) -> float:
     return histogram.labels(*labels)._sum.get()
 
 
@@ -49,14 +54,17 @@ def _storetext_counter(result: str) -> float:
 
 
 @pytest.mark.asyncio
-async def test_km_help_lists_tools_and_provides_details(monkeypatch, mcp_server):
+async def test_km_help_lists_tools_and_provides_details(
+    monkeypatch: pytest.MonkeyPatch,
+    mcp_server: ServerFixture,
+) -> None:
     server, _state = mcp_server
 
     from gateway.mcp import server as mcp_server_module
 
     mcp_server_module._load_help_document.cache_clear()
 
-    def stub_spec():
+    def stub_spec() -> str:
         return "stub spec"
 
     monkeypatch.setattr(mcp_server_module, "_load_help_document", stub_spec)
@@ -74,7 +82,10 @@ async def test_km_help_lists_tools_and_provides_details(monkeypatch, mcp_server)
 
 
 @pytest.mark.asyncio
-async def test_metrics_export_includes_tool_labels(monkeypatch, mcp_server):
+async def test_metrics_export_includes_tool_labels(
+    monkeypatch: pytest.MonkeyPatch,
+    mcp_server: ServerFixture,
+) -> None:
     server, _state = mcp_server
 
     tool = await server.get_tool("km-help")
@@ -85,11 +96,13 @@ async def test_metrics_export_includes_tool_labels(monkeypatch, mcp_server):
 
 
 @pytest.mark.asyncio
-async def test_km_search_success_records_metrics(mcp_server):
+async def test_km_search_success_records_metrics(
+    mcp_server: ServerFixture,
+) -> None:
     server, state = mcp_server
 
     class StubClient:
-        async def search(self, payload):
+        async def search(self, payload: dict[str, object]) -> dict[str, object]:
             assert payload["query"] == "design docs"
             return {"results": [], "metadata": {}}
 
@@ -106,11 +119,13 @@ async def test_km_search_success_records_metrics(mcp_server):
 
 
 @pytest.mark.asyncio
-async def test_km_search_gateway_error_records_failure(mcp_server):
+async def test_km_search_gateway_error_records_failure(
+    mcp_server: ServerFixture,
+) -> None:
     server, state = mcp_server
 
     class StubClient:
-        async def search(self, payload):  # pragma: no cover - exercised in test
+        async def search(self, payload: dict[str, object]) -> dict[str, object]:  # pragma: no cover - exercised in test
             raise GatewayRequestError(status_code=500, detail="upstream boom")
 
     state.client = StubClient()
@@ -126,17 +141,33 @@ async def test_km_search_gateway_error_records_failure(mcp_server):
 
 
 @pytest.mark.asyncio
-async def test_graph_tools_delegate_to_client_and_record_metrics(mcp_server):
+async def test_graph_tools_delegate_to_client_and_record_metrics(
+    mcp_server: ServerFixture,
+) -> None:
     server, state = mcp_server
 
     class StubClient:
-        async def graph_node(self, node_id, *, relationships, limit):
+        async def graph_node(
+            self,
+            node_id: str,
+            *,
+            relationships: str,
+            limit: int,
+        ) -> dict[str, object]:
             assert node_id == "DesignDoc:docs/README.md"
             assert relationships == "outgoing"
             assert limit == 25
             return {"id": node_id}
 
-        async def graph_subsystem(self, name, *, depth, include_artifacts, cursor, limit):
+        async def graph_subsystem(
+            self,
+            name: str,
+            *,
+            depth: int,
+            include_artifacts: bool,
+            cursor: str | None,
+            limit: int,
+        ) -> dict[str, object]:
             assert name == "Kasmina"
             assert depth == 1
             assert include_artifacts is True
@@ -144,7 +175,7 @@ async def test_graph_tools_delegate_to_client_and_record_metrics(mcp_server):
             assert limit == 10
             return {"name": name}
 
-        async def graph_search(self, term, *, limit):
+        async def graph_search(self, term: str, *, limit: int) -> dict[str, object]:
             assert term == "ingest"
             assert limit == 7
             return {"results": ["node"]}
@@ -179,11 +210,13 @@ async def test_graph_tools_delegate_to_client_and_record_metrics(mcp_server):
 
 
 @pytest.mark.asyncio
-async def test_lifecycle_report_records_metrics(mcp_server):
+async def test_lifecycle_report_records_metrics(
+    mcp_server: ServerFixture,
+) -> None:
     server, state = mcp_server
 
     class StubClient:
-        async def lifecycle_report(self):
+        async def lifecycle_report(self) -> dict[str, object]:
             return {"missing_tests": []}
 
     state.client = StubClient()
@@ -196,11 +229,13 @@ async def test_lifecycle_report_records_metrics(mcp_server):
 
 
 @pytest.mark.asyncio
-async def test_coverage_summary_records_metrics(mcp_server):
+async def test_coverage_summary_records_metrics(
+    mcp_server: ServerFixture,
+) -> None:
     server, state = mcp_server
 
     class StubClient:
-        async def coverage_summary(self):
+        async def coverage_summary(self) -> dict[str, object]:
             return {"artifacts": 10}
 
     state.client = StubClient()
@@ -213,11 +248,13 @@ async def test_coverage_summary_records_metrics(mcp_server):
 
 
 @pytest.mark.asyncio
-async def test_ingest_status_handles_missing_history(mcp_server):
+async def test_ingest_status_handles_missing_history(
+    mcp_server: ServerFixture,
+) -> None:
     server, state = mcp_server
 
     class StubClient:
-        async def audit_history(self, *, limit):
+        async def audit_history(self, *, limit: int) -> list[dict[str, object]]:
             assert limit == 10
             return []
 
@@ -231,12 +268,21 @@ async def test_ingest_status_handles_missing_history(mcp_server):
 
 
 @pytest.mark.asyncio
-async def test_ingest_trigger_succeeds(monkeypatch, mcp_server):
+async def test_ingest_trigger_succeeds(
+    monkeypatch: pytest.MonkeyPatch,
+    mcp_server: ServerFixture,
+) -> None:
     server, state = mcp_server
 
-    called: dict[str, tuple] = {}
+    called: dict[str, tuple[object, ...]] = {}
 
-    async def stub_trigger_ingest(*, settings, profile, dry_run, use_dummy_embeddings):
+    async def stub_trigger_ingest(
+        *,
+        settings: MCPSettings,
+        profile: str | None,
+        dry_run: bool,
+        use_dummy_embeddings: bool | None,
+    ) -> dict[str, object]:
         called["args"] = (profile, dry_run, use_dummy_embeddings)
         return {"success": True, "run_id": "xyz"}
 
@@ -257,10 +303,13 @@ async def test_ingest_trigger_succeeds(monkeypatch, mcp_server):
 
 
 @pytest.mark.asyncio
-async def test_ingest_trigger_failure_records_metrics(monkeypatch, mcp_server):
+async def test_ingest_trigger_failure_records_metrics(
+    monkeypatch: pytest.MonkeyPatch,
+    mcp_server: ServerFixture,
+) -> None:
     server, _state = mcp_server
 
-    async def stub_trigger_ingest(**_kwargs):  # pragma: no cover - exercised in test
+    async def stub_trigger_ingest(**_kwargs: object) -> dict[str, object]:  # pragma: no cover - exercised in test
         return {"success": False}
 
     monkeypatch.setattr("gateway.mcp.server.trigger_ingest", stub_trigger_ingest)
@@ -274,10 +323,13 @@ async def test_ingest_trigger_failure_records_metrics(monkeypatch, mcp_server):
 
 
 @pytest.mark.asyncio
-async def test_backup_trigger(monkeypatch, mcp_server):
+async def test_backup_trigger(
+    monkeypatch: pytest.MonkeyPatch,
+    mcp_server: ServerFixture,
+) -> None:
     server, _state = mcp_server
 
-    async def stub_trigger_backup(_settings):
+    async def stub_trigger_backup(_settings: MCPSettings) -> dict[str, object]:
         return {"archive": "backups/km-backup.tgz"}
 
     monkeypatch.setattr("gateway.mcp.server.trigger_backup", stub_trigger_backup)
@@ -290,10 +342,13 @@ async def test_backup_trigger(monkeypatch, mcp_server):
 
 
 @pytest.mark.asyncio
-async def test_feedback_submit(monkeypatch, mcp_server):
+async def test_feedback_submit(
+    monkeypatch: pytest.MonkeyPatch,
+    mcp_server: ServerFixture,
+) -> None:
     server, _state = mcp_server
 
-    async def stub_record_feedback(**kwargs):
+    async def stub_record_feedback(**kwargs: object) -> dict[str, object]:
         return {"echo": kwargs}
 
     monkeypatch.setattr("gateway.mcp.server.record_feedback", stub_record_feedback)
@@ -312,7 +367,7 @@ async def test_feedback_submit(monkeypatch, mcp_server):
 
 
 @pytest.mark.asyncio
-async def test_km_upload_copies_file_and_records_metrics(tmp_path: Path):
+async def test_km_upload_copies_file_and_records_metrics(tmp_path: Path) -> None:
     content_root = tmp_path / "repo"
     (content_root / "docs").mkdir(parents=True)
     state_path = tmp_path / "state"
@@ -349,7 +404,7 @@ async def test_km_upload_copies_file_and_records_metrics(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_km_upload_missing_source_raises(tmp_path: Path):
+async def test_km_upload_missing_source_raises(tmp_path: Path) -> None:
     content_root = tmp_path / "repo"
     (content_root / "docs").mkdir(parents=True)
     state_path = tmp_path / "state"
@@ -376,7 +431,7 @@ async def test_km_upload_missing_source_raises(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_km_upload_requires_admin_token(tmp_path: Path):
+async def test_km_upload_requires_admin_token(tmp_path: Path) -> None:
     content_root = tmp_path / "repo"
     (content_root / "docs").mkdir(parents=True)
     state_path = tmp_path / "state"
@@ -403,7 +458,10 @@ async def test_km_upload_requires_admin_token(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_km_upload_triggers_ingest_when_requested(monkeypatch, tmp_path: Path):
+async def test_km_upload_triggers_ingest_when_requested(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     content_root = tmp_path / "repo"
     (content_root / "docs").mkdir(parents=True)
     settings = MCPSettings(
@@ -417,7 +475,13 @@ async def test_km_upload_triggers_ingest_when_requested(monkeypatch, tmp_path: P
     source = tmp_path / "demo.txt"
     source.write_text("demo")
 
-    async def fake_trigger_ingest(*, settings, profile, dry_run, use_dummy_embeddings):
+    async def fake_trigger_ingest(
+        *,
+        settings: MCPSettings,
+        profile: str,
+        dry_run: bool,
+        use_dummy_embeddings: bool | None,
+    ) -> dict[str, object]:
         assert profile == "demo"
         return {"success": True, "profile": profile, "run_id": "123"}
 
@@ -440,7 +504,7 @@ async def test_km_upload_triggers_ingest_when_requested(monkeypatch, tmp_path: P
 
 
 @pytest.mark.asyncio
-async def test_km_storetext_creates_document_with_front_matter(tmp_path: Path):
+async def test_km_storetext_creates_document_with_front_matter(tmp_path: Path) -> None:
     content_root = tmp_path / "repo"
     (content_root / "docs").mkdir(parents=True)
     state_path = tmp_path / "state"
@@ -481,7 +545,7 @@ async def test_km_storetext_creates_document_with_front_matter(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_km_storetext_requires_content(tmp_path: Path):
+async def test_km_storetext_requires_content(tmp_path: Path) -> None:
     content_root = tmp_path / "repo"
     (content_root / "docs").mkdir(parents=True)
     state_path = tmp_path / "state"
@@ -512,7 +576,10 @@ async def test_km_storetext_requires_content(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_km_storetext_triggers_ingest_when_requested(monkeypatch, tmp_path: Path):
+async def test_km_storetext_triggers_ingest_when_requested(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     content_root = tmp_path / "repo"
     (content_root / "docs").mkdir(parents=True)
     state_path = tmp_path / "state"
@@ -525,7 +592,13 @@ async def test_km_storetext_triggers_ingest_when_requested(monkeypatch, tmp_path
     )
     server = build_server(settings=settings)
 
-    async def fake_trigger_ingest(*, settings, profile, dry_run, use_dummy_embeddings):
+    async def fake_trigger_ingest(
+        *,
+        settings: MCPSettings,
+        profile: str,
+        dry_run: bool,
+        use_dummy_embeddings: bool | None,
+    ) -> dict[str, object]:
         assert profile == "demo"
         return {"success": True, "profile": profile, "run_id": "abc"}
 
@@ -552,7 +625,7 @@ async def test_km_storetext_triggers_ingest_when_requested(monkeypatch, tmp_path
 
 
 @pytest.mark.asyncio
-async def test_km_storetext_requires_admin_token(tmp_path: Path):
+async def test_km_storetext_requires_admin_token(tmp_path: Path) -> None:
     content_root = tmp_path / "repo"
     (content_root / "docs").mkdir(parents=True)
     state_path = tmp_path / "state"
@@ -581,17 +654,26 @@ async def test_km_storetext_requires_admin_token(tmp_path: Path):
 
 @pytest.mark.asyncio
 @pytest.mark.mcp_smoke
-async def test_mcp_smoke_run(monkeypatch, mcp_server):
+async def test_mcp_smoke_run(
+    monkeypatch: pytest.MonkeyPatch,
+    mcp_server: ServerFixture,
+) -> None:
     server, state = mcp_server
 
     class StubClient:
-        async def search(self, payload):
+        async def search(self, payload: dict[str, object]) -> dict[str, object]:
             return {"results": ["hit"], "metadata": {}}
 
-        async def coverage_summary(self):
+        async def coverage_summary(self) -> dict[str, object]:
             return {"artifacts": 1}
 
-        async def graph_node(self, node_id, *, relationships, limit):
+        async def graph_node(
+            self,
+            node_id: str,
+            *,
+            relationships: str,
+            limit: int,
+        ) -> dict[str, object]:
             return {
                 "node": {"id": node_id, "labels": ["DesignDoc"], "properties": {"path": "docs/demo.md"}},
                 "relationships": [
@@ -607,19 +689,27 @@ async def test_mcp_smoke_run(monkeypatch, mcp_server):
                 ],
             }
 
-        async def graph_subsystem(self, name, *, depth, include_artifacts, cursor, limit):
+        async def graph_subsystem(
+            self,
+            name: str,
+            *,
+            depth: int,
+            include_artifacts: bool,
+            cursor: str | None,
+            limit: int,
+        ) -> dict[str, object]:
             return {
                 "subsystem": {"id": f"Subsystem:{name}", "labels": ["Subsystem"], "properties": {"name": name}},
                 "related": {"nodes": [], "cursor": None},
                 "artifacts": [],
             }
 
-        async def graph_search(self, term, *, limit):
+        async def graph_search(self, term: str, *, limit: int) -> dict[str, object]:
             return {"results": [{"id": "Subsystem:demo", "label": "Subsystem", "score": 0.5, "snippet": term}]}
 
     state.client = StubClient()
 
-    async def stub_trigger_backup(settings):
+    async def stub_trigger_backup(settings: MCPSettings) -> dict[str, object]:
         return {"archive": "demo.tgz"}
 
     monkeypatch.setattr("gateway.mcp.server.trigger_backup", stub_trigger_backup)

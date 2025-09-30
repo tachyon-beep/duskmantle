@@ -47,3 +47,5 @@ Thumbs.db
 .playwright-state/
 backups/
 node_modules/
+test-results/
+test-results/*.*
