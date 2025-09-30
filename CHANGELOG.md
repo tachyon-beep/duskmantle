@@ -6,6 +6,25 @@ All notable changes to this project will be documented in this file. The format 
 
 - _Placeholder_ — upcoming changes will be listed here.
 
+## 1.0.1 - 2025-09-30
+
+### Added
+
+- Embedded lifecycle console: lifecycle spark lines, subsystem explorer, and Playwright UI smoke tests (navigation, lifecycle, search, subsystem flows).
+- Lifecycle reporting pipeline (`km-lifecycle-report` CLI, `/lifecycle` + `/lifecycle/history` endpoints) including MCP tooling and recipes.
+- Incremental ingest (`gateway-ingest rebuild --incremental`), artifact cleanup, and enhanced scheduler/watch observability metrics.
+- Grafana search observability dashboard export (`infra/grafana/search_observability.json`).
+
+### Changed
+
+- Roadmap/implementation plan updated to reflect completed MCP tooling, console telemetry, and release readiness tasks.
+- Observability guide expanded with UI metrics, lifecycle alerts, and sparkline guidance; risk mitigation plan refreshed.
+- Release workflows now run Playwright UI tests and MCP smoke slice on nightly/tagged builds; helper `bin/km-playwright` introduced.
+
+### Fixed
+
+- Addressed security hardening gaps (mandatory maintainer tokens when auth enabled, stale artifact cleanup) and tightened watcher/scheduler behaviour under contention.
+
 ## 1.0.0 - 2025-09-28
 
 ### Added

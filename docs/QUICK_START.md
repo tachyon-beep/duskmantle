@@ -29,7 +29,7 @@ This script enables BuildKit, prints image metadata, and accepts optional args v
 Alternatively, pull a published image (GitHub Container Registry):
 
 ```bash
-docker pull ghcr.io/tachyon-beep/duskmantle-km:1.0.0
+docker pull ghcr.io/tachyon-beep/duskmantle-km:1.0.1
 ```
 
 **Shortcut:** run `bin/km-bootstrap` (optionally `--image <tag>`). It pulls the latest image, prepares `.duskmantle/{config,data,backups}`, generates secure tokens/passwords in `.duskmantle/secrets.env`, and launches the stack via `bin/km-run`.
