@@ -1,6 +1,14 @@
 name: Observability Checks
 
 on:
+  push:
+    branches:
+      - main
+      - 'propose/**'
+      - 'release/**'
+  pull_request:
+    branches:
+      - main
   schedule:
     - cron: '0 3 * * *'
   workflow_dispatch:
