@@ -48,6 +48,7 @@ RUN python -m venv /opt/knowledge/.venv
 WORKDIR ${KM_HOME}/app
 COPY pyproject.toml README.md .
 COPY gateway gateway
+COPY bin ${KM_BIN}
 
 RUN pip install --upgrade pip \
     && pip install --no-cache-dir . \
