@@ -1,7 +1,14 @@
+"""Integration tests for MCP server tools and metrics wiring."""
+
 from __future__ import annotations
 
-from collections.abc import Iterator
+# pylint: disable=missing-function-docstring,missing-class-docstring,
+# pylint: disable=protected-access,redefined-outer-name,import-outside-toplevel,
+# pylint: disable=unused-argument,unused-variable
+
+from collections.abc import Awaitable, Callable, Iterator
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 from prometheus_client import Counter, Histogram, generate_latest
@@ -32,25 +39,36 @@ def _reset_mcp_metrics() -> Iterator[None]:
 @pytest.fixture
 def mcp_server() -> Iterator[ServerFixture]:
     server = build_server(settings=MCPSettings())
-    state = server._duskmantle_state
+    state = cast(MCPServerState, getattr(server, "_duskmantle_state"))
     yield server, state
     state.client = None
 
 
 def _counter_value(counter: Counter, *labels: str) -> float:
-    return counter.labels(*labels)._value.get()
+    sample = counter.labels(*labels)
+    return float(cast(Any, sample)._value.get())  # type: ignore[attr-defined]
 
 
 def _histogram_sum(histogram: Histogram, *labels: str) -> float:
-    return histogram.labels(*labels)._sum.get()
+    sample = histogram.labels(*labels)
+    return float(cast(Any, sample)._sum.get())  # type: ignore[attr-defined]
 
 
 def _upload_counter(result: str) -> float:
-    return MCP_UPLOAD_TOTAL.labels(result)._value.get()
+    sample = MCP_UPLOAD_TOTAL.labels(result)
+    return float(cast(Any, sample)._value.get())  # type: ignore[attr-defined]
 
 
 def _storetext_counter(result: str) -> float:
-    return MCP_STORETEXT_TOTAL.labels(result)._value.get()
+    sample = MCP_STORETEXT_TOTAL.labels(result)
+    return float(cast(Any, sample)._value.get())  # type: ignore[attr-defined]
+
+
+ToolCallable = Callable[..., Awaitable[Any]]
+
+
+def _tool_fn(tool: object) -> ToolCallable:
+    return cast(ToolCallable, getattr(tool, "fn"))
 
 
 @pytest.mark.asyncio
@@ -70,12 +88,13 @@ async def test_km_help_lists_tools_and_provides_details(
     monkeypatch.setattr(mcp_server_module, "_load_help_document", stub_spec)
 
     tool = await server.get_tool("km-help")
+    tool_fn = _tool_fn(tool)
 
-    listing = await tool.fn(tool=None, include_spec=False, context=None)
+    listing = await tool_fn(tool=None, include_spec=False, context=None)
     assert "km-search" in listing["tools"]
     assert listing["tools"]["km-search"]["description"].startswith("Hybrid search")
 
-    detail = await tool.fn(tool="km-search", include_spec=True, context=None)
+    detail = await tool_fn(tool="km-search", include_spec=True, context=None)
     assert detail["tool"] == "km-search"
     assert "Required: `query`" in detail["usage"]["details"]
     assert detail["spec"] == "stub spec"
@@ -88,8 +107,8 @@ async def test_metrics_export_includes_tool_labels(
 ) -> None:
     server, _state = mcp_server
 
-    tool = await server.get_tool("km-help")
-    await tool.fn(context=None)
+    tool_fn = _tool_fn(await server.get_tool("km-help"))
+    await tool_fn(context=None)
 
     metrics_data = generate_latest().decode()
     assert 'km_mcp_requests_total{result="success",tool="km-help"} 1.0' in metrics_data
@@ -106,10 +125,10 @@ async def test_km_search_success_records_metrics(
             assert payload["query"] == "design docs"
             return {"results": [], "metadata": {}}
 
-    state.client = StubClient()
+    state.client = cast(Any, StubClient())
 
-    tool = await server.get_tool("km-search")
-    result = await tool.fn(query="design docs", limit=5, include_graph=False, context=None)
+    tool_fn = _tool_fn(await server.get_tool("km-search"))
+    result = await tool_fn(query="design docs", limit=5, include_graph=False, context=None)
 
     assert result == {"results": [], "metadata": {}}
     assert _counter_value(MCP_REQUESTS_TOTAL, "km-search", "success") == 1
@@ -128,11 +147,11 @@ async def test_km_search_gateway_error_records_failure(
         async def search(self, payload: dict[str, object]) -> dict[str, object]:  # pragma: no cover - exercised in test
             raise GatewayRequestError(status_code=500, detail="upstream boom")
 
-    state.client = StubClient()
+    state.client = cast(Any, StubClient())
 
-    tool = await server.get_tool("km-search")
+    tool_fn = _tool_fn(await server.get_tool("km-search"))
     with pytest.raises(GatewayRequestError):
-        await tool.fn(query="design docs", limit=3, include_graph=True, context=None)
+        await tool_fn(query="design docs", limit=3, include_graph=True, context=None)
 
     assert _counter_value(MCP_REQUESTS_TOTAL, "km-search", "success") == 0
     assert _counter_value(MCP_REQUESTS_TOTAL, "km-search", "error") == 1
@@ -180,17 +199,17 @@ async def test_graph_tools_delegate_to_client_and_record_metrics(
             assert limit == 7
             return {"results": ["node"]}
 
-    state.client = StubClient()
+    state.client = cast(Any, StubClient())
 
-    node_tool = await server.get_tool("km-graph-node")
-    node = await node_tool.fn(
+    node_fn = _tool_fn(await server.get_tool("km-graph-node"))
+    node = await node_fn(
         node_id="DesignDoc:docs/README.md",
         relationships="outgoing",
         limit=25,
         context=None,
     )
-    subsystem_tool = await server.get_tool("km-graph-subsystem")
-    subsystem = await subsystem_tool.fn(
+    subsystem_fn = _tool_fn(await server.get_tool("km-graph-subsystem"))
+    subsystem = await subsystem_fn(
         name="Kasmina",
         depth=1,
         include_artifacts=True,
@@ -198,8 +217,8 @@ async def test_graph_tools_delegate_to_client_and_record_metrics(
         limit=10,
         context=None,
     )
-    search_tool = await server.get_tool("km-graph-search")
-    graph_search = await search_tool.fn(term="ingest", limit=7, context=None)
+    search_fn = _tool_fn(await server.get_tool("km-graph-search"))
+    graph_search = await search_fn(term="ingest", limit=7, context=None)
 
     assert node == {"id": "DesignDoc:docs/README.md"}
     assert subsystem == {"name": "Kasmina"}
@@ -219,10 +238,10 @@ async def test_lifecycle_report_records_metrics(
         async def lifecycle_report(self) -> dict[str, object]:
             return {"missing_tests": []}
 
-    state.client = StubClient()
+    state.client = cast(Any, StubClient())
 
-    tool = await server.get_tool("km-lifecycle-report")
-    report = await tool.fn(context=None)
+    tool_fn = _tool_fn(await server.get_tool("km-lifecycle-report"))
+    report = await tool_fn(context=None)
 
     assert report == {"missing_tests": []}
     assert _counter_value(MCP_REQUESTS_TOTAL, "km-lifecycle-report", "success") == 1
@@ -238,10 +257,10 @@ async def test_coverage_summary_records_metrics(
         async def coverage_summary(self) -> dict[str, object]:
             return {"artifacts": 10}
 
-    state.client = StubClient()
+    state.client = cast(Any, StubClient())
 
-    tool = await server.get_tool("km-coverage-summary")
-    summary = await tool.fn(context=None)
+    tool_fn = _tool_fn(await server.get_tool("km-coverage-summary"))
+    summary = await tool_fn(context=None)
 
     assert summary == {"artifacts": 10}
     assert _counter_value(MCP_REQUESTS_TOTAL, "km-coverage-summary", "success") == 1
@@ -258,10 +277,10 @@ async def test_ingest_status_handles_missing_history(
             assert limit == 10
             return []
 
-    state.client = StubClient()
+    state.client = cast(Any, StubClient())
 
-    tool = await server.get_tool("km-ingest-status")
-    status = await tool.fn(profile=None, context=None)
+    tool_fn = _tool_fn(await server.get_tool("km-ingest-status"))
+    status = await tool_fn(profile=None, context=None)
 
     assert status == {"status": "not_found", "profile": None}
     assert _counter_value(MCP_REQUESTS_TOTAL, "km-ingest-status", "success") == 1
@@ -288,8 +307,8 @@ async def test_ingest_trigger_succeeds(
 
     monkeypatch.setattr("gateway.mcp.server.trigger_ingest", stub_trigger_ingest)
 
-    tool = await server.get_tool("km-ingest-trigger")
-    result = await tool.fn(
+    tool_fn = _tool_fn(await server.get_tool("km-ingest-trigger"))
+    result = await tool_fn(
         profile="manual",
         paths=None,
         dry_run=False,
@@ -314,8 +333,8 @@ async def test_ingest_trigger_failure_records_metrics(
 
     monkeypatch.setattr("gateway.mcp.server.trigger_ingest", stub_trigger_ingest)
 
-    tool = await server.get_tool("km-ingest-trigger")
-    result = await tool.fn(profile=None, paths=None, dry_run=False, use_dummy_embeddings=None, context=None)
+    tool_fn = _tool_fn(await server.get_tool("km-ingest-trigger"))
+    result = await tool_fn(profile=None, paths=None, dry_run=False, use_dummy_embeddings=None, context=None)
 
     assert result == {"status": "failure", "run": {"success": False}}
     assert _counter_value(MCP_REQUESTS_TOTAL, "km-ingest-trigger", "error") == 1
@@ -334,8 +353,8 @@ async def test_backup_trigger(
 
     monkeypatch.setattr("gateway.mcp.server.trigger_backup", stub_trigger_backup)
 
-    tool = await server.get_tool("km-backup-trigger")
-    archive = await tool.fn(context=None)
+    tool_fn = _tool_fn(await server.get_tool("km-backup-trigger"))
+    archive = await tool_fn(context=None)
 
     assert archive == {"archive": "backups/km-backup.tgz"}
     assert _counter_value(MCP_REQUESTS_TOTAL, "km-backup-trigger", "success") == 1
@@ -353,8 +372,8 @@ async def test_feedback_submit(
 
     monkeypatch.setattr("gateway.mcp.server.record_feedback", stub_record_feedback)
 
-    tool = await server.get_tool("km-feedback-submit")
-    payload = await tool.fn(
+    tool_fn = _tool_fn(await server.get_tool("km-feedback-submit"))
+    payload = await tool_fn(
         request_id="req-1",
         chunk_id="chunk-1",
         vote=1.0,
@@ -384,8 +403,8 @@ async def test_km_upload_copies_file_and_records_metrics(tmp_path: Path) -> None
     source = tmp_path / "notes.md"
     source.write_text("notes")
 
-    tool = await server.get_tool("km-upload")
-    result = await tool.fn(
+    tool_fn = _tool_fn(await server.get_tool("km-upload"))
+    result = await tool_fn(
         source_path=str(source),
         destination=None,
         overwrite=None,
@@ -416,9 +435,9 @@ async def test_km_upload_missing_source_raises(tmp_path: Path) -> None:
     )
     server = build_server(settings=settings)
 
-    tool = await server.get_tool("km-upload")
+    tool_fn = _tool_fn(await server.get_tool("km-upload"))
     with pytest.raises(ValueError):
-        await tool.fn(
+        await tool_fn(
             source_path=str(tmp_path / "missing.md"),
             destination=None,
             overwrite=None,
@@ -446,9 +465,9 @@ async def test_km_upload_requires_admin_token(tmp_path: Path) -> None:
     source = tmp_path / "note.md"
     source.write_text("note")
 
-    tool = await server.get_tool("km-upload")
+    tool_fn = _tool_fn(await server.get_tool("km-upload"))
     with pytest.raises(PermissionError):
-        await tool.fn(
+        await tool_fn(
             source_path=str(source),
             destination=None,
             overwrite=None,
@@ -487,8 +506,8 @@ async def test_km_upload_triggers_ingest_when_requested(
 
     monkeypatch.setattr("gateway.mcp.upload.trigger_ingest", fake_trigger_ingest)
 
-    tool = await server.get_tool("km-upload")
-    result = await tool.fn(
+    tool_fn = _tool_fn(await server.get_tool("km-upload"))
+    result = await tool_fn(
         source_path=str(source),
         destination="docs/uploads",
         overwrite=True,
@@ -516,8 +535,8 @@ async def test_km_storetext_creates_document_with_front_matter(tmp_path: Path) -
     )
     server = build_server(settings=settings)
 
-    tool = await server.get_tool("km-storetext")
-    result = await tool.fn(
+    tool_fn = _tool_fn(await server.get_tool("km-storetext"))
+    result = await tool_fn(
         content="## Body\nDetails",
         title="Release Notes",
         destination=None,
@@ -557,9 +576,9 @@ async def test_km_storetext_requires_content(tmp_path: Path) -> None:
     )
     server = build_server(settings=settings)
 
-    tool = await server.get_tool("km-storetext")
+    tool_fn = _tool_fn(await server.get_tool("km-storetext"))
     with pytest.raises(ValueError):
-        await tool.fn(
+        await tool_fn(
             content=" ",
             title=None,
             destination=None,
@@ -604,8 +623,8 @@ async def test_km_storetext_triggers_ingest_when_requested(
 
     monkeypatch.setattr("gateway.mcp.storetext.trigger_ingest", fake_trigger_ingest)
 
-    tool = await server.get_tool("km-storetext")
-    result = await tool.fn(
+    tool_fn = _tool_fn(await server.get_tool("km-storetext"))
+    result = await tool_fn(
         content="Hello world",
         title="demo",
         destination="docs/uploads",
@@ -637,9 +656,9 @@ async def test_km_storetext_requires_admin_token(tmp_path: Path) -> None:
     )
     server = build_server(settings=settings)
 
-    tool = await server.get_tool("km-storetext")
+    tool_fn = _tool_fn(await server.get_tool("km-storetext"))
     with pytest.raises(PermissionError):
-        await tool.fn(
+        await tool_fn(
             content="Hello",
             title=None,
             destination=None,
@@ -707,7 +726,7 @@ async def test_mcp_smoke_run(
         async def graph_search(self, term: str, *, limit: int) -> dict[str, object]:
             return {"results": [{"id": "Subsystem:demo", "label": "Subsystem", "score": 0.5, "snippet": term}]}
 
-    state.client = StubClient()
+    state.client = cast(Any, StubClient())
 
     async def stub_trigger_backup(settings: MCPSettings) -> dict[str, object]:
         return {"archive": "demo.tgz"}

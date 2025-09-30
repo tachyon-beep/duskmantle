@@ -97,10 +97,8 @@
   const state = {
     readerToken: sessionStorage.getItem('dm.readerToken') || '',
     maintainerToken: sessionStorage.getItem('dm.maintainerToken') || '',
-    active: (document.querySelector('[data-dm-nav-link].is-active') || {}).dataset?.dmNavLink || 'home'
+    active: document.querySelector('[data-dm-nav-link].is-active')?.dataset?.dmNavLink ?? 'home'
   };
-
-  let lifecycleLoaded = false;
   let lastSearchPayload = null;
   let lastSearchParams = null;
   let lastSubsystemPayload = null;
@@ -293,34 +291,15 @@
   }
 
   function copyToClipboard(text, onSuccess, onFailure) {
-    const fallback = () => {
-      try {
-        const textarea = document.createElement('textarea');
-        textarea.value = text;
-        textarea.setAttribute('readonly', '');
-        textarea.style.position = 'absolute';
-        textarea.style.left = '-9999px';
-        document.body.appendChild(textarea);
-        textarea.select();
-        const successful = document.execCommand('copy');
-        document.body.removeChild(textarea);
-        if (successful) {
-          onSuccess();
-        } else {
-          onFailure();
-        }
-      } catch (error) {
-        onFailure(error);
-      }
-    };
-
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).then(onSuccess).catch(() => {
-        fallback();
-      });
-    } else {
-      fallback();
+    const writer = navigator.clipboard?.writeText;
+    if (!writer) {
+      onFailure(new Error('Clipboard API unavailable'));
+      return;
     }
+    writer
+      .call(navigator.clipboard, text)
+      .then(onSuccess)
+      .catch((error) => onFailure(error));
   }
 
   async function performSearch(formData) {
@@ -328,22 +307,11 @@
     const limit = Number(formData.get('limit') || 5);
     const includeGraph = formData.get('include_graph') === 'on';
 
-    if (!query || !hasReader()) {
-      updateStatus(query ? t('search_need_token') : t('search_require_query_token'));
+    if (!validateSearchRequest(query)) {
       return;
     }
 
-    updateStatus(t('search_running'));
-    if (elements.searchFeedback) {
-      elements.searchFeedback.textContent = '';
-      elements.searchFeedback.hidden = true;
-    }
-    if (elements.searchResults) {
-      elements.searchResults.hidden = true;
-    }
-    if (elements.searchActions) {
-      elements.searchActions.hidden = true;
-    }
+    prepareSearchUi();
 
     const body = {
       query,
@@ -351,51 +319,19 @@
       include_graph: includeGraph
     };
 
-    const headers = {
-      'Content-Type': 'application/json',
-      ...authHeader('reader')
-    };
-
     try {
       const response = await fetch('/search', {
         method: 'POST',
-        headers,
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeader('reader')
+        },
         body: JSON.stringify(body)
       });
 
-      const requestId = response.headers.get('x-request-id');
-      if (requestId && elements.requestId) {
-        elements.requestId.textContent = requestId;
-      }
-
-      if (!response.ok) {
-        let message = t('search_error_generic');
-        if (response.status === 401 || response.status === 403) {
-          message = t('search_error_auth');
-        } else {
-          const detail = await response.json().catch(() => ({}));
-          if (detail?.detail) {
-            message = detail.detail;
-          }
-        }
-        updateStatus(message);
-        await recordUiEvent('search_error', { status: response.status, message });
-        return;
-      }
-
-      const payload = await response.json();
-      lastSearchParams = { query, limit, includeGraph };
-      lastSearchPayload = payload;
-      renderSearchResults(payload);
-      if (elements.searchActions) {
-        elements.searchActions.hidden = false;
-      }
-      updateStatus(`Found ${payload.results?.length || 0} match(es).`);
-      await recordUiEvent('search_success', { params: lastSearchParams });
+      await processSearchResponse(response, { query, limit, includeGraph });
     } catch (error) {
-      console.error('Search request failed', error);
-      updateStatus(t('search_error_generic'));
-      await recordUiEvent('search_error', { error: String(error) });
+      await handleSearchException(error);
     }
   }
 
@@ -465,6 +401,73 @@
     elements.searchResults.hidden = false;
   }
 
+  function validateSearchRequest(query) {
+    if (!query || !hasReader()) {
+      updateStatus(query ? t('search_need_token') : t('search_require_query_token'));
+      return false;
+    }
+    return true;
+  }
+
+  function prepareSearchUi() {
+    updateStatus(t('search_running'));
+    if (elements.searchFeedback) {
+      elements.searchFeedback.textContent = '';
+      elements.searchFeedback.hidden = true;
+      elements.searchFeedback.classList.remove('dm-alert-error');
+    }
+    if (elements.searchResults) {
+      elements.searchResults.hidden = true;
+    }
+    if (elements.searchActions) {
+      elements.searchActions.hidden = true;
+    }
+  }
+
+  async function processSearchResponse(response, params) {
+    updateRequestIdFromResponse(response);
+    if (!response.ok) {
+      const message = await extractSearchError(response);
+      updateStatus(message);
+      await recordUiEvent('search_error', { status: response.status, message });
+      return;
+    }
+
+    const payload = await response.json();
+    lastSearchParams = params;
+    lastSearchPayload = payload;
+    renderSearchResults(payload);
+    if (elements.searchActions) {
+      elements.searchActions.hidden = false;
+    }
+    updateStatus(`Found ${payload.results?.length || 0} match(es).`);
+    await recordUiEvent('search_success', { params });
+  }
+
+  function updateRequestIdFromResponse(response) {
+    const requestId = response.headers.get('x-request-id');
+    if (requestId && elements.requestId) {
+      elements.requestId.textContent = requestId;
+    }
+  }
+
+  async function extractSearchError(response) {
+    if (response.status === 401 || response.status === 403) {
+      return t('search_error_auth');
+    }
+    const detail = await response.json().catch(() => ({}));
+    if (detail?.detail) {
+      return detail.detail;
+    }
+    return t('search_error_generic');
+  }
+
+  async function handleSearchException(error) {
+    console.error('Search request failed', error);
+    updateStatus(t('search_error_generic'));
+    await recordUiEvent('search_error', { error: String(error) });
+  }
+
   function createMetaTag(label, value) {
     const el = document.createElement('span');
     el.textContent = `${label}: ${value}`;
@@ -477,15 +480,162 @@
     const limit = Math.min(50, Math.max(1, Number(formData.get('limit') || 15)));
     const includeArtifacts = formData.get('include_artifacts') === 'on';
 
-    if (!name) {
-      updateSubsystemStatus(t('subsystem_ready'));
-      return;
-    }
-    if (!hasReader()) {
-      updateSubsystemStatus(t('subsystem_need_token'));
+    if (!validateSubsystemRequest(name)) {
       return;
     }
 
+    prepareSubsystemUi();
+
+    const params = new URLSearchParams({ depth: String(depth), limit: String(limit) });
+    if (!includeArtifacts) {
+      params.set('include_artifacts', 'false');
+    }
+
+    try {
+      const response = await fetch(`/graph/subsystems/${encodeURIComponent(name)}?${params.toString()}`, {
+        headers: authHeader('reader')
+      });
+
+      await processSubsystemResponse(response, { name, depth, limit, includeArtifacts });
+    } catch (error) {
+      await handleSubsystemException(error);
+    }
+  }
+
+  function renderSubsystem(payload) {
+    if (!elements.subsystemPanel) {
+      return;
+    }
+    const subsystem = payload?.subsystem || {};
+    const props = subsystem.properties || {};
+
+    renderSubsystemHeader(subsystem, props, payload);
+    renderSubsystemSummary(props, subsystem);
+    renderSubsystemArtifacts(payload);
+    renderSubsystemTable(payload);
+    resetSubsystemError();
+    elements.subsystemPanel.hidden = false;
+  }
+
+  function renderSubsystemHeader(subsystem, props, payload) {
+    const name = props.name || props.title || subsystem.id || 'Subsystem';
+    if (elements.subsystemTitle) {
+      elements.subsystemTitle.textContent = name;
+    }
+    if (elements.subsystemHops) {
+      const total = payload?.related?.total ?? 0;
+      const isVisible = Boolean(total);
+      elements.subsystemHops.textContent = isVisible ? `${total} related nodes` : '';
+      elements.subsystemHops.style.display = isVisible ? 'inline-flex' : 'none';
+    }
+  }
+
+  function renderSubsystemSummary(props, subsystem) {
+    if (!elements.subsystemSummary) {
+      return;
+    }
+    elements.subsystemSummary.innerHTML = '';
+    const added = new Set();
+    const addDefinition = (label, value) => {
+      if (value === undefined || value === null || value === '') {
+        return;
+      }
+      const dt = document.createElement('dt');
+      dt.textContent = label;
+      const dd = document.createElement('dd');
+      dd.textContent = String(value);
+      elements.subsystemSummary.append(dt, dd);
+    };
+    const formatKey = (key) => key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+    addDefinition('ID', subsystem.id);
+    if (Array.isArray(subsystem.labels) && subsystem.labels.length) {
+      addDefinition('Labels', subsystem.labels.join(', '));
+    }
+    ['owner', 'owner_team', 'status', 'criticality', 'freshness_days', 'updated_at'].forEach((key) => {
+      if (props[key] !== undefined) {
+        addDefinition(formatKey(key), props[key]);
+        added.add(key);
+      }
+    });
+    Object.keys(props)
+      .filter((key) => !added.has(key))
+      .slice(0, 6)
+      .forEach((key) => addDefinition(formatKey(key), props[key]));
+  }
+
+  function renderSubsystemArtifacts(payload) {
+    if (!elements.subsystemArtifacts) {
+      return;
+    }
+    elements.subsystemArtifacts.innerHTML = '';
+    const artifacts = Array.isArray(payload?.artifacts) ? payload.artifacts : [];
+    if (!artifacts.length) {
+      const li = document.createElement('li');
+      li.textContent = 'No artifacts linked.';
+      elements.subsystemArtifacts.appendChild(li);
+      return;
+    }
+    artifacts.forEach((artifact) => {
+      const li = document.createElement('li');
+      const aprops = artifact?.properties || {};
+      li.textContent = aprops.path || aprops.title || artifact.id;
+      elements.subsystemArtifacts.appendChild(li);
+    });
+  }
+
+  function renderSubsystemTable(payload) {
+    if (!elements.subsystemTable) {
+      return;
+    }
+    elements.subsystemTable.innerHTML = '';
+    const related = Array.isArray(payload?.related?.nodes) ? payload.related.nodes : [];
+    if (!related.length) {
+      const row = document.createElement('tr');
+      const cell = document.createElement('td');
+      cell.colSpan = 4;
+      cell.textContent = 'No related nodes at this depth.';
+      row.appendChild(cell);
+      elements.subsystemTable.appendChild(row);
+      return;
+    }
+    related.forEach((entry) => {
+      const row = document.createElement('tr');
+      const target = entry?.target || {};
+      const tprops = target.properties || {};
+      row.appendChild(createTableCell(tprops.name || tprops.title || target.id));
+      row.appendChild(createTableCell(entry?.relationship || '—'));
+      row.appendChild(createTableCell(entry?.direction || 'OUT'));
+      row.appendChild(createTableCell(String(entry?.hops ?? '—')));
+      elements.subsystemTable.appendChild(row);
+    });
+  }
+
+  function createTableCell(value) {
+    const cell = document.createElement('td');
+    cell.textContent = value;
+    return cell;
+  }
+
+  function resetSubsystemError() {
+    if (elements.subsystemError) {
+      elements.subsystemError.hidden = true;
+      elements.subsystemError.textContent = '';
+    }
+  }
+
+  function validateSubsystemRequest(name) {
+    if (!name) {
+      updateSubsystemStatus(t('subsystem_ready'));
+      return false;
+    }
+    if (!hasReader()) {
+      updateSubsystemStatus(t('subsystem_need_token'));
+      return false;
+    }
+    return true;
+  }
+
+  function prepareSubsystemUi() {
     updateSubsystemStatus(t('subsystem_loading'));
     if (elements.subsystemError) {
       elements.subsystemError.hidden = true;
@@ -497,169 +647,54 @@
     if (elements.subsystemActions) {
       elements.subsystemActions.hidden = true;
     }
+  }
 
-    const params = new URLSearchParams({ depth: String(depth), limit: String(limit) });
-    if (!includeArtifacts) {
-      params.set('include_artifacts', 'false');
+  async function processSubsystemResponse(response, params) {
+    updateRequestIdFromResponse(response);
+    if (!response.ok) {
+      const message = await extractSubsystemError(response);
+      exposeSubsystemError(message);
+      await recordUiEvent('subsystem_error', { status: response.status, message });
+      return;
     }
 
-    try {
-      const response = await fetch(`/graph/subsystems/${encodeURIComponent(name)}?${params.toString()}`, {
-        headers: authHeader('reader')
-      });
-      const requestId = response.headers.get('x-request-id');
-      if (requestId && elements.requestId) {
-        elements.requestId.textContent = requestId;
-      }
+    const payload = await response.json();
+    lastSubsystemParams = params;
+    lastSubsystemPayload = payload;
+    renderSubsystem(payload);
+    if (elements.subsystemActions) {
+      elements.subsystemActions.hidden = false;
+    }
+    const loaded = payload?.related?.nodes?.length || 0;
+    const total = payload?.related?.total ?? loaded;
+    const extra = payload?.related?.cursor ? ' (more available via API).' : '.';
+    updateSubsystemStatus(`Loaded ${loaded} of ${total} related node(s)${extra}`);
+    await recordUiEvent('subsystem_success', { params });
+  }
 
-      if (!response.ok) {
-        let message = t('subsystem_error_generic');
-        if (response.status === 401 || response.status === 403) {
-          message = t('subsystem_error_auth');
-        } else {
-          const detail = await response.json().catch(() => ({}));
-          if (detail?.detail) {
-            message = detail.detail;
-          }
-        }
-        updateSubsystemStatus(message);
-        if (elements.subsystemError) {
-          elements.subsystemError.hidden = false;
-          elements.subsystemError.textContent = message;
-        }
-        await recordUiEvent('subsystem_error', { status: response.status, message });
-        return;
-      }
+  async function extractSubsystemError(response) {
+    if (response.status === 401 || response.status === 403) {
+      return t('subsystem_error_auth');
+    }
+    const detail = await response.json().catch(() => ({}));
+    if (detail?.detail) {
+      return detail.detail;
+    }
+    return t('subsystem_error_generic');
+  }
 
-      const payload = await response.json();
-      lastSubsystemParams = { name, depth, limit, includeArtifacts };
-      lastSubsystemPayload = payload;
-      renderSubsystem(payload);
-      if (elements.subsystemActions) {
-        elements.subsystemActions.hidden = false;
-      }
-      const loaded = payload?.related?.nodes?.length || 0;
-      const total = payload?.related?.total ?? loaded;
-      const extra = payload?.related?.cursor ? ' (more available via API).' : '.';
-      updateSubsystemStatus(`Loaded ${loaded} of ${total} related node(s)${extra}`);
-      await recordUiEvent('subsystem_success', { params: lastSubsystemParams });
-    } catch (error) {
-      console.error('Subsystem request failed', error);
-      updateSubsystemStatus(t('subsystem_error_generic'));
-      await recordUiEvent('subsystem_error', { error: String(error) });
+  function exposeSubsystemError(message) {
+    updateSubsystemStatus(message);
+    if (elements.subsystemError) {
+      elements.subsystemError.hidden = false;
+      elements.subsystemError.textContent = message;
     }
   }
 
-  function renderSubsystem(payload) {
-    if (!elements.subsystemPanel) {
-      return;
-    }
-    const subsystem = payload?.subsystem || {};
-    const props = subsystem.properties || {};
-    const name = props.name || props.title || subsystem.id || 'Subsystem';
-
-    if (elements.subsystemTitle) {
-      elements.subsystemTitle.textContent = name;
-    }
-    if (elements.subsystemHops) {
-      const total = payload?.related?.total ?? 0;
-      if (total) {
-        elements.subsystemHops.textContent = `${total} related nodes`;
-        elements.subsystemHops.style.display = 'inline-flex';
-      } else {
-        elements.subsystemHops.textContent = '';
-        elements.subsystemHops.style.display = 'none';
-      }
-    }
-
-    if (elements.subsystemSummary) {
-      elements.subsystemSummary.innerHTML = '';
-      const added = new Set();
-      const addDefinition = (label, value) => {
-        if (value === undefined || value === null || value === '') {
-          return;
-        }
-        const dt = document.createElement('dt');
-        dt.textContent = label;
-        const dd = document.createElement('dd');
-        dd.textContent = String(value);
-        elements.subsystemSummary.append(dt, dd);
-      };
-      const formatKey = (key) => key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-      addDefinition('ID', subsystem.id);
-      if (Array.isArray(subsystem.labels) && subsystem.labels.length) {
-        addDefinition('Labels', subsystem.labels.join(', '));
-      }
-      ['owner', 'owner_team', 'status', 'criticality', 'freshness_days', 'updated_at'].forEach((key) => {
-        if (props[key] !== undefined) {
-          addDefinition(formatKey(key), props[key]);
-          added.add(key);
-        }
-      });
-      Object.keys(props)
-        .filter((key) => !added.has(key))
-        .slice(0, 6)
-        .forEach((key) => addDefinition(formatKey(key), props[key]));
-    }
-
-    if (elements.subsystemArtifacts) {
-      elements.subsystemArtifacts.innerHTML = '';
-      const artifacts = Array.isArray(payload?.artifacts) ? payload.artifacts : [];
-      if (!artifacts.length) {
-        const li = document.createElement('li');
-        li.textContent = 'No artifacts linked.';
-        elements.subsystemArtifacts.appendChild(li);
-      } else {
-        artifacts.forEach((artifact) => {
-          const li = document.createElement('li');
-          const aprops = artifact?.properties || {};
-          li.textContent = aprops.path || aprops.title || artifact.id;
-          elements.subsystemArtifacts.appendChild(li);
-        });
-      }
-    }
-
-    if (elements.subsystemTable) {
-      elements.subsystemTable.innerHTML = '';
-      const related = Array.isArray(payload?.related?.nodes) ? payload.related.nodes : [];
-      if (!related.length) {
-        const row = document.createElement('tr');
-        const cell = document.createElement('td');
-        cell.colSpan = 4;
-        cell.textContent = 'No related nodes at this depth.';
-        row.appendChild(cell);
-        elements.subsystemTable.appendChild(row);
-      } else {
-        related.forEach((entry) => {
-          const row = document.createElement('tr');
-          const target = entry?.target || {};
-          const tprops = target.properties || {};
-          const nodeCell = document.createElement('td');
-          nodeCell.textContent = tprops.name || tprops.title || target.id;
-          row.appendChild(nodeCell);
-
-          const relCell = document.createElement('td');
-          relCell.textContent = entry?.relationship || '—';
-          row.appendChild(relCell);
-
-          const dirCell = document.createElement('td');
-          dirCell.textContent = entry?.direction || 'OUT';
-          row.appendChild(dirCell);
-
-          const hopsCell = document.createElement('td');
-          hopsCell.textContent = String(entry?.hops ?? '—');
-          row.appendChild(hopsCell);
-
-          elements.subsystemTable.appendChild(row);
-        });
-      }
-    }
-
-    if (elements.subsystemError) {
-      elements.subsystemError.hidden = true;
-      elements.subsystemError.textContent = '';
-    }
-    elements.subsystemPanel.hidden = false;
+  async function handleSubsystemException(error) {
+    console.error('Subsystem request failed', error);
+    updateSubsystemStatus(t('subsystem_error_generic'));
+    await recordUiEvent('subsystem_error', { error: String(error) });
   }
 
   function computeLifecycleCounts(payload) {
@@ -684,61 +719,20 @@
   }
 
   async function loadLifecycle() {
-    if (!lifecycleEnabled) {
-      updateLifecycleStatus(t('lifecycle_disabled'));
-      return;
-    }
-    if (!hasMaintainer()) {
-      if (hasReader()) {
-        updateLifecycleStatus(t('lifecycle_reader_warning'));
-      } else {
-        updateLifecycleStatus(t('lifecycle_need_token'));
-      }
+    if (!validateLifecycleAccess()) {
       return;
     }
 
-    updateLifecycleStatus(t('lifecycle_loading'));
-    if (elements.lifecycleSummary) {
-      elements.lifecycleSummary.hidden = true;
-    }
-    if (elements.lifecyclePanels) {
-      elements.lifecyclePanels.hidden = true;
-    }
+    prepareLifecycleUi();
 
     try {
       const response = await fetch('/lifecycle', {
         headers: authHeader('maintainer')
       });
-      const requestId = response.headers.get('x-request-id');
-      if (requestId && elements.requestId) {
-        elements.requestId.textContent = requestId;
-      }
 
-      if (!response.ok) {
-        let message = t('lifecycle_error_generic');
-        if (response.status === 401 || response.status === 403) {
-          message = t('lifecycle_error_auth');
-        } else {
-          const detail = await response.json().catch(() => ({}));
-          if (detail?.detail) {
-            message = detail.detail;
-          }
-        }
-        updateLifecycleStatus(message);
-        await recordUiEvent('lifecycle_error', { status: response.status, message });
-        return;
-      }
-
-      const payload = await response.json();
-      renderLifecycle(payload);
-      await loadLifecycleHistory();
-      lifecycleLoaded = true;
-      updateLifecycleStatus(`${t('lifecycle_updated')} (${new Date().toLocaleTimeString()})`);
-      await recordUiEvent('lifecycle_success');
+      await processLifecycleResponse(response);
     } catch (error) {
-      console.error('Lifecycle request failed', error);
-      updateLifecycleStatus(t('lifecycle_error_generic'));
-      await recordUiEvent('lifecycle_error', { error: String(error) });
+      await handleLifecycleException(error);
     }
   }
 
@@ -763,12 +757,75 @@
     }
   }
 
+  function validateLifecycleAccess() {
+    if (!lifecycleEnabled) {
+      updateLifecycleStatus(t('lifecycle_disabled'));
+      return false;
+    }
+    if (!hasMaintainer()) {
+      updateLifecycleStatus(hasReader() ? t('lifecycle_reader_warning') : t('lifecycle_need_token'));
+      return false;
+    }
+    return true;
+  }
+
+  function prepareLifecycleUi() {
+    updateLifecycleStatus(t('lifecycle_loading'));
+    if (elements.lifecycleSummary) {
+      elements.lifecycleSummary.hidden = true;
+    }
+    if (elements.lifecyclePanels) {
+      elements.lifecyclePanels.hidden = true;
+    }
+  }
+
+  async function processLifecycleResponse(response) {
+    updateRequestIdFromResponse(response);
+    if (!response.ok) {
+      const message = await extractLifecycleError(response);
+      updateLifecycleStatus(message);
+      await recordUiEvent('lifecycle_error', { status: response.status, message });
+      return;
+    }
+
+    const payload = await response.json();
+    renderLifecycle(payload);
+    await loadLifecycleHistory();
+    updateLifecycleStatus(`${t('lifecycle_updated')} (${new Date().toLocaleTimeString()})`);
+    await recordUiEvent('lifecycle_success');
+  }
+
+  async function extractLifecycleError(response) {
+    if (response.status === 401 || response.status === 403) {
+      return t('lifecycle_error_auth');
+    }
+    const detail = await response.json().catch(() => ({}));
+    if (detail?.detail) {
+      return detail.detail;
+    }
+    return t('lifecycle_error_generic');
+  }
+
+  async function handleLifecycleException(error) {
+    console.error('Lifecycle request failed', error);
+    updateLifecycleStatus(t('lifecycle_error_generic'));
+    await recordUiEvent('lifecycle_error', { error: String(error) });
+  }
+
   function renderLifecycle(payload) {
     if (!elements.lifecycleRoot) {
       return;
     }
     const counts = computeLifecycleCounts(payload);
+    showLifecycleSummary(counts);
+    updateLifecycleGeneratedAt(payload);
+    renderLifecycleTables(payload);
+    if (elements.lifecyclePanels) {
+      elements.lifecyclePanels.hidden = false;
+    }
+  }
 
+  function showLifecycleSummary(counts) {
     if (elements.lifecycleSummary) {
       elements.lifecycleSummary.hidden = false;
     }
@@ -781,39 +838,23 @@
         refs.valueEl.textContent = new Intl.NumberFormat().format(value);
       }
     });
+  }
 
-    if (elements.lifecycleGenerated) {
-      const generated = payload?.generated_at || payload?.generated_at_iso || payload?.timestamp;
-      const formatted = formatTimestamp(generated);
-      if (formatted) {
-        elements.lifecycleGenerated.hidden = false;
-        elements.lifecycleGenerated.textContent = `Generated at ${formatted}`;
-      } else {
-        elements.lifecycleGenerated.hidden = true;
-      }
+  function updateLifecycleGeneratedAt(payload) {
+    if (!elements.lifecycleGenerated) {
+      return;
     }
+    const generated = payload?.generated_at || payload?.generated_at_iso || payload?.timestamp;
+    const formatted = formatTimestamp(generated);
+    if (formatted) {
+      elements.lifecycleGenerated.hidden = false;
+      elements.lifecycleGenerated.textContent = `Generated at ${formatted}`;
+    } else {
+      elements.lifecycleGenerated.hidden = true;
+    }
+  }
 
-    const renderListTable = (table, rows, renderer, columns) => {
-      if (!table) {
-        return;
-      }
-      table.innerHTML = '';
-      if (!rows.length) {
-        const row = document.createElement('tr');
-        const cell = document.createElement('td');
-        cell.colSpan = columns;
-        cell.textContent = 'No entries available.';
-        row.appendChild(cell);
-        table.appendChild(row);
-        return;
-      }
-      rows.forEach((rowData) => {
-        const row = document.createElement('tr');
-        renderer(row, rowData);
-        table.appendChild(row);
-      });
-    };
-
+  function renderLifecycleTables(payload) {
     const generatedAt = typeof payload?.generated_at === 'number' ? payload.generated_at : null;
     const staleDocs = Array.isArray(payload?.stale_docs) ? payload.stale_docs : [];
     renderListTable(elements.lifecycleStale, staleDocs, (row, doc) => {
@@ -827,16 +868,7 @@
       row.innerHTML = `<td>${path}</td><td>${subsystem}</td><td>${age}</td>`;
     }, 3);
 
-    const isolatedEntries = [];
-    const isolatedMap = payload?.isolated || {};
-    Object.entries(isolatedMap).forEach(([label, nodes]) => {
-      if (!Array.isArray(nodes)) {
-        return;
-      }
-      nodes.forEach((node) => {
-        isolatedEntries.push({ label, node });
-      });
-    });
+    const isolatedEntries = buildIsolatedEntries(payload?.isolated || {});
     renderListTable(elements.lifecycleIsolated, isolatedEntries, (row, entry) => {
       const props = entry?.node?.properties || {};
       const label = props.name || props.title || entry?.node?.id || 'Node';
@@ -867,10 +899,40 @@
       const removedAt = formatTimestamp(item?.removed_at || item?.timestamp || item?.recorded_at);
       row.innerHTML = `<td>${pathVal}</td><td>${removedAt || '—'}</td>`;
     }, 2);
+  }
 
-    if (elements.lifecyclePanels) {
-      elements.lifecyclePanels.hidden = false;
+  function renderListTable(table, rows, renderer, columns) {
+    if (!table) {
+      return;
     }
+    table.innerHTML = '';
+    if (!rows.length) {
+      const row = document.createElement('tr');
+      const cell = document.createElement('td');
+      cell.colSpan = columns;
+      cell.textContent = 'No entries available.';
+      row.appendChild(cell);
+      table.appendChild(row);
+      return;
+    }
+    rows.forEach((rowData) => {
+      const row = document.createElement('tr');
+      renderer(row, rowData);
+      table.appendChild(row);
+    });
+  }
+
+  function buildIsolatedEntries(isolatedMap) {
+    const entries = [];
+    Object.entries(isolatedMap).forEach(([label, nodes]) => {
+      if (!Array.isArray(nodes)) {
+        return;
+      }
+      nodes.forEach((node) => {
+        entries.push({ label, node });
+      });
+    });
+    return entries;
   }
 
   function renderLifecycleHistory(history) {
@@ -1093,7 +1155,6 @@
 
     if (elements.lifecycleRefresh) {
       elements.lifecycleRefresh.addEventListener('click', () => {
-        lifecycleLoaded = false;
         loadLifecycle();
       });
     }
