@@ -5,11 +5,13 @@ from .evaluation import EvaluationMetrics, evaluate_model
 from .exporter import ExportOptions, ExportStats, export_training_dataset
 from .feedback import SearchFeedbackStore
 from .maintenance import PruneOptions, PruneStats, RedactOptions, RedactStats, prune_feedback_log, redact_dataset
-from .service import SearchResponse, SearchResult, SearchService
+from .service import SearchOptions, SearchResponse, SearchResult, SearchService, SearchWeights
 
 __all__ = [
     "SearchService",
     "SearchResult",
+    "SearchOptions",
+    "SearchWeights",
     "SearchResponse",
     "SearchFeedbackStore",
     "DatasetLoadError",

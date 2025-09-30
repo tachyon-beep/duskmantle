@@ -7,7 +7,7 @@ import pytest
 from prometheus_client import REGISTRY
 
 from gateway.graph.service import GraphService
-from gateway.search.service import SearchService
+from gateway.search import SearchOptions, SearchService, SearchWeights
 from gateway.search.trainer import ModelArtifact
 
 
@@ -220,7 +220,7 @@ def test_search_hnsw_search_params(sample_points) -> None:
         qdrant_client=client,
         collection_name="collection",
         embedder=FakeEmbedder(),
-        hnsw_ef_search=256,
+        options=SearchOptions(hnsw_ef_search=256),
     )
 
     response = search_service.search(
@@ -264,7 +264,7 @@ def test_lexical_score_affects_ranking() -> None:
         qdrant_client=FakeQdrantClient(points),
         collection_name="collection",
         embedder=FakeEmbedder(),
-        lexical_weight=0.5,
+        weights=SearchWeights(lexical=0.5),
     )
 
     response = search_service.search(
@@ -780,7 +780,7 @@ def test_search_service_ml_model_reorders_results() -> None:
         qdrant_client=FakeQdrantClient(points),
         collection_name="collection",
         embedder=FakeEmbedder(),
-        scoring_mode="ml",
+        options=SearchOptions(scoring_mode="ml"),
         model_artifact=artifact,
     )
 

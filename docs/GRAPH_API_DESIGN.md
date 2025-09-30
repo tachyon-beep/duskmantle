@@ -378,8 +378,8 @@ When a migration must be reversed after deployment:
 
 ## 11. Validation Harness
 
-- An integration test (`tests/test_graph_validation.py`) exercises ingestion against a live Neo4j instance. It is marked with `@pytest.mark.neo4j` and skipped unless `NEO4J_TEST_URI` (and optional user/password/database env vars) are defined.
-- Run locally with:
+- An integration test (`tests/test_graph_validation.py`) exercises ingestion against a live Neo4j instance. It is marked with `@pytest.mark.neo4j` and assumes the packaged Neo4j is already running (inside the turnkey container this is automatic). When running the suite elsewhere, override the defaults by exporting `NEO4J_TEST_URI` (plus optional user/password/database env vars) to point at a live instance.
+- Run locally with a pinned instance by setting the environment variables explicitly:
 
   ```bash
   NEO4J_TEST_URI=bolt://localhost:7687 NEO4J_TEST_PASSWORD=yourpass pytest -m neo4j

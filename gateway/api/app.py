@@ -37,7 +37,7 @@ from gateway.observability import (
     configure_tracing,
 )
 from gateway.scheduler import IngestionScheduler
-from gateway.search import SearchService
+from gateway.search import SearchOptions, SearchService, SearchWeights
 from gateway.search.feedback import SearchFeedbackStore
 from gateway.search.trainer import ModelArtifact, load_artifact
 from gateway.ui import get_static_path
@@ -270,22 +270,28 @@ def create_app() -> FastAPI:
         weight_profile, resolved_weights = settings.resolved_search_weights()
         vector_weight = settings.search_vector_weight
         lexical_weight = settings.search_lexical_weight
+        search_weights = SearchWeights(
+            subsystem=resolved_weights["weight_subsystem"],
+            relationship=resolved_weights["weight_relationship"],
+            support=resolved_weights["weight_support"],
+            coverage_penalty=resolved_weights["weight_coverage_penalty"],
+            criticality=resolved_weights["weight_criticality"],
+            vector=vector_weight,
+            lexical=lexical_weight,
+        )
+        search_options = SearchOptions(
+            hnsw_ef_search=settings.search_hnsw_ef_search,
+            scoring_mode=settings.search_scoring_mode,
+            weight_profile=weight_profile,
+            slow_graph_warn_seconds=max(settings.search_warn_slow_graph_ms, 0) / 1000.0,
+        )
         return SearchService(
             qdrant_client=qclient,
             collection_name=settings.qdrant_collection,
             embedder=embedder,
-            vector_weight=vector_weight,
-            lexical_weight=lexical_weight,
-            hnsw_ef_search=settings.search_hnsw_ef_search,
-            weight_subsystem=resolved_weights["weight_subsystem"],
-            weight_relationship=resolved_weights["weight_relationship"],
-            weight_support=resolved_weights["weight_support"],
-            weight_coverage_penalty=resolved_weights["weight_coverage_penalty"],
-            weight_criticality=resolved_weights["weight_criticality"],
-            scoring_mode=settings.search_scoring_mode,
+            options=search_options,
+            weights=search_weights,
             model_artifact=getattr(request.app.state, "search_model_artifact", None),
-            weight_profile=weight_profile,
-            slow_graph_warn_seconds=max(settings.search_warn_slow_graph_ms, 0) / 1000.0,
         )
 
     app.state.graph_service_dependency = graph_service_dependency

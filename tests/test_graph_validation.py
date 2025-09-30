@@ -9,7 +9,7 @@ from gateway.graph.migrations.runner import MigrationRunner
 from gateway.graph.service import get_graph_service
 from gateway.ingest.neo4j_writer import Neo4jWriter
 from gateway.ingest.pipeline import IngestionConfig, IngestionPipeline
-from gateway.search.service import SearchService
+from gateway.search import SearchService
 
 
 @pytest.mark.neo4j
