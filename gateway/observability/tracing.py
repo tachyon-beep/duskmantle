@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
 
 from fastapi import FastAPI
 from opentelemetry import trace
@@ -61,7 +60,7 @@ def _select_exporter(settings: AppSettings) -> SpanExporter:
     return ConsoleSpanExporter()
 
 
-def _parse_headers(header_string: str | None) -> Mapping[str, str] | None:
+def _parse_headers(header_string: str | None) -> dict[str, str] | None:
     if not header_string:
         return None
 

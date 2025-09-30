@@ -5,14 +5,18 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
-from pydantic import AnyHttpUrl, Field
+from pydantic import Field
 from pydantic_settings import BaseSettings
 
 
 class MCPSettings(BaseSettings):
     """Settings controlling the MCP server runtime."""
 
-    gateway_url: AnyHttpUrl = Field("http://localhost:8000", alias="KM_GATEWAY_URL", description="Base URL of the gateway API")
+    gateway_url: str = Field(
+        "http://localhost:8000",
+        alias="KM_GATEWAY_URL",
+        description="Base URL of the gateway API",
+    )
     reader_token: str | None = Field(
         default=None,
         alias="KM_READER_TOKEN",

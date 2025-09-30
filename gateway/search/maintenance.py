@@ -95,8 +95,8 @@ def prune_feedback_log(events_path: Path, *, options: PruneOptions) -> PruneStat
     tmp_path = destination.with_suffix(".tmp")
     with tmp_path.open("w", encoding="utf-8") as handle:
         for rid in retained_order:
-            entries: list[dict[str, object]] = events_by_request[rid]
-            for entry in entries:
+            request_entries: list[dict[str, object]] = events_by_request[rid]
+            for entry in request_entries:
                 handle.write(json.dumps(entry, separators=(",", ":"), ensure_ascii=False))
                 handle.write("\n")
     tmp_path.replace(destination)

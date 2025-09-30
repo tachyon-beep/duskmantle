@@ -30,27 +30,35 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def render_table(payload: dict[str, object]) -> None:
-    header = f"Lifecycle Report ({payload.get('generated_at_iso', '-')})"
+    generated = payload.get("generated_at_iso", "-")
+    header = f"Lifecycle Report ({generated})"
     console.print(f"[bold]{header}[/bold]")
 
-    isolated = payload.get("isolated") or {}
+    isolated_raw = payload.get("isolated")
+    isolated = isolated_raw if isinstance(isolated_raw, dict) else {}
     if isolated:
         table = Table(title="Isolated Graph Nodes", show_lines=False)
         table.add_column("Label")
         table.add_column("Entries", justify="right")
         for label, nodes in isolated.items():
-            table.add_row(label, str(len(nodes)))
+            if not isinstance(label, str):
+                continue
+            if isinstance(nodes, list):
+                table.add_row(label, str(len(nodes)))
         console.print(table)
     else:
         console.print("No isolated nodes detected.", style="green")
 
-    stale_docs = payload.get("stale_docs") or []
+    stale_docs_raw = payload.get("stale_docs")
+    stale_docs = stale_docs_raw if isinstance(stale_docs_raw, list) else []
     if stale_docs:
         table = Table(title="Stale Design Docs", show_lines=False)
         table.add_column("Path")
         table.add_column("Subsystem")
         table.add_column("Last Commit")
         for entry in stale_docs:
+            if not isinstance(entry, dict):
+                continue
             ts = entry.get("git_timestamp")
             ts_render = "-"
             if isinstance(ts, (int, float)) and ts > 0:
@@ -60,13 +68,16 @@ def render_table(payload: dict[str, object]) -> None:
     else:
         console.print("No stale design docs beyond threshold.", style="green")
 
-    missing_tests = payload.get("missing_tests") or []
+    missing_tests_raw = payload.get("missing_tests")
+    missing_tests = missing_tests_raw if isinstance(missing_tests_raw, list) else []
     if missing_tests:
         table = Table(title="Subsystems Missing Tests", show_lines=False)
         table.add_column("Subsystem")
         table.add_column("Source Files", justify="right")
         table.add_column("Test Cases", justify="right")
         for entry in missing_tests:
+            if not isinstance(entry, dict):
+                continue
             table.add_row(
                 str(entry.get("subsystem")),
                 str(entry.get("source_files", 0)),

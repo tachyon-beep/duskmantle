@@ -154,9 +154,12 @@ def _render_audit_table(entries: Iterable[dict[str, object]]) -> Table:
 
     for entry in entries:
         started = _format_timestamp(entry.get("started_at"))
-        duration = f"{float(entry.get('duration_seconds', 0.0)):.2f}"
-        artifact_count = str(int(entry.get("artifact_count", 0)))
-        chunk_count = str(int(entry.get("chunk_count", 0)))
+        duration_value = _coerce_float(entry.get("duration_seconds", 0.0))
+        duration = f"{duration_value:.2f}" if duration_value is not None else "0.00"
+        artifact_count_value = _coerce_int(entry.get("artifact_count", 0))
+        artifact_count = str(artifact_count_value if artifact_count_value is not None else 0)
+        chunk_count_value = _coerce_int(entry.get("chunk_count", 0))
+        chunk_count = str(chunk_count_value if chunk_count_value is not None else 0)
         success = "✅" if entry.get("success") else "❌"
         table.add_row(
             str(entry.get("run_id", "-")),
@@ -176,6 +179,31 @@ def _format_timestamp(raw: object) -> str:
     except (TypeError, ValueError):  # pragma: no cover - defensive guard
         return "-"
     return datetime.fromtimestamp(ts).isoformat(sep=" ", timespec="seconds")
+
+
+def _coerce_int(value: object) -> int | None:
+    if isinstance(value, (int, float)):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _coerce_float(value: object) -> float | None:
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            return float(text)
+        except ValueError:
+            return None
+    return None
 
 
 def main(argv: list[str] | None = None) -> None:

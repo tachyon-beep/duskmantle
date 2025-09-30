@@ -90,3 +90,17 @@ known-first-party = ["gateway"]
 
 [tool.pylint.FORMAT]
 max-line-length = 140
+
+[tool.mypy]
+python_version = "3.12"
+plugins = ["pydantic.mypy"]
+warn_return_any = true
+warn_unused_configs = true
+exclude = "^(tests/)"
+ignore_missing_imports = true
+
+
+[[tool.mypy.overrides]]
+module = ["gateway.*"]
+disallow_untyped_defs = true
+ignore_missing_imports = true

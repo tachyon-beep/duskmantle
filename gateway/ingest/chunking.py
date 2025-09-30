@@ -37,7 +37,7 @@ class Chunker:
             chunk_text = text[start:end]
             digest = hashlib.sha256(f"{artifact.path}:{idx}:{chunk_text}".encode()).hexdigest()
             chunk_id = f"{artifact.path.as_posix()}::{idx}"
-            metadata = {
+            metadata: dict[str, Any] = {
                 "path": artifact.path.as_posix(),
                 "artifact_type": artifact.artifact_type,
                 "subsystem": artifact.subsystem,

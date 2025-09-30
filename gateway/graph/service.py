@@ -7,7 +7,7 @@ from threading import Lock
 from time import monotonic
 from typing import Any
 
-from neo4j import Driver, Transaction
+from neo4j import Driver, ManagedTransaction
 from neo4j.graph import Node, Relationship
 
 
@@ -174,6 +174,7 @@ class GraphService:
             subsystem_node = session.execute_read(_fetch_subsystem_node, name)
             if subsystem_node is None:
                 raise GraphNotFoundError(f"Subsystem '{name}' not found")
+            subsystem_node = _ensure_node(subsystem_node)
 
             path_records = session.execute_read(
                 _fetch_subsystem_paths,
@@ -190,9 +191,26 @@ class GraphService:
         related_order: list[str] = []
 
         for record in path_records:
-            target_node: Node = record["node"]
-            path_nodes: list[Node] = record["nodes"]
-            relationships: list[Relationship] = record["relationships"]
+            target_node_obj = record["node"]
+            if not isinstance(target_node_obj, Node):
+                continue
+            path_nodes_raw = record["nodes"]
+            if not isinstance(path_nodes_raw, list):
+                continue
+            path_nodes: list[Node] = []
+            for node in path_nodes_raw:
+                if isinstance(node, Node):
+                    path_nodes.append(node)
+            if len(path_nodes) != len(path_nodes_raw):
+                continue
+            relationships_raw = record["relationships"]
+            if not isinstance(relationships_raw, list):
+                continue
+            relationships: list[Relationship] = [
+                rel for rel in relationships_raw if isinstance(rel, Relationship)
+            ]
+            if not relationships:
+                continue
             if not relationships:
                 continue
 
@@ -210,7 +228,8 @@ class GraphService:
                     nodes_by_id[target_id] = _serialize_node(target_step)
                 target_serialized_step = nodes_by_id[target_id]
 
-                if relationship.start_node.element_id == source_node.element_id:
+                start_element = _node_element_id(relationship.start_node)
+                if start_element == source_node.element_id:
                     direction = "OUT"
                 else:
                     direction = "IN"
@@ -235,9 +254,9 @@ class GraphService:
                     }
                 )
 
-            target_id = _canonical_node_id(target_node)
+            target_id = _canonical_node_id(target_node_obj)
             if target_id not in nodes_by_id:
-                nodes_by_id[target_id] = _serialize_node(target_node)
+                nodes_by_id[target_id] = _serialize_node(target_node_obj)
             target_serialized = nodes_by_id[target_id]
             entry = {
                 "target": target_serialized,
@@ -250,7 +269,7 @@ class GraphService:
                 related_entries.append(entry)
                 related_order.append(target_id)
 
-        artifacts = [_serialize_node(node) for node in artifact_records]
+        artifacts = [_serialize_node(_ensure_node(node)) for node in artifact_records]
 
         return SubsystemGraphSnapshot(
             subsystem=subsystem_serialized,
@@ -293,7 +312,7 @@ class GraphService:
             records = session.execute_read(_search_entities, lower_term, limit)
         results = [
             {
-                "id": _canonical_node_id(record["node"]),
+                "id": _canonical_node_id(_ensure_node(record["node"])),
                 "label": record["label"],
                 "score": record["score"],
                 "snippet": record.get("snippet"),
@@ -363,11 +382,18 @@ class GraphService:
         if summary and summary.result_available_after is not None:
             consumed_ms = summary.result_available_after
 
+        database_name = self.database
+        if summary is not None:
+            db_info = getattr(summary, "database", None)
+            db_name = getattr(db_info, "name", None)
+            if isinstance(db_name, str):
+                database_name = db_name
+
         return {
             "data": data,
             "summary": {
                 "resultConsumedAfterMs": consumed_ms,
-                "database": summary.database.name if summary and summary.database else self.database,
+                "database": database_name,
             },
         }
 
@@ -388,14 +414,15 @@ def get_graph_service(
 # --- Neo4j read helpers ----------------------------------------------------
 
 
-def _fetch_subsystem_node(tx: Transaction, name: str) -> Node | None:
+def _fetch_subsystem_node(tx: ManagedTransaction, /, name: str) -> Node | None:
     result = tx.run("MATCH (s:Subsystem {name: $name}) RETURN s LIMIT 1", name=name)
     record = result.single()
     return record["s"] if record else None
 
 
 def _fetch_subsystem_paths(
-    tx: Transaction,
+    tx: ManagedTransaction,
+    /,
     name: str,
     depth: int,
 ) -> list[dict[str, Any]]:
@@ -421,7 +448,7 @@ def _fetch_subsystem_paths(
     ]
 
 
-def _fetch_artifacts_for_subsystem(tx: Transaction, name: str) -> list[Node]:
+def _fetch_artifacts_for_subsystem(tx: ManagedTransaction, /, name: str) -> list[Node]:
     query = (
         "MATCH (artifact)-[rel]->(s:Subsystem {name: $name}) "
         "WHERE type(rel) IN ['BELONGS_TO', 'DESCRIBES', 'VALIDATES'] "
@@ -432,7 +459,8 @@ def _fetch_artifacts_for_subsystem(tx: Transaction, name: str) -> list[Node]:
 
 
 def _fetch_orphan_nodes(
-    tx: Transaction,
+    tx: ManagedTransaction,
+    /,
     label: str | None,
     skip: int,
     limit: int,
@@ -452,18 +480,19 @@ def _fetch_orphan_nodes(
         clauses.append("  AND $label IN labels(n)")
     clauses.append("RETURN n ORDER BY coalesce(n.name, n.title, n.path, elementId(n)) SKIP $skip LIMIT $limit")
     query = " ".join(clauses)
-    result = tx.run(query, **params)
+    result = tx.run(query, parameters=params)
     return [record["n"] for record in result]
 
 
-def _fetch_node_by_id(tx: Transaction, label: str, key: str, value: object) -> Node | None:
+def _fetch_node_by_id(tx: ManagedTransaction, /, label: str, key: str, value: object) -> Node | None:
     query = f"MATCH (n:{label} {{{key}: $value}}) RETURN n LIMIT 1"
     record = tx.run(query, value=value).single()
     return record["n"] if record else None
 
 
 def _fetch_node_relationships(
-    tx: Transaction,
+    tx: ManagedTransaction,
+    /,
     label: str,
     key: str,
     value: object,
@@ -476,11 +505,11 @@ def _fetch_node_relationships(
         query = f"MATCH (n:{label} {{{key}: $value}})-[rel]-(other) RETURN rel AS relationship, other AS node LIMIT $limit"
     else:  # outgoing
         query = f"MATCH (n:{label} {{{key}: $value}})-[rel]->(other) RETURN rel AS relationship, other AS node LIMIT $limit"
-    result = tx.run(query, value=value, limit=limit)
+    result = tx.run(query, parameters={"value": value, "limit": limit})
     return [{"relationship": record["relationship"], "node": record["node"]} for record in result]
 
 
-def _search_entities(tx: Transaction, term: str, limit: int) -> list[dict[str, Any]]:
+def _search_entities(tx: ManagedTransaction, /, term: str, limit: int) -> list[dict[str, Any]]:
     query = (
         "CALL {"
         "  MATCH (s:Subsystem)"
@@ -498,7 +527,7 @@ def _search_entities(tx: Transaction, term: str, limit: int) -> list[dict[str, A
         "RETURN node, label, score, snippet "
         "LIMIT $limit"
     )
-    result = tx.run(query, term=term, limit=limit)
+    result = tx.run(query, parameters={"term": term, "limit": limit})
     return [
         {
             "node": record["node"],
@@ -515,9 +544,11 @@ def _search_entities(tx: Transaction, term: str, limit: int) -> list[dict[str, A
 
 def _serialize_related(record: dict[str, Any], subsystem_node: Node) -> dict[str, Any]:
     relationship = record["relationship"]
-    node: Node = record["node"]
+    node = _ensure_node(record["node"])
     if isinstance(relationship, Relationship):
-        direction = "OUT" if relationship.start_node.element_id == subsystem_node.element_id else "IN"
+        start_element = _node_element_id(relationship.start_node)
+        subsystem_element = subsystem_node.element_id
+        direction = "OUT" if start_element == subsystem_element else "IN"
         rel_type = relationship.type
     else:  # tolerate legacy tuple/dict encodings emitted by Neo4j drivers
         direction = "OUT"
@@ -539,11 +570,14 @@ def _serialize_node(node: Node) -> dict[str, Any]:
 
 def _serialize_relationship(record: dict[str, Any]) -> dict[str, Any]:
     relationship = record["relationship"]
-    node: Node = record["node"]
+    node = _ensure_node(record["node"])
     if isinstance(relationship, Relationship):
-        if relationship.end_node.element_id == node.element_id:
+        end_element = _node_element_id(relationship.end_node)
+        start_element = _node_element_id(relationship.start_node)
+        node_element = node.element_id
+        if end_element == node_element:
             direction = "OUT"
-        elif relationship.start_node.element_id == node.element_id:
+        elif start_element == node_element:
             direction = "IN"
         else:  # pragma: no cover - fallback for undirected or unexpected shapes
             direction = "BOTH"
@@ -564,13 +598,25 @@ def _serialize_value(value: object) -> object:
     if isinstance(value, Relationship):
         return {
             "type": value.type,
-            "start": _canonical_node_id(value.start_node),
-            "end": _canonical_node_id(value.end_node),
+            "start": _canonical_node_id(_ensure_node(value.start_node)),
+            "end": _canonical_node_id(_ensure_node(value.end_node)),
             "properties": dict(value),
         }
     if isinstance(value, list):
         return [_serialize_value(item) for item in value]
     return value
+
+
+def _ensure_node(value: object) -> Node:
+    if not isinstance(value, Node):
+        raise GraphServiceError("Expected Neo4j node from query result")
+    return value
+
+
+def _node_element_id(node: Node | None) -> str:
+    if node is None:
+        raise GraphServiceError("Neo4j relationship missing node reference")
+    return node.element_id
 
 
 def _canonical_node_id(node: Node) -> str:

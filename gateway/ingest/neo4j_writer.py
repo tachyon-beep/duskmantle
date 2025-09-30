@@ -40,7 +40,7 @@ class Neo4jWriter:
         dependencies = _extract_dependencies(subsystem_meta)
 
         with self.driver.session(database=self.database) as session:
-            params = {
+            params: dict[str, object] = {
                 "path": artifact.path.as_posix(),
                 "artifact_type": artifact.artifact_type,
                 "git_commit": artifact.git_commit,
@@ -53,7 +53,7 @@ class Neo4jWriter:
                 "    node.git_commit = $git_commit, "
                 "    node.git_timestamp = $git_timestamp, "
                 "    node.subsystem = $subsystem",
-                **params,
+                parameters=params,
             )
 
             if artifact.subsystem:
@@ -132,7 +132,7 @@ class Neo4jWriter:
                     "WITH c\n"
                     f"MATCH (f:{label} {{path: $path}})\n"
                     "MERGE (f)-[:HAS_CHUNK]->(c)",
-                    **params,
+                    parameters=params,
                 )
 
     def delete_artifact(self, path: str) -> None:
@@ -178,7 +178,7 @@ def _relationship_for_label(label: str) -> str | None:
     }.get(label)
 
 
-def _clean_string_list(values: Sequence[object] | None) -> list[str]:
+def _clean_string_list(values: object) -> list[str]:
     if values is None:
         return []
     if not isinstance(values, Sequence) or isinstance(values, (str, bytes, bytearray)):

@@ -19,7 +19,10 @@ class Embedder:
 
     @property
     def dimension(self) -> int:
-        return self._model.get_sentence_embedding_dimension()
+        dimension = self._model.get_sentence_embedding_dimension()
+        if dimension is None:  # pragma: no cover - defensive
+            raise RuntimeError("Embedding model did not report a dimension")
+        return int(dimension)
 
     def encode(self, texts: Iterable[str]) -> list[list[float]]:
         return [embedding.tolist() for embedding in self._model.encode(list(texts), convert_to_tensor=True)]

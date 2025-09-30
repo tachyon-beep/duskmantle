@@ -59,7 +59,7 @@ jobs:
 
       - name: Install dev extras inside container
         run: |
-          docker exec km-integration bash -lc '. /opt/knowledge/.venv/bin/activate && pip install -e /opt/knowledge/app[dev]'
+          docker exec km-integration bash -lc '. /opt/knowledge/.venv/bin/activate && pip install -e "/opt/knowledge/app[dev]"'
 
       - name: Run Neo4j integration tests inside container
         run: |

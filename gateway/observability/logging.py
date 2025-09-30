@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import logging
 import sys
-from collections.abc import MutableMapping
-from typing import Any
+from typing import Any, Dict
 
 from pythonjsonlogger import jsonlogger
 
@@ -15,9 +14,9 @@ class IngestAwareFormatter(jsonlogger.JsonFormatter):
 
     def add_fields(
         self,
-        log_record: MutableMapping[str, Any],
+        log_record: Dict[str, Any],
         record: logging.LogRecord,
-        message_dict: MutableMapping[str, Any],
+        message_dict: Dict[str, Any],
     ) -> None:
         super().add_fields(log_record, record, message_dict)
         log_record.setdefault("level", record.levelname)

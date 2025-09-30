@@ -14,7 +14,7 @@ def require_scope(scope: str) -> Callable[[HTTPAuthorizationCredentials | None],
     """Return a dependency enforcing the given scope."""
 
     async def dependency(
-        credentials: HTTPAuthorizationCredentials = Depends(_security),  # noqa: B008
+        credentials: HTTPAuthorizationCredentials | None = Depends(_security),  # noqa: B008
     ) -> None:
         settings = get_settings()
         if not settings.auth_enabled:

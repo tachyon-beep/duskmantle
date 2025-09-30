@@ -710,7 +710,7 @@ def _calculate_supporting_bonus(related_artifacts: Iterable[dict[str, Any]]) -> 
 
 def _calculate_coverage_info(chunk: dict[str, Any], weight_coverage_penalty: float) -> CoverageInfo:
     coverage_missing_flag = 1.0 if chunk.get("coverage_missing") else 0.0
-    coverage_ratio_raw = chunk.get("coverage_ratio")
+    coverage_ratio_raw: object = chunk.get("coverage_ratio")
     try:
         coverage_ratio = max(0.0, min(1.0, float(coverage_ratio_raw)))
     except (TypeError, ValueError):

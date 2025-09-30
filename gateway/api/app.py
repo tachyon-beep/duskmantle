@@ -693,7 +693,9 @@ def _parse_iso8601_to_utc(value: str) -> datetime | None:
     return parsed.astimezone(UTC)
 
 
-def _rate_limit_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:  # pragma: no cover - thin wrapper
+def _rate_limit_handler(request: Request, exc: Exception) -> JSONResponse:  # pragma: no cover - thin wrapper
+    if not isinstance(exc, RateLimitExceeded):
+        raise exc
     return JSONResponse(
         status_code=429,
         content={"detail": "Rate limit exceeded", "error": str(exc)},

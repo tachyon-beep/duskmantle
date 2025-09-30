@@ -8,7 +8,7 @@ import time
 import uuid
 from collections import deque
 from collections.abc import Sequence
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -147,7 +147,7 @@ class IngestionPipeline:
                 if self.qdrant_writer and not self.config.dry_run:
                     self.qdrant_writer.ensure_collection(embedder.dimension)
 
-                pending_batches = deque()
+                pending_batches: deque[tuple[Future[list[list[float]]], list[Chunk]]] = deque()
 
                 def _drain_one() -> None:
                     nonlocal total_chunk_count
@@ -165,23 +165,15 @@ class IngestionPipeline:
                             existing_entry = ledger_previous.get(path_text)
                             subsystem_criticality = artifact.extra_metadata.get("subsystem_criticality")
 
-                            chunk_count_existing = None
-                            coverage_ratio_existing = None
+                            chunk_count_existing: int | None = None
+                            coverage_ratio_existing: float | None = None
                             if self.config.incremental and existing_entry and existing_entry.get("digest") == artifact_digest:
                                 existing_chunk_count_raw = existing_entry.get("chunk_count")
-                                try:
-                                    chunk_count_existing = int(existing_chunk_count_raw)
-                                except (TypeError, ValueError):
-                                    chunk_count_existing = None
+                                chunk_count_existing = _coerce_int(existing_chunk_count_raw)
                                 if chunk_count_existing is not None:
-                                    coverage_ratio_existing = existing_entry.get("coverage_ratio")
+                                    coverage_ratio_existing = _coerce_float(existing_entry.get("coverage_ratio"))
                                     if coverage_ratio_existing is None:
                                         coverage_ratio_existing = 1.0 if chunk_count_existing else 0.0
-                                    else:
-                                        try:
-                                            coverage_ratio_existing = float(coverage_ratio_existing)
-                                        except (TypeError, ValueError):
-                                            coverage_ratio_existing = 1.0 if chunk_count_existing else 0.0
                             if chunk_count_existing is not None:
                                 artifact_details.append(
                                     {
@@ -455,3 +447,28 @@ def _current_repo_head(repo_root: Path) -> str | None:
         )
     except Exception:
         return None
+
+
+def _coerce_int(value: object) -> int | None:
+    if isinstance(value, (int, float)):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _coerce_float(value: object) -> float | None:
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            return float(text)
+        except ValueError:
+            return None
+    return None

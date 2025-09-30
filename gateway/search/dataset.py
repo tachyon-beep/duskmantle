@@ -64,7 +64,8 @@ def build_feature_matrix(
         row_features: list[float] = []
         for name in feature_names:
             value = record.get(name)
-            row_features.append(_parse_float(value) or 0.0)
+            parsed = _parse_float(value)
+            row_features.append(parsed if parsed is not None else 0.0)
         features.append(row_features)
         targets.append(vote)
         request_ids.append(str(record.get("request_id")))
@@ -75,14 +76,19 @@ def build_feature_matrix(
 
 
 def _parse_float(value: object) -> float | None:
-    if value is None or value == "":
+    if value is None:
         return None
     if isinstance(value, (int, float)):
         return float(value)
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            return float(text)
+        except ValueError:
+            return None
+    return None
 
 
 __all__ = [

@@ -80,7 +80,7 @@ jobs:
             -e KM_NEO4J_PASSWORD=${NEO4J_TEST_PASSWORD} \
             duskmantle/km:${{ github.ref_name }}
           trap 'docker rm -f km-gateway-ci >/dev/null 2>&1 || true' EXIT
-          docker exec km-gateway-ci bash -lc '. /opt/knowledge/.venv/bin/activate && pip install -e /opt/knowledge/app[dev]'
+          docker exec km-gateway-ci bash -lc '. /opt/knowledge/.venv/bin/activate && pip install -e "/opt/knowledge/app[dev]"'
           docker exec -e NEO4J_TEST_URI="${NEO4J_TEST_URI}" km-gateway-ci bash -lc '. /opt/knowledge/.venv/bin/activate && python - <<'"'"'PY'"'"'
 import os
 import time

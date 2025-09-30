@@ -154,10 +154,8 @@ def _find_stale_docs(artifacts: Iterable[dict[str, Any]], stale_days: int, now: 
     for artifact in artifacts:
         if artifact.get("artifact_type") != "DesignDoc":
             continue
-        timestamp = artifact.get("git_timestamp")
-        try:
-            ts = float(timestamp)
-        except (TypeError, ValueError):
+        ts = _coerce_float(artifact.get("git_timestamp"))
+        if ts is None:
             continue
         if ts > 0 and ts < cutoff:
             stale.append(
@@ -208,6 +206,13 @@ def _write_history_snapshot(payload: dict[str, Any], reports_dir: Path, history_
         with suppress(FileNotFoundError):
             old_path.unlink()
     return sorted(history_dir.glob("lifecycle_*.json"), key=lambda path: path.stat().st_mtime)
+
+
+def _coerce_float(value: object) -> float | None:
+    try:
+        return float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
 
 
 def _lifecycle_counts(

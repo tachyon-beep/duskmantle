@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from functools import lru_cache
@@ -154,6 +154,9 @@ TOOL_USAGE = {
 HELP_DOC_PATH = Path(__file__).resolve().parents[2] / "docs" / "MCP_INTERFACE_SPEC.md"
 
 
+LifespanCallable = Callable[[FastMCP], AsyncIterator["MCPServerState"]]
+
+
 class MCPServerState:
     """Holds shared state for the MCP server lifespan."""
 
@@ -166,7 +169,7 @@ class MCPServerState:
             raise RuntimeError("Gateway client is not initialised")
         return self.client
 
-    def lifespan(self) -> AsyncIterator[MCPServerState]:
+    def lifespan(self) -> LifespanCallable:
         @asynccontextmanager
         async def _lifespan(_server: FastMCP) -> AsyncIterator[MCPServerState]:
             async with GatewayClient(self.settings) as client:
@@ -196,7 +199,7 @@ def build_server(settings: MCPSettings | None = None) -> FastMCP:
         instructions=instructions,
         lifespan=state.lifespan(),
     )
-    server._duskmantle_state = state
+    setattr(server, "_duskmantle_state", state)
     _initialise_metric_labels()
 
     @server.tool(name="km-help", description="Return usage notes for Duskmantle MCP tools")

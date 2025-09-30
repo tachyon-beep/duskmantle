@@ -180,7 +180,7 @@ class AppSettings(BaseSettings):
         base = dict(SEARCH_WEIGHT_PROFILES.get(profile, SEARCH_WEIGHT_PROFILES["default"]))
 
         overrides: dict[str, float] = {}
-        fields_set = getattr(self, "model_fields_set", set())
+        fields_set: set[str] = getattr(self, "model_fields_set", set())
 
         if "search_weight_subsystem" in fields_set:
             overrides["weight_subsystem"] = self.search_weight_subsystem

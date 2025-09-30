@@ -7,9 +7,9 @@ from collections.abc import Mapping
 from contextlib import suppress
 from pathlib import Path
 
-from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.triggers.cron import CronTrigger
-from apscheduler.triggers.interval import IntervalTrigger
+from apscheduler.schedulers.background import BackgroundScheduler  # type: ignore[import-untyped]
+from apscheduler.triggers.cron import CronTrigger  # type: ignore[import-untyped]
+from apscheduler.triggers.interval import IntervalTrigger  # type: ignore[import-untyped]
 from filelock import FileLock, Timeout
 
 from gateway.config.settings import AppSettings
@@ -144,8 +144,8 @@ def _build_trigger(config: Mapping[str, object]) -> CronTrigger | IntervalTrigge
             raise ValueError("scheduler_cron expression cannot be empty when provided")
         return CronTrigger.from_crontab(expression, timezone="UTC")
     if trigger_type == "interval":
-        minutes = int(config.get("minutes", 1))
-        minutes = max(1, minutes)
+        raw_minutes = config.get("minutes", 1)
+        minutes = _coerce_positive_int(raw_minutes, default=1)
         return IntervalTrigger(minutes=minutes)
     raise ValueError(f"Unsupported scheduler trigger type: {trigger_type}")
 
@@ -156,3 +156,13 @@ def _describe_trigger(config: Mapping[str, object]) -> str:
     if config.get("type") == "interval":
         return f"interval:{config.get('minutes')}m"
     return "unknown"
+
+
+def _coerce_positive_int(value: object, *, default: int) -> int:
+    try:
+        numeric = int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        numeric = default
+    if numeric < 1:
+        return max(1, default)
+    return numeric
