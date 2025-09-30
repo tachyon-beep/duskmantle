@@ -33,8 +33,8 @@ _TEXTUAL_SUFFIXES = {
     ".sql",
 }
 
-_MESSAGE_PATTERN = re.compile(r"[A-Z][A-Za-z0-9_]*Message")
-_TELEMETRY_PATTERN = re.compile(r"Telemetry[A-Za-z0-9_]+")
+_MESSAGE_PATTERN = re.compile(r"[A-Z]\w*Message")
+_TELEMETRY_PATTERN = re.compile(r"Telemetry\w+")
 
 
 @dataclass(slots=True)
