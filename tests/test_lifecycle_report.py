@@ -74,11 +74,13 @@ def ingestion_result() -> IngestionResult:
         success=True,
         artifacts=artifacts,
     )
-    result.removed_artifacts.append({
-        "path": "docs/removed.md",
-        "status": "deleted",
-        "timestamp": now,
-    })
+    result.removed_artifacts.append(
+        {
+            "path": "docs/removed.md",
+            "status": "deleted",
+            "timestamp": now,
+        }
+    )
     return result
 
 
@@ -105,14 +107,14 @@ def test_write_lifecycle_report_without_graph(tmp_path: Path, ingestion_result: 
     assert summary["removed_artifacts"] == 1
 
     history_dir = output_path.parent / "lifecycle_history"
-    snapshots = list(history_dir.glob('lifecycle_*.json'))
+    snapshots = list(history_dir.glob("lifecycle_*.json"))
     assert len(snapshots) == 1
 
     profile_labels = {"profile": "local"}
-    assert REGISTRY.get_sample_value('km_lifecycle_last_run_status', profile_labels) == 1.0
-    assert REGISTRY.get_sample_value('km_lifecycle_stale_docs_total', profile_labels) == 1.0
-    assert REGISTRY.get_sample_value('km_lifecycle_removed_artifacts_total', profile_labels) == 1.0
-    assert REGISTRY.get_sample_value('km_lifecycle_history_snapshots', profile_labels) == 1.0
+    assert REGISTRY.get_sample_value("km_lifecycle_last_run_status", profile_labels) == 1.0
+    assert REGISTRY.get_sample_value("km_lifecycle_stale_docs_total", profile_labels) == 1.0
+    assert REGISTRY.get_sample_value("km_lifecycle_removed_artifacts_total", profile_labels) == 1.0
+    assert REGISTRY.get_sample_value("km_lifecycle_history_snapshots", profile_labels) == 1.0
 
 
 def test_write_lifecycle_report_with_graph(tmp_path: Path, ingestion_result: IngestionResult) -> None:

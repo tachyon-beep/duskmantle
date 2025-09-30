@@ -7,7 +7,6 @@ from typing import Literal
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
 
-
 SEARCH_WEIGHT_PROFILES: dict[str, dict[str, float]] = {
     "default": {
         "weight_subsystem": 0.28,

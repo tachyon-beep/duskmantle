@@ -5,8 +5,8 @@ import math
 from pathlib import Path
 
 from gateway.search.cli import evaluate_trained_model
-from gateway.search.evaluation import evaluate_model
 from gateway.search.dataset import DatasetLoadError
+from gateway.search.evaluation import evaluate_model
 
 
 def test_evaluate_model(tmp_path):

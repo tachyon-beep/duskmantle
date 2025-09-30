@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
-from gateway.search.service import SearchResult, SearchResponse
+from gateway.search.service import SearchResponse, SearchResult
 
 
 class SearchFeedbackStore:

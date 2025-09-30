@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Iterable, Any
+from typing import Any, Iterable
 
 from neo4j import Driver
 
@@ -59,7 +59,7 @@ class Neo4jWriter:
             if artifact.subsystem:
                 subsystem_name = artifact.subsystem
                 session.run(
-                    "MERGE (s:Subsystem {name: $name})\n" "SET s += $properties",
+                    "MERGE (s:Subsystem {name: $name})\nSET s += $properties",
                     name=subsystem_name,
                     properties=subsystem_properties,
                 )
@@ -67,7 +67,7 @@ class Neo4jWriter:
                 rel = _relationship_for_label(label)
                 if rel:
                     session.run(
-                        f"MATCH (entity:{label} {{path: $path}})\n" "MATCH (s:Subsystem {name: $name})\n" f"MERGE (entity)-[:{rel}]->(s)",
+                        f"MATCH (entity:{label} {{path: $path}})\nMATCH (s:Subsystem {{name: $name}})\nMERGE (entity)-[:{rel}]->(s)",
                         name=subsystem_name,
                         path=artifact.path.as_posix(),
                     )

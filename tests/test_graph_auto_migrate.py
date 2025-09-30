@@ -6,10 +6,7 @@ import pytest
 from prometheus_client import REGISTRY
 
 from gateway.api.app import create_app
-from gateway.observability.metrics import (
-    GRAPH_MIGRATION_LAST_STATUS,
-    GRAPH_MIGRATION_LAST_TIMESTAMP,
-)
+from gateway.observability.metrics import GRAPH_MIGRATION_LAST_STATUS, GRAPH_MIGRATION_LAST_TIMESTAMP
 
 
 @pytest.fixture(autouse=True)

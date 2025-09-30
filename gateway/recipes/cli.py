@@ -13,13 +13,7 @@ from rich.table import Table
 
 from gateway.mcp.config import MCPSettings
 
-from .executor import (
-    GatewayToolExecutor,
-    RecipeExecutionError,
-    RecipeRunner,
-    list_recipes,
-    load_recipe,
-)
+from .executor import GatewayToolExecutor, RecipeExecutionError, RecipeRunner, list_recipes, load_recipe
 from .models import Recipe
 
 logger = logging.getLogger(__name__)

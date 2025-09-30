@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import logging
 import subprocess
+import time
 from contextlib import suppress
 from pathlib import Path
-import time
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -13,11 +13,7 @@ from filelock import FileLock, Timeout
 
 from gateway.config.settings import AppSettings
 from gateway.ingest.service import execute_ingestion
-from gateway.observability.metrics import (
-    INGEST_SKIPS_TOTAL,
-    SCHEDULER_LAST_SUCCESS_TIMESTAMP,
-    SCHEDULER_RUNS_TOTAL,
-)
+from gateway.observability.metrics import INGEST_SKIPS_TOTAL, SCHEDULER_LAST_SUCCESS_TIMESTAMP, SCHEDULER_RUNS_TOTAL
 
 logger = logging.getLogger(__name__)
 

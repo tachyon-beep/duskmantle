@@ -1,22 +1,19 @@
 from __future__ import annotations
 
-from pathlib import Path
 import os
+from pathlib import Path
 from typing import Any
 
-from neo4j import GraphDatabase
-
-from gateway.graph.migrations.runner import MigrationRunner
-from gateway.ingest.neo4j_writer import Neo4jWriter
-from gateway.ingest.pipeline import IngestionConfig, IngestionPipeline
-
 import pytest
-
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from neo4j import GraphDatabase
 
 from gateway.api.app import create_app
 from gateway.graph import GraphNotFoundError
+from gateway.graph.migrations.runner import MigrationRunner
+from gateway.ingest.neo4j_writer import Neo4jWriter
+from gateway.ingest.pipeline import IngestionConfig, IngestionPipeline
 
 
 class DummyGraphService:

@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from pathlib import Path
 import runpy
 import sys
+from pathlib import Path
 
 from prometheus_client import REGISTRY
-
 
 module = runpy.run_path("bin/km-watch", run_name="km_watch")
 

@@ -5,7 +5,6 @@ from types import SimpleNamespace
 
 import pytest
 
-
 warnings.filterwarnings(
     "ignore",
     message=r"Relying on Driver's destructor to close the session is deprecated",

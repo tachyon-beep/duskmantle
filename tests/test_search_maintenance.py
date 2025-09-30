@@ -4,12 +4,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from gateway.search.maintenance import (
-    PruneOptions,
-    RedactOptions,
-    prune_feedback_log,
-    redact_dataset,
-)
+from gateway.search.maintenance import PruneOptions, RedactOptions, prune_feedback_log, redact_dataset
 
 
 def _write_events(path: Path, requests: list[tuple[str, datetime, list[dict[str, object]]]]) -> None:
@@ -57,8 +52,7 @@ def test_prune_feedback_log_by_age(tmp_path):
 def test_redact_dataset_csv(tmp_path):
     dataset = tmp_path / "dataset.csv"
     dataset.write_text(
-        "request_id,query,context_json,feedback_note\n"
-        "req-1,search term,{\"task\":\"deep dive\"},useful\n",
+        'request_id,query,context_json,feedback_note\nreq-1,search term,{"task":"deep dive"},useful\n',
         encoding="utf-8",
     )
 

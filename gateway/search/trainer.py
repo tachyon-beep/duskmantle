@@ -9,11 +9,7 @@ from typing import List, Sequence
 
 import numpy as np
 
-from gateway.search.dataset import (
-    DatasetLoadError,
-    build_feature_matrix,
-    load_dataset_records,
-)
+from gateway.search.dataset import DatasetLoadError, build_feature_matrix, load_dataset_records
 
 FEATURE_FIELDS: Sequence[str] = (
     "vector_score",

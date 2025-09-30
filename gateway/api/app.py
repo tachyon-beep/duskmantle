@@ -4,32 +4,28 @@ import json
 import logging
 import sqlite3
 import time
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from contextlib import asynccontextmanager, suppress
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
+from uuid import uuid4
 
 from fastapi import Body, Depends, FastAPI, HTTPException, Request, Response
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+from neo4j import GraphDatabase
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+from qdrant_client import QdrantClient
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from slowapi.util import get_remote_address
 
-from neo4j import GraphDatabase
-
-from qdrant_client import QdrantClient
-
 from gateway import get_version
 from gateway.api.auth import require_maintainer, require_reader
 from gateway.config.settings import AppSettings, get_settings
-from gateway.graph import (
-    GraphNotFoundError,
-    GraphQueryError,
-    GraphService,
-    get_graph_service,
-)
+from gateway.graph import GraphNotFoundError, GraphQueryError, GraphService, get_graph_service
 from gateway.graph.migrations import MigrationRunner
 from gateway.ingest.embedding import Embedder
 from gateway.ingest.lifecycle import summarize_lifecycle
@@ -40,15 +36,12 @@ from gateway.observability import (
     configure_logging,
     configure_tracing,
 )
+from gateway.scheduler import IngestionScheduler
 from gateway.search import SearchService
 from gateway.search.feedback import SearchFeedbackStore
 from gateway.search.trainer import ModelArtifact, load_artifact
-from gateway.scheduler import IngestionScheduler
-from gateway.ui import get_static_path, router as ui_router
-
-from typing import Any, Mapping
-from uuid import uuid4
-
+from gateway.ui import get_static_path
+from gateway.ui import router as ui_router
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +89,7 @@ def create_app() -> FastAPI:
     )
 
     @asynccontextmanager
-    async def lifespan(app: FastAPI):
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         scheduler = IngestionScheduler(settings)
         scheduler.start()
         app.state.scheduler = scheduler
@@ -121,7 +114,10 @@ def create_app() -> FastAPI:
     app.include_router(ui_router)
 
     @app.middleware("http")
-    async def request_id_middleware(request: Request, call_next):
+    async def request_id_middleware(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
         incoming = request.headers.get("x-request-id")
         request_id = incoming or str(uuid4())
         request.state.request_id = request_id
@@ -365,8 +361,8 @@ def create_app() -> FastAPI:
     @limiter.limit(metrics_limit)
     def search_endpoint(
         request: Request,
-        payload: dict[str, Any] = Body(...),
-        search_service: SearchService | None = Depends(search_service_dependency),
+        payload: dict[str, Any] = Body(...),  # noqa: B008
+        search_service: SearchService | None = Depends(search_service_dependency),  # noqa: B008
     ) -> JSONResponse:
         if search_service is None:
             raise HTTPException(status_code=503, detail="Search service unavailable")
@@ -379,7 +375,7 @@ def create_app() -> FastAPI:
         try:
             limit = int(limit_value)
         except (TypeError, ValueError):
-            raise HTTPException(status_code=422, detail="Field 'limit' must be an integer")
+            raise HTTPException(status_code=422, detail="Field 'limit' must be an integer") from None
         include_graph = bool(payload.get("include_graph", True))
 
         filters_payload = payload.get("filters")
@@ -442,7 +438,7 @@ def create_app() -> FastAPI:
                 try:
                     max_age_value = int(max_age_days)
                 except (TypeError, ValueError):
-                    raise HTTPException(status_code=422, detail="filters.max_age_days must be a positive integer")
+                    raise HTTPException(status_code=422, detail="filters.max_age_days must be a positive integer") from None
                 if max_age_value <= 0:
                     raise HTTPException(status_code=422, detail="filters.max_age_days must be a positive integer")
                 filters_resolved["max_age_days"] = max_age_value
@@ -497,7 +493,7 @@ def create_app() -> FastAPI:
             serialisable_filters: dict[str, Any] = {}
             for key, value in filters_resolved.items():
                 if isinstance(value, datetime):
-                    serialisable_filters[key] = value.astimezone(timezone.utc).isoformat()
+                    serialisable_filters[key] = value.astimezone(UTC).isoformat()
                 elif isinstance(value, list):
                     serialisable_filters[key] = value
                 else:
@@ -563,7 +559,7 @@ def create_app() -> FastAPI:
         include_artifacts: bool = True,
         cursor: str | None = None,
         limit: int = 25,
-        service: GraphService = Depends(graph_service_dependency),
+        service: GraphService = Depends(graph_service_dependency),  # noqa: B008
     ) -> JSONResponse:
         limit = max(1, min(limit, 100))
         try:
@@ -586,7 +582,7 @@ def create_app() -> FastAPI:
         name: str,
         request: Request,  # noqa: ARG001
         depth: int = 2,
-        service: GraphService = Depends(graph_service_dependency),
+        service: GraphService = Depends(graph_service_dependency),  # noqa: B008
     ) -> JSONResponse:
         depth = max(1, depth)
         try:
@@ -608,7 +604,7 @@ def create_app() -> FastAPI:
         request: Request,  # noqa: ARG001
         relationships: str = "outgoing",
         limit: int = 50,
-        service: GraphService = Depends(graph_service_dependency),
+        service: GraphService = Depends(graph_service_dependency),  # noqa: B008
     ) -> JSONResponse:
         relationships_normalized = relationships.lower()
         if relationships_normalized not in {"outgoing", "incoming", "all", "none"}:
@@ -632,7 +628,7 @@ def create_app() -> FastAPI:
         request: Request,  # noqa: ARG001
         q: str,
         limit: int = 20,
-        service: GraphService = Depends(graph_service_dependency),
+        service: GraphService = Depends(graph_service_dependency),  # noqa: B008
     ) -> JSONResponse:
         limit = max(1, min(limit, 50))
         payload = service.search(q, limit=limit)
@@ -645,7 +641,7 @@ def create_app() -> FastAPI:
         label: str | None = None,
         cursor: str | None = None,
         limit: int = 50,
-        service: GraphService = Depends(graph_service_dependency),
+        service: GraphService = Depends(graph_service_dependency),  # noqa: B008
     ) -> JSONResponse:
         limit = max(1, min(limit, 200))
         try:
@@ -658,8 +654,8 @@ def create_app() -> FastAPI:
     @limiter.limit("30/minute")
     def graph_cypher(
         request: Request,  # noqa: ARG001
-        payload: dict[str, Any] = Body(...),
-        service: GraphService = Depends(graph_service_dependency),
+        payload: dict[str, Any] = Body(...),  # noqa: B008
+        service: GraphService = Depends(graph_service_dependency),  # noqa: B008
     ) -> JSONResponse:
         query = payload.get("query")
         if not isinstance(query, str) or not query.strip():
@@ -687,8 +683,8 @@ def _parse_iso8601_to_utc(value: str) -> datetime | None:
     except ValueError:
         return None
     if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 def _rate_limit_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:  # pragma: no cover - thin wrapper

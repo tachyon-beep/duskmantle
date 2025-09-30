@@ -52,9 +52,7 @@ async def handle_upload(
             use_dummy_embeddings=None,
         )
         if not ingest_run.get("success", False):
-            raise RuntimeError(
-                "Ingest run triggered by km-upload reported failure; check gateway logs for details"
-            )
+            raise RuntimeError("Ingest run triggered by km-upload reported failure; check gateway logs for details")
 
     stored_relative = result.destination.relative_to(root)
     return {

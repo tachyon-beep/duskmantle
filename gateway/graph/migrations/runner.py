@@ -51,9 +51,7 @@ class MigrationRunner:
 
     def run(self) -> None:
         with self.driver.session(database=self.database) as session:
-            session.run(
-                "CREATE CONSTRAINT IF NOT EXISTS FOR (m:MigrationHistory) REQUIRE m.id IS UNIQUE"
-            )
+            session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (m:MigrationHistory) REQUIRE m.id IS UNIQUE")
 
         for migration in MIGRATIONS:
             if self._is_applied(migration.id):
@@ -74,7 +72,6 @@ class MigrationRunner:
             for statement in migration.statements:
                 session.run(statement)
             session.run(
-                "MERGE (m:MigrationHistory {id: $id}) "
-                "SET m.applied_at = datetime()",
+                "MERGE (m:MigrationHistory {id: $id}) SET m.applied_at = datetime()",
                 id=migration.id,
             )

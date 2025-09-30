@@ -54,4 +54,3 @@ def test_write_text_document_requires_content(tmp_path: Path) -> None:
 def test_slugify_generates_fallback_when_empty() -> None:
     assert files.slugify("!!!", fallback="fallback") == "fallback"
     assert files.slugify("Project Brief") == "project-brief"
-

@@ -5,13 +5,13 @@ from datetime import datetime
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from prometheus_client import REGISTRY
 
 from gateway.api.app import create_app
 from gateway.ingest.coverage import write_coverage_report
-from gateway.ingest.pipeline import IngestionConfig, IngestionResult, IngestionPipeline
-from gateway.observability.metrics import COVERAGE_HISTORY_SNAPSHOTS
-from prometheus_client import REGISTRY
+from gateway.ingest.pipeline import IngestionConfig, IngestionPipeline, IngestionResult
 from gateway.observability.metrics import (
+    COVERAGE_HISTORY_SNAPSHOTS,
     COVERAGE_LAST_RUN_STATUS,
     COVERAGE_LAST_RUN_TIMESTAMP,
     COVERAGE_MISSING_ARTIFACTS,

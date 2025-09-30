@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from functools import lru_cache
@@ -9,18 +10,11 @@ from pathlib import Path
 from textwrap import dedent
 from time import perf_counter
 from typing import Any
-import json
 
 from fastmcp import Context, FastMCP
 
 from gateway import get_version
-from gateway.observability.metrics import (
-    MCP_FAILURES_TOTAL,
-    MCP_REQUEST_SECONDS,
-    MCP_REQUESTS_TOTAL,
-    MCP_STORETEXT_TOTAL,
-    MCP_UPLOAD_TOTAL,
-)
+from gateway.observability.metrics import MCP_FAILURES_TOTAL, MCP_REQUEST_SECONDS, MCP_REQUESTS_TOTAL, MCP_STORETEXT_TOTAL, MCP_UPLOAD_TOTAL
 
 from .backup import trigger_backup
 from .client import GatewayClient
@@ -30,7 +24,6 @@ from .feedback import record_feedback
 from .ingest import latest_ingest_status, trigger_ingest
 from .storetext import handle_storetext
 from .upload import handle_upload
-
 
 TOOL_USAGE = {
     "km-search": {
@@ -395,7 +388,10 @@ def build_server(settings: MCPSettings | None = None) -> FastMCP:
             message = "No ingest runs found" if profile is None else f"No ingest runs found for profile '{profile}'"
             await _report_info(context, message)
             return {"status": "not_found", "profile": profile}
-        await _report_info(context, f"Most recent ingest run {record.get('run_id')} succeeded" if record.get("success") else "Most recent ingest run failed")
+        await _report_info(
+            context,
+            f"Most recent ingest run {record.get('run_id')} succeeded" if record.get("success") else "Most recent ingest run failed",
+        )
         return {"status": "ok", "run": record}
 
     @server.tool(name="km-ingest-trigger", description=TOOL_USAGE["km-ingest-trigger"]["description"])
@@ -583,6 +579,7 @@ def _record_failure(tool: str, exc: Exception, start: float) -> None:
     MCP_FAILURES_TOTAL.labels(tool, exc.__class__.__name__).inc()
     MCP_REQUEST_SECONDS.labels(tool).observe(duration)
 
+
 def _clamp(value: int, *, minimum: int, maximum: int) -> int:
     return max(minimum, min(maximum, value))
 
@@ -622,9 +619,7 @@ def _resolve_usage(tool: str | None) -> dict[str, Any]:
 def _ensure_maintainer_scope(settings: MCPSettings) -> None:
     if settings.admin_token:
         return
-    raise PermissionError(
-        "Maintainer token (KM_ADMIN_TOKEN) must be configured to use this tool"
-    )
+    raise PermissionError("Maintainer token (KM_ADMIN_TOKEN) must be configured to use this tool")
 
 
 def _append_audit_entry(settings: MCPSettings, *, tool: str, payload: dict[str, Any]) -> None:

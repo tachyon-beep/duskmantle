@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 
 import pytest
-
 from neo4j import GraphDatabase
 
 from gateway.graph.migrations.runner import MigrationRunner
@@ -66,10 +65,7 @@ def test_ingestion_populates_graph(tmp_path: pytest.TempPathFactory) -> None:
             assert doc_record is not None
 
             constraints = session.run("SHOW CONSTRAINTS").data()
-            seen = {
-                (tuple(record.get("labelsOrTypes", [])), tuple(record.get("properties", [])))
-                for record in constraints
-            }
+            seen = {(tuple(record.get("labelsOrTypes", [])), tuple(record.get("properties", []))) for record in constraints}
             expected = {
                 (("Subsystem",), ("name",)),
                 (("SourceFile",), ("path",)),
@@ -93,10 +89,7 @@ def test_ingestion_populates_graph(tmp_path: pytest.TempPathFactory) -> None:
             assert code_record["s"]["name"] == "Telemetry"
 
             rel_counts = {
-                record["type"]: record["count"]
-                for record in session.run(
-                    "MATCH ()-[r]->() RETURN type(r) AS type, count(r) AS count"
-                )
+                record["type"]: record["count"] for record in session.run("MATCH ()-[r]->() RETURN type(r) AS type, count(r) AS count")
             }
             assert rel_counts.get("BELONGS_TO", 0) >= 1
             assert rel_counts.get("HAS_CHUNK", 0) >= 1
@@ -108,8 +101,7 @@ def test_ingestion_populates_graph(tmp_path: pytest.TempPathFactory) -> None:
                 limit=10,
             )
             assert any(
-                rel["type"] == "BELONGS_TO" and rel["target"]["properties"].get("name") == "Telemetry"
-                for rel in node_data["relationships"]
+                rel["type"] == "BELONGS_TO" and rel["target"]["properties"].get("name") == "Telemetry" for rel in node_data["relationships"]
             )
             subsystem_search = graph_service.search("telemetry", limit=5)
             assert any(result["label"] == "Subsystem" for result in subsystem_search["results"])

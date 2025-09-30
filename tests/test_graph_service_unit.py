@@ -6,11 +6,7 @@ from typing import Any, Iterable
 import pytest
 
 from gateway.graph import service as graph_service
-from gateway.graph.service import (
-    GraphNotFoundError,
-    GraphQueryError,
-    GraphService,
-)
+from gateway.graph.service import GraphNotFoundError, GraphQueryError, GraphService
 
 
 class DummyNode(dict):

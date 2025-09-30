@@ -11,8 +11,8 @@ RECIPES = Path("docs/MCP_RECIPES.md").read_text()
 @pytest.mark.parametrize(
     "snippet",
     [
-        "km-search {\"query\": \"ingest pipeline\", \"limit\": 2}",
-        "km-graph-node {\"node_id\": \"DesignDoc:docs/QUICK_START.md\"}",
+        'km-search {"query": "ingest pipeline", "limit": 2}',
+        'km-graph-node {"node_id": "DesignDoc:docs/QUICK_START.md"}',
         "km-coverage-summary {}",
     ],
 )

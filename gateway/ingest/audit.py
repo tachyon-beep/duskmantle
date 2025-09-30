@@ -72,5 +72,15 @@ class AuditLogger:
     def recent(self, limit: int = 20) -> list[dict[str, Any]]:
         with sqlite3.connect(self.db_path) as conn:
             rows = conn.execute(_SELECT_RECENT, (limit,)).fetchall()
-        columns = ["run_id", "profile", "started_at", "duration_seconds", "artifact_count", "chunk_count", "repo_head", "success", "created_at"]
+        columns = [
+            "run_id",
+            "profile",
+            "started_at",
+            "duration_seconds",
+            "artifact_count",
+            "chunk_count",
+            "repo_head",
+            "success",
+            "created_at",
+        ]
         return [dict(zip(columns, row)) for row in rows]

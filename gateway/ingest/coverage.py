@@ -3,9 +3,8 @@ from __future__ import annotations
 import json
 import time
 from contextlib import suppress
-from pathlib import Path
-
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Iterable
 
 from gateway.ingest.pipeline import IngestionConfig, IngestionResult
@@ -63,9 +62,7 @@ def write_coverage_report(
     COVERAGE_HISTORY_SNAPSHOTS.labels(profile).set(len(snapshots))
 
 
-def _write_history_snapshot(
-    payload: dict[str, object], reports_dir: Path, history_limit: int
-) -> list[Path]:
+def _write_history_snapshot(payload: dict[str, object], reports_dir: Path, history_limit: int) -> list[Path]:
     history_dir = reports_dir / "history"
     history_dir.mkdir(parents=True, exist_ok=True)
 

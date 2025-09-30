@@ -7,7 +7,7 @@ from typing import Any
 from fastapi.testclient import TestClient
 
 from gateway.api.app import create_app
-from gateway.search.service import SearchResult, SearchResponse
+from gateway.search.service import SearchResponse, SearchResult
 
 
 class DummySearchService:

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import argparse
-from datetime import datetime
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import Iterable
 
@@ -11,8 +11,8 @@ from rich.table import Table
 
 from gateway.config.settings import AppSettings, get_settings
 from gateway.ingest.audit import AuditLogger
-from gateway.observability import configure_logging, configure_tracing
 from gateway.ingest.service import execute_ingestion
+from gateway.observability import configure_logging, configure_tracing
 
 logger = logging.getLogger(__name__)
 console = Console()

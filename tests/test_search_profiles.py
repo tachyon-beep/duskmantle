@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from gateway.config.settings import AppSettings, SEARCH_WEIGHT_PROFILES
+from gateway.config.settings import SEARCH_WEIGHT_PROFILES, AppSettings
 
 
 @pytest.fixture(autouse=True)
@@ -41,6 +41,4 @@ def test_resolved_search_weights_overrides(monkeypatch: pytest.MonkeyPatch) -> N
     assert profile == "docs-heavy+overrides"
     assert weights["weight_support"] == pytest.approx(0.25)
     # Non-overridden weights fall back to the profile defaults
-    assert weights["weight_subsystem"] == pytest.approx(
-        SEARCH_WEIGHT_PROFILES["docs-heavy"]["weight_subsystem"]
-    )
+    assert weights["weight_subsystem"] == pytest.approx(SEARCH_WEIGHT_PROFILES["docs-heavy"]["weight_subsystem"])

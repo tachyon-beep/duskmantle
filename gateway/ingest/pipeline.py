@@ -7,10 +7,10 @@ import subprocess
 import time
 import uuid
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Sequence
-from concurrent.futures import ThreadPoolExecutor
 
 from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode

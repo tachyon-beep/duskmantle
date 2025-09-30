@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from pathlib import Path
 import json
-
 import logging
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -122,7 +121,7 @@ async def ui_lifecycle_report(request: Request) -> JSONResponse:
 async def ui_event(request: Request, payload: dict[str, object]) -> JSONResponse:
     """Record a UI event for observability purposes."""
 
-    event_name = str(payload.get("event") or '').strip().lower()
+    event_name = str(payload.get("event") or "").strip().lower()
     if not event_name:
         raise HTTPException(status_code=422, detail="Field 'event' is required")
     UI_EVENTS_TOTAL.labels(event=event_name).inc()

@@ -86,7 +86,7 @@ def test_lifecycle_history_endpoint(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     app = create_app()
     client = TestClient(app)
 
-    response = client.get('/lifecycle/history?limit=5')
+    response = client.get("/lifecycle/history?limit=5")
     assert response.status_code == 200
     payload = response.json()
     assert payload["history"]

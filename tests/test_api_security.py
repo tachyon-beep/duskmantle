@@ -8,10 +8,10 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from gateway.api.app import create_app
-from gateway.search.service import SearchResult, SearchResponse
-from gateway.config.settings import get_settings
 from gateway import get_version
+from gateway.api.app import create_app
+from gateway.config.settings import get_settings
+from gateway.search.service import SearchResponse, SearchResult
 
 
 @pytest.fixture(autouse=True)
@@ -107,7 +107,6 @@ def test_rate_limiting(monkeypatch: pytest.MonkeyPatch) -> None:
     resp = client.get("/metrics")
     assert resp.status_code == 429
     assert resp.json()["detail"] == "Rate limit exceeded"
-
 
 
 def test_startup_logs_configuration(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:

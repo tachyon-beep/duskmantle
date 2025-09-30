@@ -153,8 +153,7 @@ def _lookup_git_metadata(path: Path, repo_root: Path) -> tuple[str | None, int |
                 cwd=repo_root,
                 text=True,
                 stderr=subprocess.DEVNULL,
-            )
-            .strip()
+            ).strip()
             or None
         )
         timestamp_raw = (
@@ -163,8 +162,7 @@ def _lookup_git_metadata(path: Path, repo_root: Path) -> tuple[str | None, int |
                 cwd=repo_root,
                 text=True,
                 stderr=subprocess.DEVNULL,
-            )
-            .strip()
+            ).strip()
             or None
         )
         timestamp = int(timestamp_raw) if timestamp_raw else None
@@ -325,9 +323,7 @@ def _normalize_subsystem_name(value: str | None) -> str | None:
     return text
 
 
-def _match_catalog_entry(
-    path: Path, repo_root: Path, catalog: dict[str, dict[str, Any]]
-) -> dict[str, Any] | None:
+def _match_catalog_entry(path: Path, repo_root: Path, catalog: dict[str, dict[str, Any]]) -> dict[str, Any] | None:
     if not catalog:
         return None
     rel_posix = path.relative_to(repo_root).as_posix()

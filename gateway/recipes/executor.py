@@ -75,7 +75,9 @@ class ToolExecutor:
     async def __aenter__(self) -> ToolExecutor:  # pragma: no cover - interface
         return self
 
-    async def __aexit__(self, exc_type: type[BaseException] | None, exc: BaseException | None, tb: TracebackType | None) -> None:  # pragma: no cover - interface
+    async def __aexit__(
+        self, exc_type: type[BaseException] | None, exc: BaseException | None, tb: TracebackType | None
+    ) -> None:  # pragma: no cover - interface
         return None
 
 
@@ -394,9 +396,7 @@ class RecipeRunner:
                 return payload
             except RecipeExecutionError:
                 if time.time() >= deadline:
-                    raise RecipeExecutionError(
-                        f"Wait condition for tool '{wait.tool}' timed out after {attempt} attempts"
-                    ) from None
+                    raise RecipeExecutionError(f"Wait condition for tool '{wait.tool}' timed out after {attempt} attempts") from None
                 await asyncio.sleep(wait.interval_seconds)
 
     def _append_audit(self, result: RecipeRunResult, context: dict[str, object]) -> None:

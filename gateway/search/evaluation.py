@@ -36,9 +36,7 @@ def evaluate_model(dataset_path: Path, model_path: Path) -> EvaluationMetrics:
 
     coeffs = np.asarray(model.coefficients, dtype=float)
     if coeffs.shape[0] != X.shape[1]:
-        raise ValueError(
-            f"Model expects {coeffs.shape[0]} features but dataset provides {X.shape[1]}"
-        )
+        raise ValueError(f"Model expects {coeffs.shape[0]} features but dataset provides {X.shape[1]}")
     predictions = X @ coeffs + model.intercept
 
     mse = float(np.mean((predictions - y) ** 2))
@@ -92,8 +90,8 @@ def _spearman_correlation(y_true: np.ndarray, y_pred: np.ndarray) -> float | Non
     rank_true = np.argsort(np.argsort(y_true))
     rank_pred = np.argsort(np.argsort(y_pred))
     diff = rank_true - rank_pred
-    numerator = 6 * np.sum(diff ** 2)
-    denominator = y_true.size * (y_true.size ** 2 - 1)
+    numerator = 6 * np.sum(diff**2)
+    denominator = y_true.size * (y_true.size**2 - 1)
     if math.isclose(denominator, 0.0):
         return None
     return float(1 - numerator / denominator)

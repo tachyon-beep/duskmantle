@@ -104,9 +104,7 @@ def graph_response() -> dict[str, Any]:
                 },
             },
         ],
-        "related_artifacts": [
-            {"id": "DesignDoc:docs/design/core.md", "relationship": "DESCRIBES"}
-        ],
+        "related_artifacts": [{"id": "DesignDoc:docs/design/core.md", "relationship": "DESCRIBES"}],
     }
 
 
@@ -160,10 +158,7 @@ def test_search_service_handles_missing_graph(sample_points) -> None:
     assert response.results[0].graph_context is None
     assert response.metadata["graph_context_included"] is False
     scoring = response.results[0].scoring
-    base_component = (
-        scoring.get("weighted_vector_score", scoring.get("vector_score", 0.0))
-        + scoring.get("weighted_lexical_score", 0.0)
-    )
+    base_component = scoring.get("weighted_vector_score", scoring.get("vector_score", 0.0)) + scoring.get("weighted_lexical_score", 0.0)
     assert scoring["adjusted_score"] == pytest.approx(base_component)
     assert response.metadata["scoring_mode"] == "heuristic"
     assert response.metadata["weight_profile"] == "custom"
@@ -401,15 +396,9 @@ def test_search_service_caches_graph_lookups(sample_points, graph_response) -> N
         embedder=FakeEmbedder(),
     )
 
-    miss_before = _metric_value(
-        "km_search_graph_cache_events_total", {"status": "miss"}
-    )
-    hit_before = _metric_value(
-        "km_search_graph_cache_events_total", {"status": "hit"}
-    )
-    error_before = _metric_value(
-        "km_search_graph_cache_events_total", {"status": "error"}
-    )
+    miss_before = _metric_value("km_search_graph_cache_events_total", {"status": "miss"})
+    hit_before = _metric_value("km_search_graph_cache_events_total", {"status": "hit"})
+    error_before = _metric_value("km_search_graph_cache_events_total", {"status": "error"})
     lookup_count_before = _metric_value("km_search_graph_lookup_seconds_count")
     score_count_before = _metric_value("km_search_adjusted_minus_vector_count")
 
@@ -426,26 +415,11 @@ def test_search_service_caches_graph_lookups(sample_points, graph_response) -> N
     for result in response.results:
         assert result.scoring["signals"]["path_depth"] == pytest.approx(2.0)
 
-    assert (
-        _metric_value("km_search_graph_cache_events_total", {"status": "miss"})
-        - miss_before
-    ) == pytest.approx(1.0)
-    assert (
-        _metric_value("km_search_graph_cache_events_total", {"status": "hit"})
-        - hit_before
-    ) == pytest.approx(1.0)
-    assert (
-        _metric_value("km_search_graph_cache_events_total", {"status": "error"})
-        - error_before
-    ) == pytest.approx(0.0)
-    assert (
-        _metric_value("km_search_graph_lookup_seconds_count") - lookup_count_before
-    ) == pytest.approx(1.0)
-    assert (
-        _metric_value("km_search_adjusted_minus_vector_count") - score_count_before
-    ) == pytest.approx(len(response.results))
-
-
+    assert (_metric_value("km_search_graph_cache_events_total", {"status": "miss"}) - miss_before) == pytest.approx(1.0)
+    assert (_metric_value("km_search_graph_cache_events_total", {"status": "hit"}) - hit_before) == pytest.approx(1.0)
+    assert (_metric_value("km_search_graph_cache_events_total", {"status": "error"}) - error_before) == pytest.approx(0.0)
+    assert (_metric_value("km_search_graph_lookup_seconds_count") - lookup_count_before) == pytest.approx(1.0)
+    assert (_metric_value("km_search_adjusted_minus_vector_count") - score_count_before) == pytest.approx(len(response.results))
 
 
 def test_search_service_filters_artifact_types() -> None:
@@ -753,6 +727,7 @@ def test_search_service_filters_subsystem_via_graph(graph_response) -> None:
     assert len(response.results) == 1
     assert response.results[0].chunk["artifact_path"] == "src/module.py"
     assert response.metadata["filters_applied"]["subsystems"] == ["Telemetry"]
+
 
 def test_search_service_ml_model_reorders_results() -> None:
     points = [

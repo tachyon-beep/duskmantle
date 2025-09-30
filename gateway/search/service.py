@@ -1,23 +1,18 @@
 from __future__ import annotations
 
 import logging
-import time
 import re
-from datetime import datetime, timedelta, timezone
-
+import time
 from dataclasses import dataclass
-from typing import Any, Iterable, List, Set, Literal
+from datetime import datetime, timedelta, timezone
+from typing import Any, Iterable, List, Literal, Set
 
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import ScoredPoint, SearchParams
 
 from gateway.graph.service import GraphService, GraphServiceError
 from gateway.ingest.embedding import Embedder
-from gateway.observability import (
-    SEARCH_GRAPH_CACHE_EVENTS,
-    SEARCH_GRAPH_LOOKUP_SECONDS,
-    SEARCH_SCORE_DELTA,
-)
+from gateway.observability import SEARCH_GRAPH_CACHE_EVENTS, SEARCH_GRAPH_LOOKUP_SECONDS, SEARCH_SCORE_DELTA
 
 logger = logging.getLogger(__name__)
 
@@ -116,11 +111,7 @@ class SearchService:
     ) -> SearchResponse:
         limit = max(1, min(limit, self.max_limit))
         vector = self.embedder.encode([query])[0]
-        search_params = (
-            SearchParams(hnsw_ef=self.hnsw_ef_search)
-            if self.hnsw_ef_search is not None
-            else None
-        )
+        search_params = SearchParams(hnsw_ef=self.hnsw_ef_search) if self.hnsw_ef_search is not None else None
         try:
             hits: Iterable[ScoredPoint] = self.qdrant_client.search(
                 collection_name=self.collection_name,
@@ -238,20 +229,14 @@ class SearchService:
 
             payload_tags_raw = payload.get("tags") or []
             if isinstance(payload_tags_raw, (list, tuple)):
-                payload_tag_set = {
-                    str(tag).strip().lower()
-                    for tag in payload_tags_raw
-                    if str(tag).strip()
-                }
+                payload_tag_set = {str(tag).strip().lower() for tag in payload_tags_raw if str(tag).strip()}
             else:
                 payload_tag_set = set()
             if allowed_tags and not payload_tag_set.intersection(allowed_tags):
                 continue
 
             subsystem_value = (payload.get("subsystem") or "").lower()
-            subsystem_match = not allowed_subsystems or (
-                subsystem_value and subsystem_value in allowed_subsystems
-            )
+            subsystem_match = not allowed_subsystems or (subsystem_value and subsystem_value in allowed_subsystems)
 
             graph_context_internal: dict[str, Any] | None = None
             path_depth_value: float | None = None
@@ -262,11 +247,7 @@ class SearchService:
                 node_label = _label_for_artifact(payload.get("artifact_type"))
                 node_id = f"{node_label}:{payload.get('path')}"
                 cache_entry = graph_cache.get(node_id)
-                needs_timestamp = (
-                    recency_required
-                    and not payload.get("git_timestamp")
-                    and include_graph
-                )
+                needs_timestamp = recency_required and not payload.get("git_timestamp") and include_graph
                 fetch_graph = include_graph or (allowed_subsystems and not subsystem_match) or needs_timestamp
 
                 if fetch_graph and cache_entry is None:
@@ -419,9 +400,8 @@ class SearchService:
             )
 
             try:
-                base_components = (
-                    float(scoring.get("weighted_vector_score", scoring.get("vector_score", 0.0) or 0.0))
-                    + float(scoring.get("weighted_lexical_score", scoring.get("lexical_score", 0.0) or 0.0))
+                base_components = float(scoring.get("weighted_vector_score", scoring.get("vector_score", 0.0) or 0.0)) + float(
+                    scoring.get("weighted_lexical_score", scoring.get("lexical_score", 0.0) or 0.0)
                 )
                 delta = float(scoring.get("adjusted_score", 0.0)) - base_components
                 SEARCH_SCORE_DELTA.observe(delta)
@@ -492,6 +472,7 @@ class SearchService:
         if request_id:
             metadata["request_id"] = request_id
         return SearchResponse(query=query, results=results, metadata=metadata)
+
     def _build_model_features(
         self,
         *,
@@ -504,12 +485,8 @@ class SearchService:
         features: dict[str, float] = {
             "vector_score": float(scoring.get("vector_score", 0.0) or 0.0),
             "lexical_score": float(scoring.get("lexical_score", 0.0) or 0.0),
-            "weighted_vector_score": float(
-                scoring.get("weighted_vector_score", scoring.get("vector_score", 0.0) or 0.0)
-            ),
-            "weighted_lexical_score": float(
-                scoring.get("weighted_lexical_score", scoring.get("lexical_score", 0.0) or 0.0)
-            ),
+            "weighted_vector_score": float(scoring.get("weighted_vector_score", scoring.get("vector_score", 0.0) or 0.0)),
+            "weighted_lexical_score": float(scoring.get("weighted_lexical_score", scoring.get("lexical_score", 0.0) or 0.0)),
             "signal_subsystem_affinity": float(signals.get("subsystem_affinity", 0.0) or 0.0),
             "signal_relationship_count": float(signals.get("relationship_count", 0.0) or 0.0),
             "signal_supporting_bonus": float(signals.get("supporting_bonus", 0.0) or 0.0),
@@ -597,11 +574,7 @@ def _subsystems_from_context(graph_context: dict[str, Any] | None) -> set[str]:
 
 
 def _detect_query_subsystems(query: str) -> Set[str]:
-    tokens = {
-        token
-        for token in re.split(r"[^a-zA-Z0-9]+", query.lower())
-        if token
-    }
+    tokens = {token for token in re.split(r"[^a-zA-Z0-9]+", query.lower()) if token}
     return tokens
 
 
@@ -628,9 +601,7 @@ def _lexical_score(query: str, chunk: dict[str, Any]) -> float:
     doc_tokens.update(_TOKEN_PATTERN.findall(str(artifact_path).lower()))
     tags = chunk.get("tags")
     if isinstance(tags, (list, tuple)):
-        doc_tokens.update(
-            _TOKEN_PATTERN.findall(" ".join(str(tag).lower() for tag in tags))
-        )
+        doc_tokens.update(_TOKEN_PATTERN.findall(" ".join(str(tag).lower() for tag in tags)))
     elif isinstance(tags, str):
         doc_tokens.update(_TOKEN_PATTERN.findall(tags.lower()))
 
@@ -845,20 +816,11 @@ def _compute_freshness_days(
     chunk: dict[str, Any],
     graph_context: dict[str, Any] | None,
 ) -> float | None:
-    timestamp = (
-        chunk.get("git_timestamp")
-        or chunk.get("last_modified")
-        or chunk.get("last_modified_at")
-        or chunk.get("updated_at")
-    )
+    timestamp = chunk.get("git_timestamp") or chunk.get("last_modified") or chunk.get("last_modified_at") or chunk.get("updated_at")
     if timestamp is None and graph_context:
         primary = graph_context.get("primary_node", {})
         props = primary.get("properties") or {}
-        timestamp = (
-            props.get("git_timestamp")
-            or props.get("last_modified")
-            or props.get("updated_at")
-        )
+        timestamp = props.get("git_timestamp") or props.get("last_modified") or props.get("updated_at")
     parsed = _parse_iso_datetime(timestamp)
     if parsed is None:
         return None

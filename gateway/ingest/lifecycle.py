@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 import time
 from collections import defaultdict
-from contextlib import suppress
 from collections.abc import Iterable
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -210,7 +210,13 @@ def _write_history_snapshot(payload: dict[str, Any], reports_dir: Path, history_
     return sorted(history_dir.glob("lifecycle_*.json"), key=lambda path: path.stat().st_mtime)
 
 
-def _lifecycle_counts(*, isolated: dict[str, list[dict[str, Any]]], stale_docs: list[dict[str, Any]], missing_tests: list[dict[str, Any]], removed: list[dict[str, Any]]) -> dict[str, int]:
+def _lifecycle_counts(
+    *,
+    isolated: dict[str, list[dict[str, Any]]],
+    stale_docs: list[dict[str, Any]],
+    missing_tests: list[dict[str, Any]],
+    removed: list[dict[str, Any]],
+) -> dict[str, int]:
     isolated_count = sum(len(entries) for entries in isolated.values())
     return {
         "stale_docs": len(stale_docs),

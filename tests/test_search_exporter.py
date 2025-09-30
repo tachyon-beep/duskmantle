@@ -4,10 +4,10 @@ import csv
 import json
 from pathlib import Path
 
-from gateway.search.exporter import ExportOptions, export_training_dataset
-from gateway.search.cli import export_training_data, train_model
-from gateway.search.trainer import train_from_dataset
 from gateway.config.settings import get_settings
+from gateway.search.cli import export_training_data, train_model
+from gateway.search.exporter import ExportOptions, export_training_dataset
+from gateway.search.trainer import train_from_dataset
 
 
 def _write_events(path: Path, events: list[dict[str, object]]) -> None:

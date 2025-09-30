@@ -4,8 +4,8 @@ from unittest import mock
 
 import pytest
 
+from gateway.ingest.artifacts import Artifact, Chunk, ChunkEmbedding
 from gateway.ingest.qdrant_writer import QdrantWriter
-from gateway.ingest.artifacts import Chunk, Artifact, ChunkEmbedding
 
 
 class RecordingClient:

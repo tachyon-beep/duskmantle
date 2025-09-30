@@ -4,6 +4,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 from prometheus_client import REGISTRY
+from pytest import MonkeyPatch
 
 from gateway.api.app import create_app
 from gateway.config.settings import get_settings
@@ -15,7 +16,7 @@ def _reset_settings(tmp_path: Path | None = None) -> None:
         (tmp_path / "state").mkdir(parents=True, exist_ok=True)
 
 
-def test_ui_landing_served(tmp_path: Path, monkeypatch) -> None:
+def test_ui_landing_served(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setenv("KM_STATE_PATH", str(tmp_path / "state"))
     _reset_settings()
     app = create_app()
@@ -27,8 +28,8 @@ def test_ui_landing_served(tmp_path: Path, monkeypatch) -> None:
     assert response.status_code == 200
     assert "Duskmantle Knowledge Console" in response.text
     assert "Overview" in response.text
-    assert 'data-dm-toggle-contrast' in response.text
-    assert 'data-dm-toggle-motion' in response.text
+    assert "data-dm-toggle-contrast" in response.text
+    assert "data-dm-toggle-motion" in response.text
 
     after = REGISTRY.get_sample_value("km_ui_requests_total", {"view": "landing"}) or 0.0
     assert after == before + 1.0
@@ -40,7 +41,7 @@ def test_ui_landing_served(tmp_path: Path, monkeypatch) -> None:
     _reset_settings()
 
 
-def test_ui_search_view(tmp_path: Path, monkeypatch) -> None:
+def test_ui_search_view(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setenv("KM_STATE_PATH", str(tmp_path / "state"))
     _reset_settings()
     app = create_app()
@@ -52,7 +53,7 @@ def test_ui_search_view(tmp_path: Path, monkeypatch) -> None:
     assert response.status_code == 200
     assert "Hybrid Search" in response.text
     assert "dm-search-form" in response.text
-    assert 'data-dm-search-actions' in response.text
+    assert "data-dm-search-actions" in response.text
 
     after = REGISTRY.get_sample_value("km_ui_requests_total", {"view": "search"}) or 0.0
     assert after == before + 1.0
@@ -64,8 +65,7 @@ def test_ui_search_view(tmp_path: Path, monkeypatch) -> None:
     _reset_settings()
 
 
-
-def test_ui_subsystems_view(tmp_path: Path, monkeypatch) -> None:
+def test_ui_subsystems_view(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setenv("KM_STATE_PATH", str(tmp_path / "state"))
     _reset_settings()
     app = create_app()
@@ -75,9 +75,9 @@ def test_ui_subsystems_view(tmp_path: Path, monkeypatch) -> None:
 
     response = client.get("/ui/subsystems")
     assert response.status_code == 200
-    assert 'Subsystem Explorer' in response.text
-    assert 'dm-subsystem-form' in response.text
-    assert 'data-dm-subsystem-actions' in response.text
+    assert "Subsystem Explorer" in response.text
+    assert "dm-subsystem-form" in response.text
+    assert "data-dm-subsystem-actions" in response.text
 
     after = REGISTRY.get_sample_value("km_ui_requests_total", {"view": "subsystems"}) or 0.0
     assert after == before + 1.0
@@ -85,8 +85,7 @@ def test_ui_subsystems_view(tmp_path: Path, monkeypatch) -> None:
     _reset_settings()
 
 
-
-def test_ui_lifecycle_download(tmp_path: Path, monkeypatch) -> None:
+def test_ui_lifecycle_download(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
     state_dir = tmp_path / "state"
     reports_dir = state_dir / "reports"
     reports_dir.mkdir(parents=True, exist_ok=True)
@@ -100,7 +99,7 @@ def test_ui_lifecycle_download(tmp_path: Path, monkeypatch) -> None:
 
     before = REGISTRY.get_sample_value("km_ui_events_total", {"event": "lifecycle_download"}) or 0.0
 
-    response = client.get('/ui/lifecycle/report')
+    response = client.get("/ui/lifecycle/report")
     assert response.status_code == 200
     assert response.json() == {"stale_docs": [], "isolated_nodes": []}
 
@@ -110,15 +109,14 @@ def test_ui_lifecycle_download(tmp_path: Path, monkeypatch) -> None:
     _reset_settings()
 
 
-
-def test_ui_events_endpoint(tmp_path: Path, monkeypatch) -> None:
+def test_ui_events_endpoint(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setenv("KM_STATE_PATH", str(tmp_path / "state"))
     _reset_settings()
     app = create_app()
     client = TestClient(app)
 
     before = REGISTRY.get_sample_value("km_ui_events_total", {"event": "test-event"}) or 0.0
-    response = client.post('/ui/events', json={"event": "test-event"})
+    response = client.post("/ui/events", json={"event": "test-event"})
     assert response.status_code == 200
     after = REGISTRY.get_sample_value("km_ui_events_total", {"event": "test-event"}) or 0.0
     assert after == before + 1.0

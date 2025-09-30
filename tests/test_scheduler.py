@@ -4,15 +4,13 @@ from pathlib import Path
 from unittest import mock
 
 import pytest
-
+from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 from filelock import Timeout
 from prometheus_client import REGISTRY
 
 from gateway.config.settings import AppSettings
 from gateway.ingest.pipeline import IngestionResult
-from apscheduler.triggers.cron import CronTrigger
-from apscheduler.triggers.interval import IntervalTrigger
-
 from gateway.scheduler import IngestionScheduler
 
 

@@ -1,18 +1,12 @@
 from pathlib import Path
 
 import pytest
+from prometheus_client import generate_latest
 
 from gateway.mcp.config import MCPSettings
 from gateway.mcp.exceptions import GatewayRequestError
 from gateway.mcp.server import build_server
-from gateway.observability.metrics import (
-    MCP_FAILURES_TOTAL,
-    MCP_REQUEST_SECONDS,
-    MCP_REQUESTS_TOTAL,
-    MCP_STORETEXT_TOTAL,
-    MCP_UPLOAD_TOTAL,
-)
-from prometheus_client import generate_latest
+from gateway.observability.metrics import MCP_FAILURES_TOTAL, MCP_REQUEST_SECONDS, MCP_REQUESTS_TOTAL, MCP_STORETEXT_TOTAL, MCP_UPLOAD_TOTAL
 
 
 @pytest.fixture(autouse=True)
