@@ -90,7 +90,10 @@ def neo4j_test_environment() -> Iterator[dict[str, str | None]]:
 
         container_name = f"neo4j-test-{uuid4().hex[:8]}"
         user = "neo4j"
-        password = "neo4jadmin"
+        # The official Neo4j test image ships with the documented default admin password.
+        # We pin it here so fixtures can spin up an isolated throwaway container without
+        # relying on host secrets. The container only binds to localhost during tests.
+        password = "neo4jadmin"  # NOSONAR - intentional test credential for local Neo4j
         database = "knowledge"
         cleanup_container = True
 
@@ -103,7 +106,8 @@ def neo4j_test_environment() -> Iterator[dict[str, str | None]]:
             "--network",
             "host",
             "-e",
-            "NEO4J_AUTH=neo4j/neo4jadmin",
+            # The docker image expects the same documented defaults; matches the fixture password.
+            "NEO4J_AUTH=neo4j/neo4jadmin",  # NOSONAR - local integration test credential
             "-e",
             "NEO4J_dbms_default__database=knowledge",
             "-e",

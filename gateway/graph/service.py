@@ -5,7 +5,7 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from threading import Lock
 from time import monotonic
-from typing import Any
+from typing import Any, Mapping, Sequence
 
 from neo4j import Driver, ManagedTransaction
 from neo4j.graph import Node, Relationship
@@ -191,81 +191,18 @@ class GraphService:
         related_order: list[str] = []
 
         for record in path_records:
-            target_node_obj = record["node"]
-            if not isinstance(target_node_obj, Node):
+            components = _extract_path_components(record)
+            if components is None:
                 continue
-            path_nodes_raw = record["nodes"]
-            if not isinstance(path_nodes_raw, list):
-                continue
-            path_nodes: list[Node] = []
-            for node in path_nodes_raw:
-                if isinstance(node, Node):
-                    path_nodes.append(node)
-            if len(path_nodes) != len(path_nodes_raw):
-                continue
-            relationships_raw = record["relationships"]
-            if not isinstance(relationships_raw, list):
-                continue
-            relationships: list[Relationship] = [rel for rel in relationships_raw if isinstance(rel, Relationship)]
-            if not relationships:
-                continue
-            if not relationships:
+            target_node_obj, path_nodes, relationships = components
+
+            path_edges = _record_path_edges(path_nodes, relationships, nodes_by_id, edges_by_key)
+            if not path_edges:
                 continue
 
-            path_edges: list[dict[str, Any]] = []
-            for idx, relationship in enumerate(relationships):
-                source_node = path_nodes[idx]
-                target_step = path_nodes[idx + 1]
-                source_id = _canonical_node_id(source_node)
-                if source_id not in nodes_by_id:
-                    nodes_by_id[source_id] = _serialize_node(source_node)
-                source_serialized = nodes_by_id[source_id]
-
-                target_id = _canonical_node_id(target_step)
-                if target_id not in nodes_by_id:
-                    nodes_by_id[target_id] = _serialize_node(target_step)
-                target_serialized_step = nodes_by_id[target_id]
-
-                start_element = _node_element_id(relationship.start_node)
-                if start_element == source_node.element_id:
-                    direction = "OUT"
-                else:
-                    direction = "IN"
-                edge_key = (
-                    source_serialized["id"],
-                    target_serialized_step["id"],
-                    relationship.type,
-                )
-                if edge_key not in edges_by_key:
-                    edges_by_key[edge_key] = {
-                        "type": relationship.type,
-                        "direction": direction,
-                        "source": source_serialized["id"],
-                        "target": target_serialized_step["id"],
-                    }
-                path_edges.append(
-                    {
-                        "type": relationship.type,
-                        "direction": direction,
-                        "source": source_serialized["id"],
-                        "target": target_serialized_step["id"],
-                    }
-                )
-
-            target_id = _canonical_node_id(target_node_obj)
-            if target_id not in nodes_by_id:
-                nodes_by_id[target_id] = _serialize_node(target_node_obj)
-            target_serialized = nodes_by_id[target_id]
-            entry = {
-                "target": target_serialized,
-                "hops": len(relationships),
-                "path": path_edges,
-                "relationship": path_edges[0]["type"],
-                "direction": path_edges[0]["direction"],
-            }
-            if target_id not in related_order:
-                related_entries.append(entry)
-                related_order.append(target_id)
+            target_serialized = _ensure_serialized_node(target_node_obj, nodes_by_id)
+            entry = _build_related_entry(target_serialized, relationships, path_edges)
+            _append_related_entry(entry, target_serialized["id"], related_entries, related_order)
 
         artifacts = [_serialize_node(_ensure_node(node)) for node in artifact_records]
 
@@ -407,6 +344,103 @@ def get_graph_service(
     if cache_ttl is not None and cache_ttl > 0:
         cache = SubsystemGraphCache(cache_ttl, cache_max_entries)
     return GraphService(driver=driver, database=database, subsystem_cache=cache)
+
+
+def _extract_path_components(
+    record: Mapping[str, Any],
+) -> tuple[Node, Sequence[Node], Sequence[Relationship]] | None:
+    target_node = record.get("node")
+    if not isinstance(target_node, Node):
+        return None
+
+    path_nodes_raw = record.get("nodes")
+    if not isinstance(path_nodes_raw, list):
+        return None
+    path_nodes: list[Node] = [node for node in path_nodes_raw if isinstance(node, Node)]
+    if len(path_nodes) != len(path_nodes_raw) or len(path_nodes) < 2:
+        return None
+
+    relationships_raw = record.get("relationships")
+    if not isinstance(relationships_raw, list):
+        return None
+    relationships: list[Relationship] = [rel for rel in relationships_raw if isinstance(rel, Relationship)]
+    if len(relationships) != len(relationships_raw) or not relationships:
+        return None
+    if len(path_nodes) != len(relationships) + 1:
+        return None
+
+    return target_node, path_nodes, relationships
+
+
+def _record_path_edges(
+    path_nodes: Sequence[Node],
+    relationships: Sequence[Relationship],
+    nodes_by_id: OrderedDict[str, dict[str, Any]],
+    edges_by_key: OrderedDict[tuple[str, str, str], dict[str, Any]],
+) -> list[dict[str, Any]]:
+    path_edges: list[dict[str, Any]] = []
+    for idx, relationship in enumerate(relationships):
+        source_node = path_nodes[idx]
+        target_node = path_nodes[idx + 1]
+        source_serialized = _ensure_serialized_node(source_node, nodes_by_id)
+        target_serialized = _ensure_serialized_node(target_node, nodes_by_id)
+        direction = _relationship_direction(relationship, source_node)
+        edge_payload = {
+            "type": relationship.type,
+            "direction": direction,
+            "source": source_serialized["id"],
+            "target": target_serialized["id"],
+        }
+        edge_key = (
+            source_serialized["id"],
+            target_serialized["id"],
+            relationship.type,
+        )
+        if edge_key not in edges_by_key:
+            edges_by_key[edge_key] = edge_payload
+        path_edges.append(edge_payload)
+    return path_edges
+
+
+def _ensure_serialized_node(
+    node: Node,
+    nodes_by_id: OrderedDict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    node_id = _canonical_node_id(node)
+    if node_id not in nodes_by_id:
+        nodes_by_id[node_id] = _serialize_node(node)
+    return nodes_by_id[node_id]
+
+
+def _relationship_direction(relationship: Relationship, source_node: Node) -> str:
+    start_element = _node_element_id(relationship.start_node)
+    return "OUT" if start_element == source_node.element_id else "IN"
+
+
+def _build_related_entry(
+    target_serialized: dict[str, Any],
+    relationships: Sequence[Relationship],
+    path_edges: Sequence[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "target": target_serialized,
+        "hops": len(relationships),
+        "path": list(path_edges),
+        "relationship": path_edges[0]["type"],
+        "direction": path_edges[0]["direction"],
+    }
+
+
+def _append_related_entry(
+    entry: dict[str, Any],
+    target_id: str,
+    related_entries: list[dict[str, Any]],
+    related_order: list[str],
+) -> None:
+    if target_id in related_order:
+        return
+    related_entries.append(entry)
+    related_order.append(target_id)
 
 
 # --- Neo4j read helpers ----------------------------------------------------

@@ -140,63 +140,16 @@ def _load_search_model(settings: AppSettings) -> ModelArtifact | None:
 
 
 def _init_graph_driver(settings: AppSettings) -> Driver | None:
-    try:
-        driver = GraphDatabase.driver(
-            settings.neo4j_uri,
-            auth=(settings.neo4j_user, settings.neo4j_password),
-        )
-    except Exception as exc:  # pragma: no cover - connection may fail in dev/test
-        logger.warning("Neo4j driver initialization failed: %s", exc)
-        GRAPH_MIGRATION_LAST_STATUS.set(0)
-        GRAPH_MIGRATION_LAST_TIMESTAMP.set(time.time())
+    driver = _create_graph_driver(settings)
+    if driver is None:
         return None
 
     if settings.graph_auto_migrate:
-        runner = MigrationRunner(driver=driver, database=settings.neo4j_database)
-        pending: list[str] | None
-        try:
-            pending = runner.pending_ids()
-        except Exception as exc:  # pragma: no cover - defensive preflight
-            pending = None
-            logger.warning(
-                "Graph auto-migration preflight failed; attempting run anyway: %s",
-                exc,
-            )
+        _run_graph_auto_migration(driver, settings.neo4j_database)
+        return driver
 
-        if pending is None:
-            logger.info("Graph auto-migration enabled; running without pending summary")
-        elif pending:
-            logger.info(
-                "Graph auto-migration enabled; applying %d pending migration(s): %s",
-                len(pending),
-                ", ".join(pending),
-            )
-        else:
-            logger.info("Graph auto-migration enabled; schema already current")
-
-        try:
-            runner.run()
-        except Exception:  # pragma: no cover - defensive
-            logger.exception("Graph auto-migration failed")
-            GRAPH_MIGRATION_LAST_STATUS.set(0)
-            GRAPH_MIGRATION_LAST_TIMESTAMP.set(time.time())
-        else:
-            if pending is None:
-                logger.info("Graph auto-migration completed")
-            elif pending:
-                logger.info(
-                    "Graph auto-migration completed; applied %d migration(s)",
-                    len(pending),
-                )
-            else:
-                logger.info("Graph auto-migration completed; no migrations were pending")
-            GRAPH_MIGRATION_LAST_STATUS.set(1)
-            GRAPH_MIGRATION_LAST_TIMESTAMP.set(time.time())
-    else:
-        logger.info("Graph auto-migration disabled; run `gateway-graph migrate` during deployment")
-        GRAPH_MIGRATION_LAST_STATUS.set(-1)
-        GRAPH_MIGRATION_LAST_TIMESTAMP.set(0)
-
+    logger.info("Graph auto-migration disabled; run `gateway-graph migrate` during deployment")
+    _set_migration_metrics(-1, timestamp=None)
     return driver
 
 
@@ -206,6 +159,75 @@ def _init_qdrant_client(settings: AppSettings) -> QdrantClient | None:
     except Exception as exc:  # pragma: no cover - offline scenarios
         logger.warning("Qdrant client initialization failed: %s", exc)
         return None
+
+
+def _create_graph_driver(settings: AppSettings) -> Driver | None:
+    try:
+        return GraphDatabase.driver(
+            settings.neo4j_uri,
+            auth=(settings.neo4j_user, settings.neo4j_password),
+        )
+    except Exception as exc:  # pragma: no cover - connection may fail in dev/test
+        logger.warning("Neo4j driver initialization failed: %s", exc)
+        _set_migration_metrics(0, timestamp=time.time())
+        return None
+
+
+def _run_graph_auto_migration(driver: Driver, database: str) -> None:
+    runner = MigrationRunner(driver=driver, database=database)
+    pending = _fetch_pending_migrations(runner)
+    _log_migration_plan(pending)
+
+    try:
+        runner.run()
+    except Exception:  # pragma: no cover - defensive
+        logger.exception("Graph auto-migration failed")
+        _set_migration_metrics(0, timestamp=time.time())
+        return
+
+    _log_migration_completion(pending)
+    _set_migration_metrics(1, timestamp=time.time())
+
+
+def _fetch_pending_migrations(runner: MigrationRunner) -> list[str] | None:
+    try:
+        return runner.pending_ids()
+    except Exception as exc:  # pragma: no cover - defensive preflight
+        logger.warning(
+            "Graph auto-migration preflight failed; attempting run anyway: %s",
+            exc,
+        )
+        return None
+
+
+def _log_migration_plan(pending: list[str] | None) -> None:
+    if pending is None:
+        logger.info("Graph auto-migration enabled; running without pending summary")
+    elif pending:
+        logger.info(
+            "Graph auto-migration enabled; applying %d pending migration(s): %s",
+            len(pending),
+            ", ".join(pending),
+        )
+    else:
+        logger.info("Graph auto-migration enabled; schema already current")
+
+
+def _log_migration_completion(pending: list[str] | None) -> None:
+    if pending is None:
+        logger.info("Graph auto-migration completed")
+    elif pending:
+        logger.info(
+            "Graph auto-migration completed; applied %d migration(s)",
+            len(pending),
+        )
+    else:
+        logger.info("Graph auto-migration completed; no migrations were pending")
+
+
+def _set_migration_metrics(status: int, *, timestamp: float | None) -> None:
+    GRAPH_MIGRATION_LAST_STATUS.set(status)
+    GRAPH_MIGRATION_LAST_TIMESTAMP.set(timestamp if timestamp is not None else 0)
 
 
 def create_app() -> FastAPI:
