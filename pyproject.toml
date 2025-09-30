@@ -36,6 +36,12 @@ dependencies = [
   "opentelemetry-instrumentation-requests>=0.46b0",
 ]
 
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.package-data]
+"gateway.ui" = ["static/**/*", "templates/**/*.html"]
+
 [project.optional-dependencies]
 dev = [
   "black>=24.2",

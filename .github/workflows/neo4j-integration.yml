@@ -1,11 +1,6 @@
 name: Neo4j Integration Tests
 
 on:
-  push:
-    branches:
-      - main
-      - 'propose/**'
-      - 'release/**'
   pull_request:
     branches:
       - main
