@@ -4,12 +4,12 @@ import logging
 import sys
 from typing import Any, Dict
 
-from pythonjsonlogger import jsonlogger
+from pythonjsonlogger import json
 
 _LOG_CONFIGURED = False
 
 
-class IngestAwareFormatter(jsonlogger.JsonFormatter):
+class IngestAwareFormatter(json.JsonFormatter):
     """JSON formatter that enforces consistent keys."""
 
     def add_fields(

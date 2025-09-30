@@ -1,3 +1,5 @@
+"""Repository discovery helpers for ingestion pipeline."""
+
 from __future__ import annotations
 
 import json
@@ -39,6 +41,7 @@ _TELEMETRY_PATTERN = re.compile(r"Telemetry\w+")
 
 @dataclass(slots=True)
 class DiscoveryConfig:
+    """Runtime knobs influencing which artifacts are discovered."""
     repo_root: Path
     include_patterns: tuple[str, ...] = (
         "docs",
@@ -187,13 +190,12 @@ def _load_subsystem_catalog(repo_root: Path) -> dict[str, Any]:
             try:
                 data = json.loads(candidate.read_text(encoding="utf-8"))
                 if isinstance(data, dict):
-                    catalog = {
-                        str(key).lower(): {
-                            "name": str(key) if isinstance(key, str) else str(key),
-                            "metadata": value if isinstance(value, dict) else {},
-                        }
-                        for key, value in data.items()
-                    }
+                    catalog = {}
+                    for key, value in data.items():
+                        lower_key = str(key).lower()
+                        name = key if isinstance(key, str) else str(key)
+                        metadata = value if isinstance(value, dict) else {}
+                        catalog[lower_key] = {"name": name, "metadata": metadata}
                 break
             except (json.JSONDecodeError, OSError):
                 logger.warning("Failed to parse subsystem metadata file %s", candidate)
