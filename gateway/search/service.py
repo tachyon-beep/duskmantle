@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
+from neo4j.exceptions import Neo4jError
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import ScoredPoint, SearchParams
 
@@ -284,7 +285,7 @@ class SearchService:
                         warnings.append(str(exc))
                         cache_entry = {"graph_context": None, "path_depth": None}
                         graph_cache[node_id] = cache_entry
-                    except Exception as exc:  # pragma: no cover - defensive
+                    except Neo4jError as exc:  # pragma: no cover - defensive
                         lookup_duration = time.perf_counter() - lookup_started
                         SEARCH_GRAPH_LOOKUP_SECONDS.observe(lookup_duration)
                         SEARCH_GRAPH_CACHE_EVENTS.labels(status="error").inc()
@@ -332,7 +333,7 @@ class SearchService:
                                 },
                             )
                             warnings.append("graph path depth unavailable")
-                        except Exception as exc:  # pragma: no cover - defensive
+                        except Neo4jError as exc:  # pragma: no cover - defensive
                             logger.warning(
                                 "Graph path depth error",
                                 extra={
@@ -356,13 +357,10 @@ class SearchService:
                     if path_depth_value is None:
                         path_depth_value = cache_entry.get("path_depth")
 
-            if allowed_subsystems:
-                if subsystem_match:
-                    pass
-                else:
-                    subs_from_context = _subsystems_from_context(graph_context_internal)
-                    if not subs_from_context.intersection(allowed_subsystems):
-                        continue
+            if allowed_subsystems and not subsystem_match:
+                subs_from_context = _subsystems_from_context(graph_context_internal)
+                if not subs_from_context.intersection(allowed_subsystems):
+                    continue
 
             if recency_required:
                 chunk_datetime = _resolve_chunk_datetime(chunk, graph_context_internal)
@@ -583,12 +581,12 @@ def _detect_query_subsystems(query: str) -> set[str]:
 def _normalise_hybrid_weights(vector_weight: float, lexical_weight: float) -> tuple[float, float]:
     vector = max(0.0, float(vector_weight))
     lexical = max(0.0, float(lexical_weight))
-    if vector == 0.0 and lexical == 0.0:
+    if (vector + lexical) <= 0.0:
         vector = 1.0
     return vector, lexical
 
 
-_TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_]+")
+_TOKEN_PATTERN = re.compile(r"\w+", flags=re.ASCII)
 
 
 def _lexical_score(query: str, chunk: dict[str, Any]) -> float:
@@ -745,9 +743,12 @@ def _populate_additional_signals(
     # Path depth (fallback to heuristic when graph data missing)
     if path_depth is None:
         path_depth = _estimate_path_depth(graph_context)
-    try:
-        signals["path_depth"] = float(path_depth)
-    except (TypeError, ValueError):
+    if path_depth is not None:
+        try:
+            signals["path_depth"] = float(path_depth)
+        except (TypeError, ValueError):
+            signals["path_depth"] = None
+    else:
         signals["path_depth"] = None
 
     # Subsystem criticality (retain previously computed score if present)

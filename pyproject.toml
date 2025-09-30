@@ -85,3 +85,8 @@ known-first-party = ["gateway"]
 [tool.ruff.lint.per-file-ignores]
 "bin/km-bootstrap" = ["ANN"]
 "bin/km-watch" = ["ANN"]
+
+[tool.pylint]
+
+[tool.pylint.FORMAT]
+max-line-length = 140

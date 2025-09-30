@@ -1,6 +1,7 @@
 # Draft PR: MCP Tooling, Lifecycle Console, and Operational Hardening
 
 ## Summary
+
 - Introduced the embedded UI (search, subsystem explorer, lifecycle dashboard) with accessible styling, lifecycle spark lines, and Playwright UI test coverage.
 - Added lifecycle reporting pipeline (`km-lifecycle-report`), MCP upload/storetext tools, recipe runner/recipes, and supporting docs.
 - Hardened ingestion and observability: incremental ingest, artifact cleanup, scheduler/watch metrics, Grafana dashboard export, and risk plan updates.
@@ -8,6 +9,7 @@
 - Updated hybrid search TODOs and risk plan follow-ups (quantization, classification samples, host matrix, alert integrations, signed images).
 
 ## Testing
+
 - `pytest tests/mcp/test_server_tools.py`
 - `pytest tests/test_scheduler.py`
 - `pytest tests/test_ingest_pipeline.py`
@@ -16,6 +18,7 @@
 - `npx playwright test`
 
 ## Docs
+
 - ROADMAP, Implementation Plan, Observability Guide, UI Spike Report, Risk Plan, Hybrid Search TODOs.
 - Quick Start, README, FAQ, Upgrade/Rollback, MCP guides, Acceptance demo playbook/snapshot.
 - Grafana dashboards (`infra/grafana/search_observability.json`).
@@ -45,7 +48,7 @@
 ### Detailed Changes
 
 - **4a644c6**: roadmap/docs refresh; Playwright tooling/tests; Grafana search dashboard; CI workflows updated; ADDED `bin/km-playwright`, Playwright configs.
-- **a49d178**: cleaned ` .codex` config; updated `.gitignore` for build artefacts and Playwright state.
+- **a49d178**: cleaned `.codex` config; updated `.gitignore` for build artefacts and Playwright state.
 - **51cadd8**: accessibility overhaul (skip links, ARIA roles, focus styles); templates/styling/test updates.
 - **737e6d5**: lifecycle dashboard, subsystem explorer, lifecycle ingest module, UI metrics, UI spike documentation, tests.
 - **04182a6**: initial embedded UI scaffold (routes/templates/static assets) and UI route smoke tests.
