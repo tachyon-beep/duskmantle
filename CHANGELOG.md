@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file. The format 
 
 - _Placeholder_ — upcoming changes will be listed here.
 
+## 1.1.0 - 2025-10-01
+
+- _TBD: populate with highlights for the 1.1.0 release._
+
 ## 1.0.1 - 2025-09-30
 
 ### Added

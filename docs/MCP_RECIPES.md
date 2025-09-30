@@ -105,7 +105,6 @@ Typical command flow after connecting:
 
 Run with `km-recipe-run <name>` or `gateway-recipes run <name>`. Use `--dry-run` to preview steps and `--var key=value` to override defaults.
 
-
 ### Refresh Ingest After Repo Changes
 
 ```bash

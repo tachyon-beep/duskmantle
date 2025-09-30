@@ -1,4 +1,4 @@
-# Release 1.0.1 Work Packages
+# Release 1.1.0 Work Packages
 
 ## Work Package A – MCP Content Capture & Tooling *(Completed)*
 - Follow ROADMAP §5 tasks for `km-upload`/`km-storetext` and shared MCP utilities.

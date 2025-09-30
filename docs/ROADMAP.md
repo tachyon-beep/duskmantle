@@ -4,7 +4,7 @@ This roadmap captures future enhancements aimed at making the knowledge gateway 
 
 ## Work Package: MCP Content Capture (Completed)
 
-Deliverables for MCP-driven uploads and text capture shipped with the 1.0.1 milestone. The notes below remain for historical reference.
+Deliverables for MCP-driven uploads and text capture shipped with the 1.1.0 milestone. The notes below remain for historical reference.
 
 ### Tasks
 
@@ -146,7 +146,7 @@ Deliverables for MCP-driven uploads and text capture shipped with the 1.0.1 mile
   - Task 1.2.1 Introduce a lightweight chart helper (inline SVG/Canvas) that renders stale/isolated/missing/removed trends without external build tooling. **(Completed)**
   - Task 1.2.2 Update the lifecycle view to call the history endpoint and populate spark lines with graceful fallbacks when history is absent. **(Completed)**
 - **Step 1.3 Observability integration** **(In Progress)**
-  - Task 1.3.1 Extend Grafana dashboards with `km_ui_requests_total`, `km_ui_events_total`, and lifecycle trend panels. *(Dashboard export pending; documentation updated in release 1.0.1)*
+  - Task 1.3.1 Extend Grafana dashboards with `km_ui_requests_total`, `km_ui_events_total`, and lifecycle trend panels. *(Dashboard export pending; documentation updated in release 1.1.0)*
   - Task 1.3.2 Document alerting thresholds in `docs/OBSERVABILITY_GUIDE.md` and ensure metrics are scraped in CI smoke jobs. **(Completed)**
 
 ### Phase 2 – Agent Shortcuts

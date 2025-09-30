@@ -7,7 +7,7 @@
 - **Ingestion Pipeline (WP3):** ✅ Core ingestion/coverage complete; hybrid search tuning remains (see outstanding list).
 - **Graph Integration (WP4):** ✅ Graph APIs, migrations runner, MCP coverage, and live `/graph/*` tests delivered.
 - **Observability & Security (WP5):** ✅ Metrics/logging/auth/scheduler hardening done; keep monitoring doc polish.
-- **Release Tooling (WP6):** ✅ Completed for 1.0.1 (pipeline, docs, acceptance playbook/snapshot). Continue maintaining support artefacts alongside future releases.
+- **Release Tooling (WP6):** ✅ Completed for 1.1.0 (pipeline, docs, acceptance playbook/snapshot). Continue maintaining support artefacts alongside future releases.
 - **Autonomous Analysis Interface (WP7):** ⚙️ MCP server shipped; broader agent interface backlog remains.
 
 ## Work Package Breakdown
@@ -38,7 +38,7 @@ Nothing outstanding.
 ### WP6 — Release Tooling & Documentation *(Completed)*
 
 - ✅ Build/checksum scripts, release workflow (`release.yml`), Quick Start + troubleshooting updates, acceptance demo playbook/snapshot.
-- ✅ Observability + release workflows now run Playwright UI suite and MCP smoke slice; docs refreshed for KM 1.0.1 release.
+- ✅ Observability + release workflows now run Playwright UI suite and MCP smoke slice; docs refreshed for KM 1.1.0 release.
 - 🔸 Ongoing: keep upgrade/rollback guidance and FAQ/support artefacts current as new releases ship.
 
 ### WP7 — Autonomous Analysis Interface *(Deferred to post-1.0)*
@@ -68,7 +68,7 @@ Nothing outstanding.
 - Phase 3 trainer `gateway-search train-model` fits a linear regression over exported features and outputs versionable JSON artifacts with basic metrics.
 - Retention utilities (`gateway-search prune-feedback` and `gateway-search redact-dataset`) keep telemetry lean and allow sensitive fields to be scrubbed before sharing datasets.
 - Evaluation harness (`gateway-search evaluate-model`) benchmarks trained ranking models (MSE/R²/NDCG/Spearman) prior to inference rollout.
-- Final acceptance ingest (`c821eb34956345bc8ef7cb3765b4ab63`) refreshed Qdrant/Neo4j after archiving docs; `/search` now resolves to `docs/archive/*` paths and the 1.0.1 image will be validated via the updated acceptance playbook before release.
+- Final acceptance ingest (`c821eb34956345bc8ef7cb3765b4ab63`) refreshed Qdrant/Neo4j after archiving docs; `/search` now resolves to `docs/archive/*` paths and the 1.1.0 image will be validated via the updated acceptance playbook before release.
 - Release tooling plan (archived) recorded in `docs/archive/WP6/WP6_RELEASE_TOOLING_PLAN.md`; initial scripts (`scripts/build-wheel.sh`, `scripts/checksums.sh`) and `CHANGELOG.md`/`RELEASE.md` skeletons are in place with automated tests.
 - Observability CI workflow (`.github/workflows/observability.yml`) runs nightly to assert `/readyz`, `/healthz`, `/metrics`, and `/coverage` remain healthy.
 - Manual auth-enabled smoke test succeeded with password `tRusKAxG2fQKmP-ik3Y0`.

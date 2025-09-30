@@ -6,7 +6,7 @@ This checklist produces a reproducible wheel, Docker image, and checksum manifes
 
 1. Ensure the working tree is clean: `git status`.
 2. Run the full test suite: `.venv/bin/pytest`.
-3. Update `pyproject.toml` version and add release notes to `CHANGELOG.md` under a new heading (e.g., `## 1.0.1 - 2025-09-30`).
+3. Update `pyproject.toml` version and add release notes to `CHANGELOG.md` under a new heading (e.g., `## 1.1.0 - 2025-10-01`).
 
 ## 2. Build Artifacts
 
@@ -19,7 +19,7 @@ python -m pip install build
 python -m build --sdist --outdir dist/release
 
 # build container image (tag manually as needed)
-scripts/build-image.sh duskmantle/km:1.0.1
+scripts/build-image.sh duskmantle/km:1.1.0
 ```
 
 ## 3. Generate Checksums
@@ -27,20 +27,20 @@ scripts/build-image.sh duskmantle/km:1.0.1
 ```bash
 scripts/checksums.sh dist/release dist/SHA256SUMS
 # For container image tarball (optional)
-docker save duskmantle/km:1.0.1 -o dist/duskmantle-km.tar
+docker save duskmantle/km:1.1.0 -o dist/duskmantle-km.tar
 scripts/checksums.sh dist dist/IMAGE_SHA256SUMS
 ```
 
 ## 4. Verify
 
 - Inspect the checksum files and ensure they reference the expected artifacts.
-- Run a smoke test with the new wheel and container (e.g., `pip install dist/release/*.whl`, `./infra/smoke-test.sh duskmantle/km:1.0.1`). The script triggers a smoke ingest and validates `/coverage`.
+- Run a smoke test with the new wheel and container (e.g., `pip install dist/release/*.whl`, `./infra/smoke-test.sh duskmantle/km:1.1.0`). The script triggers a smoke ingest and validates `/coverage`.
 - Capture acceptance demo outputs by completing `docs/ACCEPTANCE_DEMO_SNAPSHOT.md` (image metadata, ingest stats, API excerpts, backup confirmation, MCP smoke result). Attach or link this snapshot in the release notes draft.
 
 ## 5. Tag & Publish
 
-1. Commit changelog/version updates: `git commit -am "chore(release): 1.0.1"`.
-2. Create an annotated tag: `git tag -a v1.0.1 -m "Duskmantle 1.0.1"`.
+1. Commit changelog/version updates: `git commit -am "chore(release): 1.1.0"`.
+2. Create an annotated tag: `git tag -a v1.1.0 -m "Duskmantle 1.1.0"`.
 3. Push changes and tag: `git push origin main --tags`.
 4. (Optional) Attach wheel, sdist, container tar (if created), and checksum files to the GitHub release. Use the changelog entry as release notes.
 

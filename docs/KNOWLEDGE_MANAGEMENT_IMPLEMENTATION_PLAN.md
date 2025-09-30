@@ -93,7 +93,7 @@ This plan translates the turnkey single-container design into concrete implement
     - Subtask 3.1.2.a Extend coverage writer to maintain multiple snapshots and prune old reports.
     - Subtask 3.1.2.b Add integration tests simulating consecutive scheduler runs verifying rotation/metrics.
     - Subtask 3.1.2.c Update observability guide with coverage health checks and alert thresholds.
-- **Step 3.2 Auth & Access Controls** *(Completed in v1.0.1)*
+- **Step 3.2 Auth & Access Controls** *(Completed in v1.1.0)*
   - Status: MCP upload/storetext tooling now enforces maintainer scope with audit logging. CLI and HTTP endpoints validate tokens, and README/AGENTS/MCP guides document rotation plus error handling.
   - Task 3.2.1 Scope Enforcement
     - Subtask 3.2.1.a Align API dependencies to enforce `reader`/`maintainer` scopes consistently (CLI + HTTP).

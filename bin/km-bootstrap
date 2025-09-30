@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-IMAGE_DEFAULT="ghcr.io/tachyon-beep/duskmantle-km:v1.0.1"
+IMAGE_DEFAULT="ghcr.io/tachyon-beep/duskmantle-km:v1.1.0"
 FORCE="false"
 IMAGE="$IMAGE_DEFAULT"
 
@@ -14,7 +14,7 @@ Pull the Duskmantle gateway image, generate secure defaults, and launch it with
 repository workload.
 
 Options:
-  --image IMAGE   Override the container image tag (default: ghcr.io/tachyon-beep/duskmantle-km:v1.0.1)
+  --image IMAGE   Override the container image tag (default: ghcr.io/tachyon-beep/duskmantle-km:v1.1.0)
   --force         Regenerate credentials even if .duskmantle/secrets.env exists
   --help          Show this help text
 USAGE

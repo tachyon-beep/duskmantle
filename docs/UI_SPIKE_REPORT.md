@@ -40,4 +40,4 @@ The spike deliberately focused on read-only experiences, reusing existing API co
 
 - Roadmap Phase 5 Step 5.3 now references the Knowledge Console milestone (see `docs/ROADMAP.md`).
 - Observability guide documents UI metrics, lifecycle history, and sparkline telemetry alerts (`docs/OBSERVABILITY_GUIDE.md`).
-- Sparkline telemetry plan is captured under Work Package B (Release 1.0.1) with implementation tracked via `RELEASE101_PACKAGES.md`.
+- Sparkline telemetry plan is captured under Work Package B (Release 1.1.0) with implementation tracked via `RELEASE101_PACKAGES.md`.

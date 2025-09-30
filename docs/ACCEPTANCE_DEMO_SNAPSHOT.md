@@ -4,13 +4,13 @@ Capture these metrics immediately after running the acceptance playbook. Copy th
 
 ## 1. Build & Image Details
 
-- **Image tag:** `duskmantle/km:1.0.1`
+- **Image tag:** `duskmantle/km:1.1.0`
 - **Image ID:** _TBD_
 - **Image size:** _TBD_
 - **Build timestamp:** _TBD_
-- **Build script output reference:** `scripts/build-image.sh duskmantle/km:1.0.1`
+- **Build script output reference:** `scripts/build-image.sh duskmantle/km:1.1.0`
 - **Checksums:**
-  - Wheel `dist/release/duskmantle_knowledge_gateway-1.0.1-py3-none-any.whl` → _TBD_
+  - Wheel `dist/release/duskmantle_knowledge_gateway-1.1.0-py3-none-any.whl` → _TBD_
   - Image tar `dist/duskmantle-km.tar` → _TBD_
   - Checksum manifests recorded in `dist/SHA256SUMS` and `dist/IMAGE_SHA256SUMS`
 

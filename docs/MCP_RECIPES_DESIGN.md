@@ -120,7 +120,7 @@ Target artefact: `gateway-recipes` CLI (later mirrored by `bin/km-recipe-run` wr
 
 ### 2.4 Roadmap Alignment
 
-- Step 5.2 (implementation) will: 
+- Step 5.2 (implementation) will:
   1. Build the executor module under `gateway/recipes/` using the above schema.
   2. Provide baseline recipes (`daily-health`, `stale-audit`, `release-prep`).
   3. Add `km-recipe-run` MCP tool and CLI wrappers.
