@@ -1,3 +1,5 @@
+"""Utilities for exporting feedback logs into training datasets."""
+
 from __future__ import annotations
 
 import csv
@@ -15,6 +17,8 @@ FeedbackFormat = Literal["csv", "jsonl"]
 
 @dataclass(slots=True)
 class ExportOptions:
+    """User-configurable options controlling dataset export."""
+
     output_path: Path
     output_format: FeedbackFormat
     require_vote: bool = False
@@ -23,6 +27,8 @@ class ExportOptions:
 
 @dataclass(slots=True)
 class ExportStats:
+    """Basic statistics about the export process."""
+
     total_events: int
     written_rows: int
     skipped_without_vote: int
@@ -55,6 +61,7 @@ FIELDNAMES: Sequence[str] = (
 
 
 def export_training_dataset(events_path: Path, *, options: ExportOptions) -> ExportStats:
+    """Write feedback events into the requested dataset format."""
     events = iter_feedback_events(events_path)
 
     if options.output_format == "csv":
@@ -70,6 +77,7 @@ def export_training_dataset(events_path: Path, *, options: ExportOptions) -> Exp
 
 
 def iter_feedback_events(path: Path) -> Iterator[dict[str, Any]]:
+    """Yield feedback events from a JSON lines log file."""
     if not path.exists():
         logger.info("Feedback events log not found at %s", path)
         return
@@ -91,6 +99,7 @@ def iter_feedback_events(path: Path) -> Iterator[dict[str, Any]]:
 
 
 def _write_csv(events: Iterable[dict[str, Any]], options: ExportOptions) -> ExportStats:
+    """Write feedback events into a CSV file."""
     total = 0
     written = 0
     skipped_without_vote = 0
@@ -113,6 +122,7 @@ def _write_csv(events: Iterable[dict[str, Any]], options: ExportOptions) -> Expo
 
 
 def _write_jsonl(events: Iterable[dict[str, Any]], options: ExportOptions) -> ExportStats:
+    """Write feedback events into a JSONL file."""
     total = 0
     written = 0
     skipped_without_vote = 0
@@ -134,6 +144,7 @@ def _write_jsonl(events: Iterable[dict[str, Any]], options: ExportOptions) -> Ex
 
 
 def _flatten_event(event: dict[str, Any]) -> dict[str, Any]:
+    """Flatten nested event data into scalar fields."""
     signals = event.get("signals") or {}
     metadata = event.get("metadata") or {}
 

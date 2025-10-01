@@ -10,10 +10,9 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from pydantic import ValidationError
 from rich.console import Console
 from rich.table import Table
-
-from pydantic import ValidationError
 
 from gateway.mcp.config import MCPSettings
 

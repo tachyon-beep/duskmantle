@@ -388,7 +388,7 @@ class RecipeRunner:
                     ValueError,
                     KeyError,
                     RuntimeError,
-                    asyncio.TimeoutError,
+                    TimeoutError,
                 ) as exc:  # pragma: no cover - failure path
                     duration = time.time() - step_start
                     logger.error("[recipe] step %s failed: %s", step.id, exc)
