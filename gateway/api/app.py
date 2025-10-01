@@ -5,10 +5,10 @@ import logging
 import sqlite3
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
-from contextlib import asynccontextmanager, suppress
+from contextlib import AbstractAsyncContextManager, asynccontextmanager, suppress
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 from fastapi import Body, Depends, FastAPI, HTTPException, Request, Response
@@ -83,7 +83,7 @@ def _log_startup_configuration(settings: AppSettings) -> None:
     )
 
 
-def _build_lifespan(settings: AppSettings) -> Callable[[FastAPI], AsyncIterator[None]]:
+def _build_lifespan(settings: AppSettings) -> Callable[[FastAPI], AbstractAsyncContextManager[None]]:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         scheduler = IngestionScheduler(settings)
@@ -99,7 +99,7 @@ def _build_lifespan(settings: AppSettings) -> Callable[[FastAPI], AsyncIterator[
                 with suppress(Exception):
                     driver.close()
 
-    return lifespan
+    return cast(Callable[[FastAPI], AbstractAsyncContextManager[None]], lifespan)
 
 
 def _configure_rate_limits(app: FastAPI, settings: AppSettings) -> Limiter:
@@ -530,6 +530,7 @@ def create_app() -> FastAPI:
         else:
             SEARCH_REQUESTS_TOTAL.labels(status="success").inc()
 
+        metadata: dict[str, Any] = dict(response.metadata)
         payload_json = {
             "query": response.query,
             "results": [
@@ -540,15 +541,15 @@ def create_app() -> FastAPI:
                 }
                 for result in response.results
             ],
-            "metadata": response.metadata,
+            "metadata": metadata,
         }
-        payload_json["metadata"]["request_id"] = request_id
+        metadata["request_id"] = request_id
         if include_graph and graph_service is None:
-            warnings = payload_json["metadata"].setdefault("warnings", [])
+            warnings = metadata.setdefault("warnings", [])
             warnings.append("Graph context unavailable")
-            payload_json["metadata"]["graph_context_included"] = False
+            metadata["graph_context_included"] = False
 
-        if filters_resolved and "filters_applied" not in payload_json["metadata"]:
+        if filters_resolved and "filters_applied" not in metadata:
             serialisable_filters: dict[str, Any] = {}
             for key, value in filters_resolved.items():
                 if isinstance(value, datetime):
@@ -557,7 +558,7 @@ def create_app() -> FastAPI:
                     serialisable_filters[key] = value
                 else:
                     serialisable_filters[key] = value
-            payload_json["metadata"]["filters_applied"] = serialisable_filters
+            metadata["filters_applied"] = serialisable_filters
 
         feedback_payload = payload.get("feedback")
         feedback_mapping = feedback_payload if isinstance(feedback_payload, dict) else None
@@ -580,7 +581,7 @@ def create_app() -> FastAPI:
             return False
 
         if feedback_store is not None and response.results and not _has_vote(feedback_mapping):
-            payload_json["metadata"]["feedback_prompt"] = (
+            metadata["feedback_prompt"] = (
                 "Optional: call `km-feedback-submit` with the provided `request_id` "
                 "and a vote in the range [-1, 1] to help tune search ranking."
             )

@@ -708,13 +708,30 @@ def _calculate_supporting_bonus(related_artifacts: Iterable[dict[str, Any]]) -> 
 
 def _calculate_coverage_info(chunk: dict[str, Any], weight_coverage_penalty: float) -> CoverageInfo:
     coverage_missing_flag = 1.0 if chunk.get("coverage_missing") else 0.0
-    coverage_ratio_raw: object = chunk.get("coverage_ratio")
-    try:
-        coverage_ratio = max(0.0, min(1.0, float(coverage_ratio_raw)))
-    except (TypeError, ValueError):
+    coverage_ratio_raw = chunk.get("coverage_ratio")
+    coverage_ratio = _coerce_ratio_value(coverage_ratio_raw)
+    if coverage_ratio is None:
         coverage_ratio = 0.0 if coverage_missing_flag else 1.0
     penalty = weight_coverage_penalty * (1.0 - coverage_ratio)
     return CoverageInfo(ratio=coverage_ratio, penalty=penalty, missing_flag=coverage_missing_flag)
+
+
+def _coerce_ratio_value(value: object) -> float | None:
+    if isinstance(value, bool):
+        # Prevent bools masquerading as integers
+        return 1.0 if value else 0.0
+    if isinstance(value, (int, float)):
+        return max(0.0, min(1.0, float(value)))
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            numeric = float(text)
+        except ValueError:
+            return None
+        return max(0.0, min(1.0, numeric))
+    return None
 
 
 def _calculate_criticality_score(chunk: dict[str, Any], graph_context: dict[str, Any] | None) -> float:

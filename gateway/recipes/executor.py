@@ -5,7 +5,7 @@ import json
 import logging
 import re
 import time
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -108,37 +108,51 @@ class GatewayToolExecutor(ToolExecutor):
         if tool == "km-search":
             return await client.search(params)
         if tool == "km-graph-subsystem":
+            name = _require_str(params, "name")
+            depth = _coerce_positive_int(params.get("depth"), default=1)
+            include_artifacts = _coerce_bool(params.get("include_artifacts"), default=True)
+            if include_artifacts is None:
+                include_artifacts = True
+            cursor = _coerce_optional_str(params.get("cursor"))
+            limit = _coerce_positive_int(params.get("limit"), default=25)
             return await client.graph_subsystem(
-                params["name"],
-                depth=params.get("depth", 1),
-                include_artifacts=params.get("include_artifacts", True),
-                cursor=params.get("cursor"),
-                limit=params.get("limit", 25),
+                name,
+                depth=depth,
+                include_artifacts=include_artifacts,
+                cursor=cursor,
+                limit=limit,
             )
         if tool == "km-graph-node":
+            node_id = _require_str(params, "node_id")
+            relationships = _coerce_optional_str(params.get("relationships")) or "outgoing"
+            limit = _coerce_positive_int(params.get("limit"), default=50)
             return await client.graph_node(
-                params["node_id"],
-                relationships=params.get("relationships", "outgoing"),
-                limit=params.get("limit", 50),
+                node_id,
+                relationships=relationships,
+                limit=limit,
             )
         if tool == "km-graph-search":
-            return await client.graph_search(params.get("term", ""), limit=params.get("limit", 20))
+            term = _coerce_optional_str(params.get("term")) or ""
+            limit = _coerce_positive_int(params.get("limit"), default=20)
+            return await client.graph_search(term, limit=limit)
         if tool == "km-coverage-summary":
             return await client.coverage_summary()
         if tool == "km-lifecycle-report":
             return await client.lifecycle_report()
         if tool == "km-ingest-status":
-            limit = int(params.get("limit", 10))
+            limit = _coerce_positive_int(params.get("limit"), default=10)
             history = await client.audit_history(limit=limit)
-            profile = params.get("profile")
+            profile = _coerce_optional_str(params.get("profile"))
             record = await latest_ingest_status(history=history, profile=profile)
             if record is None:
                 return {"status": "not_found", "profile": profile}
             return {"status": "ok", "run": record}
         if tool == "km-ingest-trigger":
-            profile = params.get("profile") or self.settings.ingest_profile_default
-            dry_run = bool(params.get("dry_run", False))
-            use_dummy = params.get("use_dummy_embeddings")
+            profile = _coerce_optional_str(params.get("profile")) or self.settings.ingest_profile_default
+            dry_run = _coerce_bool(params.get("dry_run"), default=False)
+            if dry_run is None:
+                dry_run = False
+            use_dummy = _coerce_bool(params.get("use_dummy_embeddings"))
             result = await trigger_ingest(
                 settings=self.settings,
                 profile=profile,
@@ -149,13 +163,13 @@ class GatewayToolExecutor(ToolExecutor):
         if tool == "km-backup-trigger":
             return await trigger_backup(self.settings)
         if tool == "km-audit-history":
-            limit = int(params.get("limit", 20))
+            limit = _coerce_positive_int(params.get("limit"), default=20)
             return await client.audit_history(limit=limit)
 
         raise RecipeExecutionError(f"Unsupported tool '{tool}' in recipe")
 
 
-def _resolve_template(value: object, context: dict[str, object]) -> object:
+def _resolve_template(value: object, context: Mapping[str, object]) -> object:
     if isinstance(value, str):
         if value.startswith("${") and value.endswith("}") and value.count("${") == 1:
             expr = value[2:-1].strip()
@@ -177,45 +191,41 @@ def _resolve_template(value: object, context: dict[str, object]) -> object:
     return value
 
 
-def _lookup_expression(expr: str, context: dict[str, object]) -> object:
-    if expr in context.get("vars", {}):
-        return context["vars"][expr]
-    if expr in context:
-        return context[expr]
+def _lookup_expression(expr: str, context: Mapping[str, object]) -> object:
+    vars_section = context.get("vars")
+    if isinstance(vars_section, Mapping) and expr in vars_section:
+        return vars_section[expr]
+    direct = context.get(expr)
+    if direct is not None:
+        return direct
+
     parts = expr.split(".")
-    root = context
-    current: object | None = None
-    for index, part in enumerate(parts):
-        if index == 0:
-            if part == "vars":
-                current = root.get("vars", {})
-                continue
-            if part == "steps":
-                current = root.get("steps", {})
-                continue
-            if part == "captures":
-                current = root.get("captures", {})
-                continue
-            if part in root:
-                current = root[part]
-                continue
-            if "result" in root and isinstance(root["result"], dict) and part in root["result"]:
-                current = root["result"][part]
-                continue
-            current = None
-        else:
-            current = _descend(current, part)
+    current: object | None = context
+    for part in parts:
         if current is None:
             break
-    if current is None and "result" in root and isinstance(root["result"], dict):
-        current = root["result"].get(expr)
+        if part == "vars" and isinstance(current, Mapping):
+            current = current.get("vars")
+            continue
+        if part == "steps" and isinstance(current, Mapping):
+            current = current.get("steps")
+            continue
+        if part == "captures" and isinstance(current, Mapping):
+            current = current.get("captures")
+            continue
+        current = _descend(current, part)
+
+    if current is None and isinstance(context.get("result"), Mapping):
+        result_section = context.get("result")
+        if isinstance(result_section, Mapping):
+            current = result_section.get(expr)
     if current is None:
         raise RecipeExecutionError(f"Unable to resolve expression '{expr}'")
     return current
 
 
 def _descend(current: object, part: str) -> object:
-    if isinstance(current, dict):
+    if isinstance(current, Mapping):
         key = part
         if "[" in key:
             base, rest = key.split("[", 1)
@@ -227,7 +237,7 @@ def _descend(current: object, part: str) -> object:
             for segment in segments:
                 if isinstance(current, (list, tuple)):
                     current = current[int(segment)]
-                elif isinstance(current, dict):
+                elif isinstance(current, Mapping):
                     current = current.get(segment)
                 else:
                     current = None
@@ -280,10 +290,13 @@ class RecipeRunner:
         dry_run: bool = False,
     ) -> RecipeRunResult:
         variables = variables or {}
-        context = {
-            "vars": {**recipe.variables, **variables},
-            "steps": {},
-            "captures": {},
+        vars_store: dict[str, object] = {**recipe.variables, **variables}
+        steps_store: dict[str, object] = {}
+        captures_store: dict[str, object] = {}
+        context: dict[str, object] = {
+            "vars": vars_store,
+            "steps": steps_store,
+            "captures": captures_store,
         }
         started = time.time()
         step_results: list[StepResult] = []
@@ -314,7 +327,8 @@ class RecipeRunner:
                 try:
                     result_payload: object
                     if step.tool:
-                        params = _resolve_template(step.params, context)
+                        params_obj = _resolve_template(step.params, context)
+                        params = _ensure_object_map(params_obj, step.id)
                         result_payload = await executor.call(step.tool, params)
                         logger.debug("[recipe:%s] result=%s", step.id, result_payload)
                         if step.expect:
@@ -333,10 +347,10 @@ class RecipeRunner:
                     else:  # pragma: no cover - validator forbids this path
                         raise RecipeExecutionError("Invalid step configuration")
 
-                    context["steps"][step.id] = result_payload
+                    steps_store[step.id] = result_payload
                     if step.capture:
                         for capture in step.capture:
-                            context["captures"][capture.name] = _compute_capture(result_payload, capture)
+                            captures_store[capture.name] = _compute_capture(result_payload, capture)
                     duration = time.time() - step_start
                     step_results.append(StepResult(step_id=step.id, status="success", duration_seconds=duration, result=result_payload))
                 except Exception as exc:  # pragma: no cover - failure path
@@ -386,7 +400,8 @@ class RecipeRunner:
     ) -> object:
         deadline = time.time() + wait.timeout_seconds
         attempt = 0
-        params = _resolve_template(wait.params, context)
+        params_obj = _resolve_template(wait.params, context)
+        params = _ensure_object_map(params_obj, wait.tool)
         while True:
             attempt += 1
             payload = await executor.call(wait.tool, params)
@@ -437,6 +452,64 @@ def load_recipe(path: Path) -> Recipe:
     if not isinstance(data, dict):
         raise ValueError(f"Recipe file {path} does not contain a mapping")
     return Recipe.model_validate(data)
+
+
+def _ensure_object_map(value: object, label: str) -> dict[str, object]:
+    if isinstance(value, dict):
+        return {str(key): val for key, val in value.items()}
+    raise RecipeExecutionError(f"Resolved parameters for '{label}' must be a mapping; got {type(value).__name__}")
+
+
+def _require_str(params: Mapping[str, object], key: str) -> str:
+    candidate = params.get(key)
+    result = _coerce_optional_str(candidate)
+    if result is None or not result:
+        raise RecipeExecutionError(f"Parameter '{key}' is required and must be a string")
+    return result
+
+
+def _coerce_optional_str(value: object | None) -> str | None:
+    if isinstance(value, str):
+        text = value.strip()
+        return text if text else None
+    return None
+
+
+def _coerce_positive_int(value: object | None, *, default: int) -> int:
+    numeric = _coerce_int(value)
+    if numeric is None:
+        return max(1, default)
+    return max(1, numeric)
+
+
+def _coerce_int(value: object | None) -> int | None:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            return int(text)
+        except ValueError:
+            return None
+    return None
+
+
+def _coerce_bool(value: object | None, *, default: bool | None = None) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"true", "1", "yes", "y"}:
+            return True
+        if lowered in {"false", "0", "no", "n"}:
+            return False
+    return default
 
 
 def list_recipes(recipes_dir: Path) -> list[Path]:

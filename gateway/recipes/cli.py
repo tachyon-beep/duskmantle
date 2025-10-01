@@ -137,7 +137,8 @@ def recipe_executor_factory(settings: MCPSettings) -> Callable[[], GatewayToolEx
 
 def command_run(args: argparse.Namespace, settings: MCPSettings) -> None:
     recipe = load_recipe_by_name(args.recipes_dir, args.name)
-    variables = parse_variables(args.var)
+    variables_raw = parse_variables(args.var)
+    variables: dict[str, object] = {key: value for key, value in variables_raw.items()}
     runner = RecipeRunner(
         settings,
         executor_factory=recipe_executor_factory(settings),

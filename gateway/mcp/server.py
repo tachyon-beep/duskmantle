@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import AsyncIterator, Callable
-from contextlib import asynccontextmanager
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
@@ -154,7 +154,7 @@ TOOL_USAGE = {
 HELP_DOC_PATH = Path(__file__).resolve().parents[2] / "docs" / "MCP_INTERFACE_SPEC.md"
 
 
-LifespanCallable = Callable[[FastMCP], AsyncIterator["MCPServerState"]]
+LifespanCallable = Callable[[FastMCP], AbstractAsyncContextManager["MCPServerState"]]
 
 
 class MCPServerState:
@@ -179,7 +179,7 @@ class MCPServerState:
                 finally:
                     self.client = None
 
-        return _lifespan
+        return cast(LifespanCallable, _lifespan)
 
 
 def build_server(settings: MCPSettings | None = None) -> FastMCP:

@@ -174,11 +174,10 @@ def _render_audit_table(entries: Iterable[dict[str, object]]) -> Table:
 
 
 def _format_timestamp(raw: object) -> str:
-    try:
-        ts = float(raw)
-    except (TypeError, ValueError):  # pragma: no cover - defensive guard
+    numeric = _coerce_float(raw)
+    if numeric is None:
         return "-"
-    return datetime.fromtimestamp(ts).isoformat(sep=" ", timespec="seconds")
+    return datetime.fromtimestamp(numeric).isoformat(sep=" ", timespec="seconds")
 
 
 def _coerce_int(value: object) -> int | None:

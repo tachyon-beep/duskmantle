@@ -159,9 +159,23 @@ def _describe_trigger(config: Mapping[str, object]) -> str:
 
 
 def _coerce_positive_int(value: object, *, default: int) -> int:
-    try:
-        numeric = int(value)  # type: ignore[arg-type]
-    except (TypeError, ValueError):
+    numeric: int
+    if isinstance(value, bool):
+        numeric = int(value)
+    elif isinstance(value, int):
+        numeric = value
+    elif isinstance(value, float):
+        numeric = int(value)
+    elif isinstance(value, str):
+        text = value.strip()
+        if not text:
+            numeric = default
+        else:
+            try:
+                numeric = int(text)
+            except ValueError:
+                numeric = default
+    else:
         numeric = default
     if numeric < 1:
         return max(1, default)
