@@ -5,6 +5,7 @@ from __future__ import annotations
 # pylint: disable=missing-function-docstring,missing-class-docstring,
 # pylint: disable=protected-access,redefined-outer-name,import-outside-toplevel,
 # pylint: disable=unused-argument,unused-variable
+import asyncio
 from collections.abc import Awaitable, Callable, Iterator
 from pathlib import Path
 from typing import Any, cast
@@ -122,6 +123,7 @@ async def test_km_search_success_records_metrics(
     class StubClient:
         async def search(self, payload: dict[str, object]) -> dict[str, object]:
             assert payload["query"] == "design docs"
+            await asyncio.sleep(0)
             return {"results": [], "metadata": {}}
 
     state.client = cast(Any, StubClient())
@@ -175,6 +177,7 @@ async def test_graph_tools_delegate_to_client_and_record_metrics(
             assert node_id == "DesignDoc:docs/README.md"
             assert relationships == "outgoing"
             assert limit == 25
+            await asyncio.sleep(0)
             return {"id": node_id}
 
         async def graph_subsystem(
@@ -191,11 +194,13 @@ async def test_graph_tools_delegate_to_client_and_record_metrics(
             assert include_artifacts is True
             assert cursor is None
             assert limit == 10
+            await asyncio.sleep(0)
             return {"name": name}
 
         async def graph_search(self, term: str, *, limit: int) -> dict[str, object]:
             assert term == "ingest"
             assert limit == 7
+            await asyncio.sleep(0)
             return {"results": ["node"]}
 
     state.client = cast(Any, StubClient())
@@ -235,6 +240,7 @@ async def test_lifecycle_report_records_metrics(
 
     class StubClient:
         async def lifecycle_report(self) -> dict[str, object]:
+            await asyncio.sleep(0)
             return {"missing_tests": []}
 
     state.client = cast(Any, StubClient())
@@ -254,6 +260,7 @@ async def test_coverage_summary_records_metrics(
 
     class StubClient:
         async def coverage_summary(self) -> dict[str, object]:
+            await asyncio.sleep(0)
             return {"artifacts": 10}
 
     state.client = cast(Any, StubClient())
@@ -274,6 +281,7 @@ async def test_ingest_status_handles_missing_history(
     class StubClient:
         async def audit_history(self, *, limit: int) -> list[dict[str, object]]:
             assert limit == 10
+            await asyncio.sleep(0)
             return []
 
     state.client = cast(Any, StubClient())
@@ -301,6 +309,7 @@ async def test_ingest_trigger_succeeds(
         dry_run: bool,
         use_dummy_embeddings: bool | None,
     ) -> dict[str, object]:
+        await asyncio.sleep(0)
         called["args"] = (profile, dry_run, use_dummy_embeddings)
         return {"success": True, "run_id": "xyz"}
 
@@ -328,6 +337,7 @@ async def test_ingest_trigger_failure_records_metrics(
     server, _state = mcp_server
 
     async def stub_trigger_ingest(**_kwargs: object) -> dict[str, object]:  # pragma: no cover - exercised in test
+        await asyncio.sleep(0)
         return {"success": False}
 
     monkeypatch.setattr("gateway.mcp.server.trigger_ingest", stub_trigger_ingest)
@@ -348,6 +358,7 @@ async def test_backup_trigger(
     server, _state = mcp_server
 
     async def stub_trigger_backup(_settings: MCPSettings) -> dict[str, object]:
+        await asyncio.sleep(0)
         return {"archive": "backups/km-backup.tgz"}
 
     monkeypatch.setattr("gateway.mcp.server.trigger_backup", stub_trigger_backup)

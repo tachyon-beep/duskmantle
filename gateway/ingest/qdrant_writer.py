@@ -8,6 +8,7 @@ from collections.abc import Iterable
 
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as qmodels
+from qdrant_client.http.exceptions import UnexpectedResponse
 
 from gateway.ingest.artifacts import ChunkEmbedding
 
@@ -23,8 +24,22 @@ class QdrantWriter:
 
     def ensure_collection(self, vector_size: int) -> None:
         """Ensure the collection exists with the desired vector dimensionality."""
-        if self.client.collection_exists(self.collection_name):
-            return
+        collection_exists = getattr(self.client, "collection_exists", None)
+        if callable(collection_exists):
+            try:
+                if collection_exists(self.collection_name):
+                    return
+            except UnexpectedResponse:
+                logger.info("Collection check failed for %s; recreating", self.collection_name)
+            except Exception:  # pragma: no cover - defensive
+                logger.warning("Unexpected error checking Qdrant collection existence", exc_info=True)
+        else:
+            try:
+                self.client.get_collection(self.collection_name)
+                return
+            except Exception:  # pragma: no cover - fallback for older clients
+                logger.info("Collection lookup failed for %s; recreating", self.collection_name)
+
         logger.info("Creating Qdrant collection %s", self.collection_name)
         vectors_config = qmodels.VectorParams(size=vector_size, distance=qmodels.Distance.COSINE)
         self.client.recreate_collection(
