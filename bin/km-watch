@@ -61,7 +61,11 @@ def trigger_command(command: list[str] | str) -> int:
     parts = _normalize_command(command)
     printable = " ".join(parts)
     print("[km-watch] Change detected. Running:", printable)
-    return subprocess.run(parts, check=False).returncode
+    return subprocess.run(  # noqa: S603,S607
+        parts,
+        check=False,
+        shell=False,
+    ).returncode
 
 
 def _normalize_command(command: list[str] | str) -> list[str]:
