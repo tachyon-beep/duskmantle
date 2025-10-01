@@ -66,7 +66,7 @@ class AppSettings(BaseSettings):
     neo4j_uri: str = Field("bolt://localhost:7687", alias="KM_NEO4J_URI")
     neo4j_user: str = Field("neo4j", alias="KM_NEO4J_USER")
     neo4j_password: str = Field("neo4jadmin", alias="KM_NEO4J_PASSWORD")
-    neo4j_database: str = Field("neo4j", alias="KM_NEO4J_DATABASE")
+    neo4j_database: str = Field("knowledge", alias="KM_NEO4J_DATABASE")
 
     embedding_model: str = Field("sentence-transformers/all-MiniLM-L6-v2", alias="KM_EMBEDDING_MODEL")
     ingest_window: int = Field(1000, alias="KM_INGEST_WINDOW")

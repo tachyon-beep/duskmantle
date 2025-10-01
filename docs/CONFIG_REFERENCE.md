@@ -61,7 +61,7 @@ The knowledge gateway reads its runtime configuration from environment variables
 |----------|---------|---------|
 | `KM_NEO4J_URI` | `bolt://localhost:7687` | Bolt endpoint for Neo4j. |
 | `KM_NEO4J_USER` / `KM_NEO4J_PASSWORD` | `neo4j` / `neo4jadmin` | Credentials for Neo4j. Secure mode (`KM_AUTH_ENABLED=true`) requires overriding the default password. |
-| `KM_NEO4J_DATABASE` | `neo4j` | Database name (container default is `knowledge`). |
+| `KM_NEO4J_DATABASE` | `knowledge` | Neo4j database name queried by the gateway. |
 | `KM_NEO4J_AUTH_ENABLED` | `false` | Toggle authentication for Neo4j access. |
 | `KM_GRAPH_AUTO_MIGRATE` | `false` | Auto-run graph migrations at API startup (container default `true`). |
 | `KM_QDRANT_URL` | `http://localhost:6333` | Qdrant API base URL. |

@@ -171,7 +171,7 @@ def _init_qdrant_client(settings: AppSettings) -> QdrantClient | None:
 
 def _create_graph_driver(settings: AppSettings) -> Driver | None:
     try:
-        return GraphDatabase.driver(
+        driver = GraphDatabase.driver(
             settings.neo4j_uri,
             auth=(settings.neo4j_user, settings.neo4j_password),
         )
@@ -179,6 +179,39 @@ def _create_graph_driver(settings: AppSettings) -> Driver | None:
         logger.warning("Neo4j driver initialization failed: %s", exc)
         _set_migration_metrics(0, timestamp=time.time())
         return None
+
+    if not _verify_graph_database(driver, settings.neo4j_database):
+        try:
+            driver.close()
+        except Neo4jError:  # pragma: no cover - defensive cleanup
+            pass
+        _set_migration_metrics(0, timestamp=time.time())
+        return None
+
+    return driver
+
+
+def _verify_graph_database(driver: Driver, database: str) -> bool:
+    try:
+        with driver.session(database=database) as session:
+            session.run("RETURN 1 AS ok").consume()
+    except Neo4jError as exc:
+        code = getattr(exc, "code", "") or ""
+        if "DatabaseNotFound" in code:
+            logger.error(
+                "Neo4j database '%s' not found; update KM_NEO4J_DATABASE or create the database before starting",
+                database,
+            )
+        else:
+            logger.warning("Neo4j database '%s' validation query failed: %s", database, exc)
+        return False
+    except ServiceUnavailable as exc:
+        logger.warning("Neo4j database '%s' unavailable during validation: %s", database, exc)
+        return False
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Unexpected error validating Neo4j database '%s': %s", database, exc)
+        return False
+    return True
 
 
 def _run_graph_auto_migration(driver: Driver, database: str) -> None:

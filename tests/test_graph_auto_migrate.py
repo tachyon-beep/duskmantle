@@ -43,6 +43,7 @@ def test_auto_migrate_runs_when_enabled(monkeypatch: pytest.MonkeyPatch) -> None
     fake_runner_factory = mock.Mock(return_value=fake_runner)
     monkeypatch.setattr("gateway.api.app.MigrationRunner", fake_runner_factory)
     monkeypatch.setattr("gateway.api.app.QdrantClient", mock.Mock(return_value=mock.Mock()))
+    monkeypatch.setattr("gateway.api.app._verify_graph_database", mock.Mock(return_value=True))
 
     create_app()
 
@@ -63,6 +64,7 @@ def test_auto_migrate_skipped_when_disabled(monkeypatch: pytest.MonkeyPatch) -> 
     fake_runner_factory = mock.Mock(return_value=fake_runner)
     monkeypatch.setattr("gateway.api.app.MigrationRunner", fake_runner_factory)
     monkeypatch.setattr("gateway.api.app.QdrantClient", mock.Mock(return_value=mock.Mock()))
+    monkeypatch.setattr("gateway.api.app._verify_graph_database", mock.Mock(return_value=True))
 
     create_app()
 
@@ -85,11 +87,34 @@ def test_auto_migrate_records_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_runner_factory = mock.Mock(return_value=fake_runner)
     monkeypatch.setattr("gateway.api.app.MigrationRunner", fake_runner_factory)
     monkeypatch.setattr("gateway.api.app.QdrantClient", mock.Mock(return_value=mock.Mock()))
+    monkeypatch.setattr("gateway.api.app._verify_graph_database", mock.Mock(return_value=True))
 
     create_app()
 
     fake_runner_factory.assert_called_once()
     fake_runner.pending_ids.assert_called_once()
     fake_runner.run.assert_called_once()
+    assert _metric("km_graph_migration_last_status") == 0.0
+    assert _metric("km_graph_migration_last_timestamp")
+
+
+def test_missing_database_disables_graph_driver(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("KM_GRAPH_AUTO_MIGRATE", raising=False)
+
+    fake_driver = mock.Mock()
+    graph_driver_factory = mock.Mock(return_value=fake_driver)
+    monkeypatch.setattr("gateway.api.app.GraphDatabase", mock.Mock(driver=graph_driver_factory))
+
+    validator = mock.Mock(return_value=False)
+    monkeypatch.setattr("gateway.api.app._verify_graph_database", validator)
+
+    monkeypatch.setattr("gateway.api.app.QdrantClient", mock.Mock(return_value=mock.Mock()))
+
+    app = create_app()
+
+    graph_driver_factory.assert_called_once()
+    validator.assert_called_once()
+    fake_driver.close.assert_called_once()
+    assert getattr(app.state, "graph_driver", None) is None
     assert _metric("km_graph_migration_last_status") == 0.0
     assert _metric("km_graph_migration_last_timestamp")
