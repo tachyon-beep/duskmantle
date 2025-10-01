@@ -1,33 +1,16 @@
 """Tests for the search maintenance helpers."""
 
-# pylint: disable=protected-access, wrong-import-position, missing-function-docstring
-
 from __future__ import annotations
 
 import json
 import os
 import stat
-import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
-sys.modules["sentence_transformers"] = SimpleNamespace(
-    SentenceTransformer=type(
-        "_StubSentenceTransformer",
-        (),
-        {
-            "__init__": lambda self, model_name, *args, **kwargs: setattr(self, "model_name", model_name),
-            "get_sentence_embedding_dimension": lambda self: 8,
-            "encode": lambda self, texts, convert_to_tensor=False: [[float(index) for index in range(1, 9)] for _ in texts],
-        },
-    )
-)
-
-from gateway.search import maintenance  # noqa: E402
-from gateway.search.maintenance import (  # noqa: E402
+from gateway.search.maintenance import (
     PruneOptions,
     RedactOptions,
     prune_feedback_log,
@@ -36,13 +19,15 @@ from gateway.search.maintenance import (  # noqa: E402
 
 
 def _write_events(path: Path, requests: list[tuple[str, datetime, list[dict[str, object]]]]) -> None:
-    lines = []
+    """Write JSON lines representing feedback events for the supplied requests."""
+
+    lines: list[str] = []
     for request_id, timestamp, rows in requests:
-        ts = timestamp.isoformat()
+        default_ts = timestamp.isoformat()
         for row in rows:
             record = {
                 "request_id": request_id,
-                "timestamp": ts,
+                "timestamp": default_ts,
                 "rank": row.get("rank", 1),
                 "query": row.get("query", "test"),
             }
@@ -51,7 +36,63 @@ def _write_events(path: Path, requests: list[tuple[str, datetime, list[dict[str,
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def test_prune_feedback_log_parses_various_timestamp_formats(tmp_path: Path) -> None:
+    """Ensure prune handles numeric, Z-suffixed, and missing timestamps."""
+
+    now = datetime(2024, 9, 1, 12, 0, tzinfo=UTC)
+    events_path = tmp_path / "events.log"
+    _write_events(
+        events_path,
+        [
+            (
+                "req-int",
+                now,
+                [
+                    {
+                        "rank": 1,
+                        "query": "numeric",
+                        "timestamp": 1_700_000_000,
+                    }
+                ],
+            ),
+            (
+                "req-z",
+                now,
+                [
+                    {
+                        "rank": 1,
+                        "query": "zulu",
+                        "timestamp": "2024-08-01T00:00:00Z",
+                    }
+                ],
+            ),
+            (
+                "req-none",
+                now,
+                [
+                    {
+                        "rank": 1,
+                        "query": "none",
+                        "timestamp": None,
+                    }
+                ],
+            ),
+        ],
+    )
+
+    stats = prune_feedback_log(
+        events_path,
+        options=PruneOptions(max_requests=5, current_time=now),
+    )
+
+    assert stats.total_requests == 3
+    ids = [json.loads(line)["request_id"] for line in events_path.read_text(encoding="utf-8").splitlines() if line]
+    assert ids == ["req-int", "req-z", "req-none"]
+
+
 def test_prune_feedback_log_by_age(tmp_path: Path) -> None:
+    """Retains only entries newer than the configured age threshold."""
+
     now = datetime(2024, 9, 1, 12, 0, tzinfo=UTC)
     older = now - timedelta(days=40)
     recent = now - timedelta(days=5)
@@ -78,12 +119,16 @@ def test_prune_feedback_log_by_age(tmp_path: Path) -> None:
 
 
 def test_prune_feedback_log_missing_file(tmp_path: Path) -> None:
+    """Raises if the feedback log file is absent."""
+
     missing = tmp_path / "events.log"
     with pytest.raises(FileNotFoundError):
         prune_feedback_log(missing, options=PruneOptions(max_age_days=1))
 
 
 def test_prune_feedback_log_requires_limit(tmp_path: Path) -> None:
+    """Rejects calls without an age or request limit configured."""
+
     events_path = tmp_path / "events.log"
     events_path.write_text("", encoding="utf-8")
 
@@ -92,6 +137,8 @@ def test_prune_feedback_log_requires_limit(tmp_path: Path) -> None:
 
 
 def test_prune_feedback_log_empty_file(tmp_path: Path) -> None:
+    """Returns zeroed stats when the log contains no events."""
+
     events_path = tmp_path / "events.log"
     events_path.write_text("\n\n", encoding="utf-8")
 
@@ -103,6 +150,8 @@ def test_prune_feedback_log_empty_file(tmp_path: Path) -> None:
 
 
 def test_prune_feedback_log_guard_when_pruning_everything(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """Leaves the log intact when filters would drop every request."""
+
     caplog.set_level("WARNING")
     now = datetime(2024, 9, 1, 12, 0, tzinfo=UTC)
     events_path = tmp_path / "events.log"
@@ -130,6 +179,8 @@ def test_prune_feedback_log_guard_when_pruning_everything(tmp_path: Path, caplog
 
 
 def test_prune_feedback_log_max_requests_prefers_newest(tmp_path: Path) -> None:
+    """Keeps only the newest requests when enforcing a max count."""
+
     now = datetime(2024, 9, 1, 12, 0, tzinfo=UTC)
     older = now - timedelta(days=10)
     middle = now - timedelta(days=5)
@@ -167,6 +218,8 @@ def test_prune_feedback_log_max_requests_prefers_newest(tmp_path: Path) -> None:
 
 
 def test_redact_dataset_csv(tmp_path: Path) -> None:
+    """Redacts populated CSV fields for queries, contexts, and notes."""
+
     dataset = tmp_path / "dataset.csv"
     dataset.write_text(
         'request_id,query,context_json,feedback_note\nreq-1,search term,{"task":"deep dive"},useful\n',
@@ -185,7 +238,29 @@ def test_redact_dataset_csv(tmp_path: Path) -> None:
     assert "useful" not in text
 
 
+def test_redact_dataset_csv_handles_missing_and_blank_fields(tmp_path: Path) -> None:
+    """Leaves missing or blank CSV fields untouched while redacting non-empty ones."""
+
+    dataset = tmp_path / "dataset.csv"
+    dataset.write_text(
+        "request_id,context_json\n" "req-keep,\n" 'req-redact,{"task":"deep dive"}\n',
+        encoding="utf-8",
+    )
+
+    stats = redact_dataset(
+        dataset,
+        options=RedactOptions(drop_query=True, drop_context=True, drop_note=True),
+    )
+
+    assert stats.redacted_rows == 1
+    rows = dataset.read_text(encoding="utf-8").splitlines()
+    assert rows[1].endswith(",")
+    assert rows[2].endswith(",")
+
+
 def test_redact_dataset_jsonl(tmp_path: Path) -> None:
+    """Redacts JSONL query and context fields when toggled."""
+
     dataset = tmp_path / "dataset.jsonl"
     dataset.write_text(
         json.dumps(
@@ -213,13 +288,43 @@ def test_redact_dataset_jsonl(tmp_path: Path) -> None:
     assert data[0]["feedback_note"] == "helpful"
 
 
+def test_redact_dataset_jsonl_handles_missing_and_blank_fields(tmp_path: Path) -> None:
+    """Leaves absent or empty JSONL fields untouched while redacting populated ones."""
+
+    dataset = tmp_path / "dataset.jsonl"
+    dataset.write_text(
+        json.dumps({"request_id": "r1"}, separators=(",", ":"))
+        + "\n"
+        + json.dumps({"request_id": "r2", "feedback_note": ""}, separators=(",", ":"))
+        + "\n"
+        + json.dumps({"request_id": "r3", "feedback_note": "note"}, separators=(",", ":"))
+        + "\n",
+        encoding="utf-8",
+    )
+
+    stats = redact_dataset(
+        dataset,
+        options=RedactOptions(drop_note=True),
+    )
+
+    assert stats.redacted_rows == 1
+    records = [json.loads(line) for line in dataset.read_text(encoding="utf-8").splitlines() if line]
+    assert "feedback_note" not in records[0]
+    assert records[1]["feedback_note"] == ""
+    assert records[2]["feedback_note"] is None
+
+
 def test_redact_dataset_missing_file(tmp_path: Path) -> None:
+    """Raises if the target dataset file is absent."""
+
     dataset = tmp_path / "missing.csv"
     with pytest.raises(FileNotFoundError):
         redact_dataset(dataset, options=RedactOptions())
 
 
 def test_redact_dataset_unsupported_suffix(tmp_path: Path) -> None:
+    """Rejects unsupported dataset extensions."""
+
     dataset = tmp_path / "dataset.txt"
     dataset.write_text("data", encoding="utf-8")
 
@@ -228,6 +333,8 @@ def test_redact_dataset_unsupported_suffix(tmp_path: Path) -> None:
 
 
 def test_redact_dataset_output_path_copies_metadata(tmp_path: Path) -> None:
+    """Preserves metadata when writing to an alternate output path."""
+
     dataset = tmp_path / "dataset.csv"
     dataset.write_text("request_id,query\nreq-1,secret\n", encoding="utf-8")
     os.utime(dataset, (1_700_000_000, 1_700_000_100))
@@ -249,6 +356,8 @@ def test_redact_dataset_output_path_copies_metadata(tmp_path: Path) -> None:
 
 
 def test_redact_dataset_jsonl_handles_blank_lines(tmp_path: Path) -> None:
+    """Preserves blank lines in JSONL datasets while redacting content."""
+
     dataset = tmp_path / "dataset.jsonl"
     dataset.write_text(
         "\n" + json.dumps({"request_id": "r1", "query": "search", "feedback_note": "note"}) + "\n",
@@ -264,27 +373,3 @@ def test_redact_dataset_jsonl_handles_blank_lines(tmp_path: Path) -> None:
     data = [json.loads(line) for line in dataset.read_text(encoding="utf-8").splitlines() if line]
     assert data[0]["query"] is None
     assert data[0]["feedback_note"] is None
-
-
-def test_clear_and_null_field_helpers() -> None:
-    row: dict[str, str] = {}
-    assert maintenance._clear_field(row, "query", "") is False
-    row["query"] = ""
-    assert maintenance._clear_field(row, "query", "") is False
-    row["query"] = "secret"
-    assert maintenance._clear_field(row, "query", "") is True
-    assert row["query"] == ""
-
-    record: dict[str, object] = {}
-    assert maintenance._null_field(record, "feedback_note") is False
-    record["feedback_note"] = ""
-    assert maintenance._null_field(record, "feedback_note") is False
-    record["feedback_note"] = "note"
-    assert maintenance._null_field(record, "feedback_note") is True
-    assert record["feedback_note"] is None
-
-
-def test_parse_timestamp_numeric_and_empty() -> None:
-    assert maintenance._parse_timestamp(None) is None
-    timestamp = maintenance._parse_timestamp(1_700_000_000)
-    assert timestamp == datetime.fromtimestamp(1_700_000_000, tz=UTC)

@@ -3,9 +3,10 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 import time
 import warnings
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from types import SimpleNamespace, TracebackType
 from typing import NoReturn
 from uuid import uuid4
@@ -23,6 +24,27 @@ warnings.filterwarnings(
     category=DeprecationWarning,
     module=r"neo4j\._sync\.driver",
 )
+
+
+try:  # pragma: no cover - simple import guard
+    import sentence_transformers  # noqa: F401
+except Exception:  # pragma: no cover - environment-specific shim
+
+    class _StubSentenceTransformer:
+        def __init__(self, model_name: str, *args: object, **kwargs: object) -> None:
+            self.model_name = model_name
+
+        def get_sentence_embedding_dimension(self) -> int:
+            return 8
+
+        def encode(self, texts: Iterable[str], convert_to_tensor: bool = False) -> list[list[float]]:
+            rows = list(texts)
+            dimension = self.get_sentence_embedding_dimension()
+            return [[float(index + 1) for index in range(dimension)] for _ in rows]
+
+    sys.modules["sentence_transformers"] = SimpleNamespace(
+        SentenceTransformer=_StubSentenceTransformer,
+    )
 
 
 class _NullSession:
@@ -124,10 +146,7 @@ def neo4j_test_environment() -> Iterator[dict[str, str | None]]:
                 text=True,
             )
         except subprocess.CalledProcessError as exc:  # pragma: no cover - environment dependent
-            pytest.fail(
-                "Failed to launch Neo4j test container. "
-                f"Command: {' '.join(cmd)}\nstdout: {exc.stdout}\nstderr: {exc.stderr}"
-            )
+            pytest.fail("Failed to launch Neo4j test container. " f"Command: {' '.join(cmd)}\nstdout: {exc.stdout}\nstderr: {exc.stderr}")
 
         deadline = time.time() + 60
         while True:
