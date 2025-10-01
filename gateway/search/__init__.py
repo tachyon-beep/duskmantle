@@ -1,22 +1,17 @@
 """Search service exposing vector search with graph context."""
 
-from .feedback import SearchFeedbackStore
-from .exporter import ExportOptions, ExportStats, export_training_dataset
-from .maintenance import (
-    PruneOptions,
-    PruneStats,
-    RedactOptions,
-    RedactStats,
-    prune_feedback_log,
-    redact_dataset,
-)
+from .dataset import DatasetLoadError, build_feature_matrix, load_dataset_records
 from .evaluation import EvaluationMetrics, evaluate_model
-from .dataset import DatasetLoadError, load_dataset_records, build_feature_matrix
-from .service import SearchResult, SearchResponse, SearchService
+from .exporter import ExportOptions, ExportStats, export_training_dataset
+from .feedback import SearchFeedbackStore
+from .maintenance import PruneOptions, PruneStats, RedactOptions, RedactStats, prune_feedback_log, redact_dataset
+from .service import SearchOptions, SearchResponse, SearchResult, SearchService, SearchWeights
 
 __all__ = [
     "SearchService",
     "SearchResult",
+    "SearchOptions",
+    "SearchWeights",
     "SearchResponse",
     "SearchFeedbackStore",
     "DatasetLoadError",

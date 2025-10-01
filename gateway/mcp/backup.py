@@ -39,9 +39,7 @@ async def trigger_backup(settings: MCPSettings) -> dict[str, Any]:
     stdout, stderr = await process.communicate()
 
     if process.returncode != 0:
-        raise BackupExecutionError(
-            f"Backup helper failed with code {process.returncode}: {stderr.decode().strip()}"
-        )
+        raise BackupExecutionError(f"Backup helper failed with code {process.returncode}: {stderr.decode().strip()}")
 
     archive_path = _parse_archive_path(stdout.decode())
     if archive_path is None:

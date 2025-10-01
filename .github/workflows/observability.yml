@@ -1,6 +1,9 @@
 name: Observability Checks
 
 on:
+  pull_request:
+    branches:
+      - main
   schedule:
     - cron: '0 3 * * *'
   workflow_dispatch:
@@ -19,6 +22,11 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
 
@@ -26,6 +34,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install .
+          npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium
 
       - name: Build container image
         run: docker build -t duskmantle/km:${{ github.sha }} .
@@ -124,6 +136,14 @@ jobs:
           else
             echo "coverage endpoint returned $status (skipping validation)"
           fi
+
+      - name: Check lifecycle history
+        run: |
+          curl -sSf -H "Authorization: Bearer $KM_ADMIN_TOKEN" "http://localhost:8000/lifecycle/history?limit=3" | jq '.'
+
+      - name: Run Playwright UI smoke tests
+        run: |
+          npx playwright test
 
       - name: Tear down
         if: always()

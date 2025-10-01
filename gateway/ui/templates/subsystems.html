@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}Duskmantle Console · Subsystems{% endblock %}
+
+{% block content %}
+<section class="dm-card dm-card--wide">
+  <h2>Subsystem Explorer</h2>
+  <p class="dm-note">Inspect dependency chains and associated artifacts. Depth controls how many relationship hops to follow.</p>
+  <form id="dm-subsystem-form" class="dm-form" autocomplete="off">
+    <label>Subsystem name
+      <input type="text" name="name" placeholder="e.g. ReleaseTooling" required />
+    </label>
+    <div class="dm-form__row">
+      <label>Depth
+        <input type="number" name="depth" min="1" max="4" value="{{ default_depth }}" />
+      </label>
+      <label>Related limit
+        <input type="number" name="limit" min="1" max="50" value="{{ default_limit }}" />
+      </label>
+      <label class="dm-checkbox">
+        <input type="checkbox" name="include_artifacts" checked /> Include artifacts
+      </label>
+    </div>
+    <div class="dm-form__actions">
+      <button class="dm-button" type="submit">Load subsystem</button>
+      <span class="dm-form__status" role="status" aria-live="polite" data-dm-subsystem-status>Provide a reader token, then request a subsystem.</span>
+    </div>
+  </form>
+  <div class="dm-actions" data-dm-subsystem-actions hidden>
+    <button class="dm-button dm-button--ghost" type="button" data-dm-subsystem-copy>Copy MCP Command</button>
+    <button class="dm-button dm-button--ghost" type="button" data-dm-subsystem-download>Download Details</button>
+  </div>
+</section>
+
+<section class="dm-card dm-card--wide" data-dm-subsystem-panel hidden>
+  <div class="dm-panel-heading">
+    <h3 data-dm-subsystem-title>Subsystem</h3>
+    <span class="dm-pill" data-dm-subsystem-hops style="display:none;"></span>
+  </div>
+  <div class="dm-grid">
+    <div>
+      <h4>Details</h4>
+      <dl class="dm-definition" data-dm-subsystem-summary></dl>
+    </div>
+    <div>
+      <h4>Artifacts</h4>
+      <ul class="dm-list" data-dm-subsystem-artifacts></ul>
+    </div>
+  </div>
+
+  <div class="dm-divider"></div>
+  <div>
+    <h4>Related Nodes</h4>
+    <div data-dm-subsystem-error class="dm-feedback dm-alert-error" hidden></div>
+    <div class="dm-table-scroll">
+      <table class="dm-table" data-dm-subsystem-related>
+        <thead>
+          <tr>
+            <th>Node</th>
+            <th>Relationship</th>
+            <th>Direction</th>
+            <th>Hops</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{% endblock %}

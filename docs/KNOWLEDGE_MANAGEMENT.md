@@ -1,11 +1,11 @@
 # Knowledge Management Environment Service
 
-This document defines the developer-facing knowledge management stack that supports Esper-Lite engineers and coding agents. It is an *environment* add-on and does **not** modify or extend the production subsystems (Tolaria, Tamiyo, Kasmina, etc.) described in `docs/architecture_summary.md`. Use this specification as the contract for building and operating the knowledge tooling container.
+This document defines the developer-facing knowledge management stack that supports the core application engineers and coding agents. It is an *environment* add-on and does **not** modify or extend the production subsystems (core platform components, support services, analytics, etc.) described in `docs/architecture_summary.md`. Use this specification as the contract for building and operating the knowledge tooling container.
 
 ## 1. Objectives
 
 - Provide rich project comprehension for humans and coding agents via retrieval-augmented generation (RAG) and graph reasoning over repository assets.
-- Maintain a strict separation between the Esper-Lite runtime and auxiliary tools. Nothing in this stack becomes a hard dependency of Weatherlight or Leyline contracts; all interaction occurs through external APIs.
+- Maintain a strict separation between the core application runtime and auxiliary tools. Nothing in this stack becomes a hard dependency of core services or Integration contracts; all interaction occurs through external APIs.
 - Offer deterministic, reproducible indices of documentation, source code, and telemetry schemas so development agents can answer questions without directly crawling the repository on every request.
 
 ## 2. Core Components
@@ -18,7 +18,7 @@ The tool pack consists of three cooperative services plus automation:
    - Persistence: volume-mounted snapshot directory to retain indexes across container restarts.
 
 2. **Neo4j Graph Database**
-   - Role: express relationships among subsystems, Leyline messages, telemetry channels, file artifacts, and design documents.
+   - Role: express relationships among subsystems, Integration messages, telemetry channels, file artifacts, and design documents.
    - Access Pattern: Cypher queries for dependency analysis (e.g., subsystem → contract → telemetry endpoint) that mirror the architecture summary responsibilities.
    - Persistence: volume-mounted `data/` and `logs/` directories.
 
@@ -42,27 +42,27 @@ The tool pack consists of three cooperative services plus automation:
 The ingestion job must cover:
 
 - `docs/` tree (design specs, prototype deltas, architecture summary).
-- `src/esper/` source files (including Leyline bindings, subsystem modules, telemetry helpers).
+- `src/` source packages discovered from `pyproject.toml` (or, if absent, any package directories under `src/`). This captures integration bindings, subsystem modules, telemetry helpers, and other runtime code.
 - `tests/` mirror (unit and integration tests provide behavioral examples).
-- Generated protobuf descriptors under `src/esper/leyline/_generated/` (include schema metadata but skip large binary outputs).
+- Generated protobuf descriptors located under `_generated/` directories within those packages (include schema metadata but skip large binary outputs).
 - Optional: CI configuration, tooling configs under `.codacy/` for pipeline context.
 
 Each ingested artifact must capture:
 
 - Git metadata: commit SHA, relative path, last modified timestamp.
-- Subsystem classification inferred from path (e.g., `src/esper/kasmina/` → `Kasmina`).
+- Subsystem classification inferred from the first directory beneath each detected package root (e.g., `src/gateway/analytics/` → `Analytics`).
 - Artifact type: `doc`, `code`, `test`, `proto`, `config`.
-- Relevant Leyline message or telemetry channel tags if detected via regex/pattern matching.
+- Relevant Integration message or telemetry channel tags if detected via regex/pattern matching.
 
 ## 4. Vector Index Schema (Qdrant)
 
-- Collection name: `esper_knowledge_v1` (suffix version allows future migrations).
+- Collection name: `km_knowledge_v1` (suffix version allows future migrations).
 - Vector size: determined by embedding model; store in collection metadata.
 - Payload fields (all indexed):
   - `path` (string)
   - `artifact_type` (enum string)
   - `subsystem` (string)
-  - `leyline_entities` (array of strings)
+  - `message_entities` (array of strings)
   - `telemetry_signals` (array of strings)
   - `git_commit` (string)
   - `git_timestamp` (int epoch seconds)
@@ -76,7 +76,7 @@ Each ingested artifact must capture:
 ### Node Labels
 
 - `Subsystem` (`name`, `description`)
-- `LeylineMessage` (`name`, `proto_path`)
+- `IntegrationMessage` (`name`, `proto_path`)
 - `TelemetryChannel` (`name`, `source_subsystem`)
 - `SourceFile` (`path`, `artifact_type`, `git_commit`, `git_timestamp`)
 - `DesignDoc` (`path`, `title`)
@@ -84,18 +84,18 @@ Each ingested artifact must capture:
 
 ### Relationships
 
-- `(:Subsystem)-[:IMPLEMENTS]->(:LeylineMessage)`
+- `(:Subsystem)-[:IMPLEMENTS]->(:IntegrationMessage)`
 - `(:Subsystem)-[:EMITS]->(:TelemetryChannel)`
 - `(:Subsystem)-[:DEPENDS_ON]->(:Subsystem)` (derived from import graph and architecture summary)
 - `(:SourceFile)-[:BELONGS_TO]->(:Subsystem)`
 - `(:DesignDoc)-[:DESCRIBES]->(:Subsystem)`
 - `(:TestCase)-[:VALIDATES]->(:Subsystem)`
-- `(:SourceFile)-[:DECLARES]->(:LeylineMessage)`
+- `(:SourceFile)-[:DECLARES]->(:IntegrationMessage)`
 - Cross-links to connect vector chunks: store the `chunk_id` as a node property and create `(:SourceFile)-[:HAS_CHUNK]->(:Chunk)` nodes when needed for traceability.
 
 ### Constraints & Indexes
 
-- Uniqueness constraints on primary identifiers (`Subsystem.name`, `LeylineMessage.name`, `SourceFile.path`).
+- Uniqueness constraints on primary identifiers (`Subsystem.name`, `IntegrationMessage.name`, `SourceFile.path`).
 - Relationship merge operations must be idempotent to allow repeated ingestion runs.
 
 ## 6. Knowledge Gateway API
@@ -106,7 +106,7 @@ Expose an HTTP API (FastAPI recommended) with the following endpoints:
 - `POST /ingest/path` — re-index a specific path.
 - `POST /search` — body includes `query` plus optional `limit`, `include_graph`, and `filters` (`subsystems`, `artifact_types`, `namespaces`, `tags`, `updated_after`, `max_age_days`); returns ranked chunks with vector + graph context and scoring metadata.
 - Hybrid ranking combines dense embeddings with lexical overlap; tune via environment (`KM_SEARCH_VECTOR_WEIGHT`, `KM_SEARCH_LEXICAL_WEIGHT`) and adjust Qdrant recall with `KM_SEARCH_HNSW_EF_SEARCH`.
-- `GET /search/graph/dependencies` — parameters: `subsystem` or `leyline`; runs Cypher to return relationship chains.
+- `GET /search/graph/dependencies` — parameters: `subsystem` or `message`; runs Cypher to return relationship chains.
 - `POST /search/hybrid` — combines vector search with graph expansion; accepts `query` and optional `mode` (`downstream`, `upstream`).
 - `GET /health/live`, `GET /health/ready` — container health.
 - `GET /metrics` — Prometheus-compatible metrics (index counts, ingestion durations).
@@ -119,7 +119,7 @@ Authentication: simple bearer token from environment variable (`GATEWAY_API_TOKE
 2. **Parsing & Metadata Extraction**:
    - Use tree-sitter or pygments for code summary (optional, nice-to-have).
    - Extract doc titles from Markdown H1 headings.
-   - Identify Leyline messages via regex on `AdaptationCommand`, `TelemetryPacket`, etc.
+   - Identify Integration messages via regex on `AdaptationCommand`, `TelemetryPacket`, etc.
 3. **Chunking**: split text/code per schema above.
 4. **Embedding**: run batches through sentence-transformers; support GPU acceleration when available but fall back to CPU.
 5. **Vector Upsert**: send `upsert_points` to Qdrant with metadata payload.
@@ -150,10 +150,10 @@ Provide a `docker-compose.yml` with services:
     - `QDRANT_URL=http://qdrant:6333`
     - `NEO4J_BOLT_URL=bolt://neo4j:7687`
     - `NEO4J_USER`, `NEO4J_PASSWORD`
-    - `REPO_ROOT=/workspace/esper-lite`
+    - `REPO_ROOT=/workspace/project`
     - Scheduling knobs (`INGEST_INTERVAL_SECONDS`)
   - Volumes:
-    - Mount host repository read-only at `/workspace/esper-lite`
+    - Mount host repository read-only at `/workspace/project`
     - Optional cache volume for embeddings (`./storage/cache:/app/.cache`)
 
 ### Build Context (`gateway/` directory)
@@ -190,7 +190,7 @@ Provide a `docker-compose.yml` with services:
 
 3. **Routine Use**
    - Use `GET /search/vector?query=...` for contextual retrieval.
-   - Use `GET /search/graph/dependencies?subsystem=Kasmina` to trace relationships.
+   - Use `GET /search/graph/dependencies?subsystem=analytics` to trace relationships.
    - Combine via `POST /search/hybrid` for RAG prompts.
 
 4. **Maintenance**
@@ -199,8 +199,8 @@ Provide a `docker-compose.yml` with services:
    - Review ingestion logs for failures; rerun partial ingestion if needed.
 
 5. **Updates**
-   - When repository schema changes (new subsystems, new Leyline messages), update mapping configuration (`gateway/config/subsystem_map.yaml`).
-   - Bump collection version to `esper_knowledge_v2` when altering chunk schema.
+   - When repository schema changes (new subsystems, new Integration messages), update mapping configuration (`gateway/config/subsystem_map.yaml`).
+   - Bump collection version to `km_knowledge_v2` when altering chunk schema.
 
 ## 12. Acceptance Criteria For Implementation
 
@@ -221,7 +221,7 @@ A coding AI tasked with building this container must complete the following:
 
 ## 14. Knowledge Lifecycle Management
 
-Design the gateway with first-class routines for keeping the knowledge base accurate and compact. These jobs run entirely inside the environment toolchain and never mutate the Esper-Lite repository.
+Design the gateway with first-class routines for keeping the knowledge base accurate and compact. These jobs run entirely inside the environment toolchain and never mutate the core application repository.
 
 ### 14.1 Ingestion Cadence & Scheduling
 
@@ -237,7 +237,7 @@ Design the gateway with first-class routines for keeping the knowledge base accu
 
 ### 14.3 Versioning & Rollback Safety
 
-- Maintain versioned collection names (`esper_knowledge_v1`, `esper_knowledge_v2`, ...). Promote to a new version when altering payload schemas or switching embedding models.
+- Maintain versioned collection names (`km_knowledge_v1`, `km_knowledge_v2`, ...). Promote to a new version when altering payload schemas or switching embedding models.
 - Enable Qdrant snapshotting (`qdrant snapshot create`) post-ingestion; keep the last three snapshots and prune older ones.
 - For Neo4j, schedule weekly `neo4j-admin dump` backups. Store snapshot/backup paths in a gateway-maintained manifest for quick rollback.
 
@@ -265,9 +265,9 @@ Design the gateway with first-class routines for keeping the knowledge base accu
 
 - Store subsystem classification rules in `gateway/config/subsystem_map.yaml`. Include glob patterns and optional regex overrides for special cases (e.g., shared utilities).
 - Log any artifacts that fail classification to a dedicated stream (`classification_warnings.log`) and expose them via `/maintenance/unclassified` for human review.
-- Support manual annotations (YAML) that tag specific files with additional metadata (telemetry channels, Leyline messages). Merge these annotations during ingestion, overriding automated guesses to keep the knowledge graph authoritative.
+- Support manual annotations (YAML) that tag specific files with additional metadata (telemetry channels, Integration messages). Merge these annotations during ingestion, overriding automated guesses to keep the knowledge graph authoritative.
 
-Implementing these lifecycle loops ensures the knowledge stack remains trustworthy, compact, and aligned with Esper-Lite’s contract-first philosophy without burdening the core system.
+Implementing these lifecycle loops ensures the knowledge stack remains trustworthy, compact, and aligned with the core application’s contract-first philosophy without burdening the core system.
 
 ## 15. Data Management Enhancements (Director Requests)
 
@@ -288,7 +288,7 @@ This section captures additional guidance and stretch goals from the knowledge/d
 ### 15.3 Embedding Model Lifecycle
 
 - Externalize embedding model config to `gateway/config/embedding.yaml` including model name, dimensionality, normalization, and stopwords.
-- Support hot-swapping models: stage new collection (`esper_knowledge_vN+1`) and run A/B validation by comparing retrieval metrics (precision@k using curated question/answer fixtures).
+- Support hot-swapping models: stage new collection (`km_knowledge_vN+1`) and run A/B validation by comparing retrieval metrics (precision@k using curated question/answer fixtures).
 - If GPU is available, allow the gateway to auto-detect and leverage it; otherwise default to CPU with batched inference to keep ingestion latency predictable.
 
 ### 15.4 Knowledge Coverage & Gaps
@@ -301,7 +301,7 @@ This section captures additional guidance and stretch goals from the knowledge/d
 
 - Support environment labels (`dev`, `staging`, `prod`) in payload metadata to allow side-by-side indexes for different branches or prototype variants.
 - Provide tooling to snapshot knowledge base state per environment and promote from dev → staging → prod once validation passes.
-- In docker-compose, allow optional additional repos to be mounted (e.g., `../esper-docs`) and define ingestion profiles per mount (toggle per compose override).
+- In docker-compose, allow optional additional repos to be mounted (e.g., `../project-docs`) and define ingestion profiles per mount (toggle per compose override).
 
 ### 15.6 Security & Access Control Deepening
 

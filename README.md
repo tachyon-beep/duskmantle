@@ -1,14 +1,26 @@
 # Duskmantle Knowledge Management Appliance
 
-This repository packages a turnkey knowledge management stack that bundles the Knowledge Gateway, Qdrant, and Neo4j into a single container. It targets Esper-Lite engineers and power users who need deterministic retrieval-augmented answers and graph-backed reasoning over their own repositories without standing up infrastructure.
+This repository packages a turnkey knowledge management stack that bundles the Knowledge Gateway, Qdrant, and Neo4j into a single container. It targets engineering teams and power users who need deterministic retrieval-augmented answers and graph-backed reasoning over their own repositories without standing up infrastructure.
 
 ## Highlights
 
 - **Single container delivery:** Supervisor launches the gateway, Qdrant, and Neo4j together with baked-in defaults.
 - **Deterministic ingestion:** Periodic jobs index docs, source, tests, and protobufs with provenance and coverage reporting.
 - **Hybrid search + graph context:** Vector similarity fused with lexical overlap and live graph lookups for every result.
+- **Embedded preview UI:** Visit `/ui/` for a bundled console shell; future sprints will light up search, subsystems, and lifecycle dashboards.
 - **MCP-native interface:** Codex CLI (and other MCP clients) can call search, graph, ingest, backup, and feedback tools without touching raw HTTP APIs.
 - **Offline ready:** Embedding models and dependencies are vendored so the appliance runs in air-gapped environments.
+
+## LLM Agent Workflow
+
+1. Run `bin/km-bootstrap`. It pulls the latest `ghcr.io/tachyon-beep/duskmantle-km` image, provisions `.duskmantle/{config,data,backups}`, and generates fresh credentials.
+2. Drop or symlink the repositories, docs, or transcripts you want indexed into `.duskmantle/data/`. The container mounts this directory at `/workspace/repo` and the watcher fingerprints files so edits trigger delta ingests automatically.
+3. Monitor ingest state. Leave `bin/km-watch` running for host-side polling, or hit `/metrics` and `/healthz` (with maintainer token if auth is enabled) to verify coverage and scheduler status.
+   Visit `/ui/search` after bootstrap to issue hybrid queries through the bundled console (supply your reader token via the Tokens menu). Switch to `/ui/subsystems` to explore dependency chains and linked artifacts. The `/ui/lifecycle` tab plots spark lines once a few lifecycle snapshots exist, making stale docs and isolation trends easy to spot.
+   Use the action buttons to copy ready-to-run MCP commands (`km-search`, `km-graph-subsystem`, recipes) or download JSON exports for issue triage.
+   Tokens entered via the console are stored for the current browser session only; clear them anytime with the Tokens dialog when you step away from the machine.
+4. Import the Codex MCP snippet from `docs/MCP_INTEGRATION.md` (or the per-tool recipes in `docs/MCP_RECIPES.md`). Any MCP-capable agent can now call `km-search`, `km-graph-*`, `km-ingest-*`, and `km-feedback-submit` without bespoke glue code.
+5. Exercise the surface using the MCP smoke recipe (`docs/MCP_RECIPES.md` section 3) or run `pytest -m mcp_smoke`. Start with `km-upload`/`km-storetext` to add material, then query via `km-search`; `/search` responses include a `metadata.feedback_prompt`, so keep submitting feedback with `km-feedback-submit` until ranking telemetry stabilises.
 
 ## Core Capabilities
 
@@ -20,18 +32,30 @@ This repository packages a turnkey knowledge management stack that bundles the K
 
 ## Quick Start
 
-Prefer the detailed walkthrough in `docs/QUICK_START.md`. Summary:
+Prefer the detailed walkthrough in `docs/QUICK_START.md`. Agents should follow the **LLM Agent Workflow** above; dive into the manual steps below only when customising the container build, mounts, or runtime settings.
 
-1. Build the container with `scripts/build-image.sh duskmantle/km:dev` (BuildKit enabled by default).
-2. Launch it via `bin/km-run` (sets up ports and mounts). Override `KM_DATA_DIR`, `KM_REPO_DIR`, or `KM_IMAGE` as needed.
-3. Kick off an ingest inside the container: `docker exec km-gateway gateway-ingest rebuild --profile local --dummy-embeddings`.
-4. Verify `http://localhost:8000/readyz`, `/healthz`, and `/coverage`; inspect Prometheus metrics at `/metrics` (requires maintainer token if auth enabled).
-5. Use `bin/km-backup` to snapshot the state directory before upgrades; restore with a simple `tar -xzf` into `KM_DATA_DIR`.
-6. Run `./infra/smoke-test.sh duskmantle/km:dev` to build, launch, ingest, and validate coverage end-to-end.
+Summary (or simply run `bin/km-bootstrap` to let the repo pull the latest image, generate credentials, and start the container automatically):
+
+1. Prepare working directories: `mkdir -p .duskmantle/{config,data}`. Copy or symlink the content you want indexed into `.duskmantle/data/` (this path is mounted at `/workspace/repo`). Use `bin/km-sweep` anytime to copy loose `*.md`, `*.docx`, `*.txt`, `*.doc`, or `*.pdf` files into `.duskmantle/data/docs/` so they’re picked up on the next ingest.
+2. Build the container with `scripts/build-image.sh duskmantle/km:dev` (BuildKit enabled by default).
+3. Launch it via `bin/km-run` (default container name `duskmantle`, mounts `.duskmantle/config` and `.duskmantle/data`). Override `KM_DATA_DIR`, `KM_REPO_DIR`, or `KM_IMAGE` as needed.
+4. Kick off an ingest inside the container: `docker exec duskmantle gateway-ingest rebuild --profile local --dummy-embeddings`.
+5. Verify `http://localhost:8000/readyz`, `/healthz`, and `/coverage`; inspect Prometheus metrics at `/metrics` (requires maintainer token if auth enabled).
+6. Use `bin/km-backup` to snapshot `.duskmantle/config` before upgrades; restore with a simple `tar -xzf` into that directory.
+7. Run `./infra/smoke-test.sh duskmantle/km:dev` to build, launch, ingest, and validate coverage end-to-end.
+8. (Optional) Leave `bin/km-watch` running to detect file changes under `.duskmantle/data` and trigger ingestion automatically (pass `--metrics-port` to expose watcher metrics; the in-container watcher uses `KM_WATCH_METRICS_PORT`, default `9103`).
+
+> Maintainer operations (uploads, text capture, ingest and backup triggers) append audit lines to `KM_STATE_PATH/audit/mcp_actions.log`. Include the file in your log rotation policy whenever MCP workflows are part of your day-to-day usage.
+
+### UI Smoke Tests (Playwright)
+
+- Run `bin/km-playwright` to install Node dependencies (`npm ci`) and execute the smoke suite. Pass additional arguments to forward them to `npx playwright test` (e.g., `bin/km-playwright -- --trace on`).
+- Use `bin/km-playwright --no-install` when you want to reuse an existing `node_modules/` directory without reinstalling packages.
+- The Playwright config boots `tests/playwright_server.py`, which seeds lifecycle history, disables schedulers, and serves the embedded UI at `http://127.0.0.1:8765` for the tests.
 
 ### Security Defaults
 
-The appliance ships with permissive defaults so it works out of the box (Neo4j user/password `neo4j` / `neo4jadmin`, API auth disabled, no maintainer tokens). If you care even slightly about privacy or are running anywhere beyond a throwaway demo, override those credentials immediately—set `KM_NEO4J_PASSWORD`, enable `KM_AUTH_ENABLED=true`, and hard-code reader/maintainer tokens before exposing the stack to real data.
+The appliance ships with permissive defaults so local demos start without extra configuration (Neo4j user/password `neo4j` / `neo4jadmin`, API auth disabled, no maintainer tokens). Before handling anything beyond disposable test data, rotate those credentials—set `KM_NEO4J_PASSWORD` to a non-default value, enable `KM_AUTH_ENABLED=true`, and supply reader/maintainer tokens ahead of launch. The gateway now exits on startup if auth is enabled without a maintainer token or a custom Neo4j password.
 
 **Quick hardening checklist**
 
@@ -59,6 +83,7 @@ The appliance ships with permissive defaults so it works out of the box (Neo4j u
 - `gateway/` — Python 3.12 application modules (API, ingestion, config, plugins).
 - `infra/` — (Planned) Supervisor configs, resource profiles, helper scripts.
 - `tests/` — Pytest suites and smoke tests for the turnkey appliance.
+- `docs/MCP_RECIPES.md` — Practical MCP usage examples and automation patterns.
 - `AGENTS.md` — Contributor guide tailored for coding agents and maintainers.
 
 ## Local Development
@@ -104,8 +129,8 @@ The appliance ships with permissive defaults so it works out of the box (Neo4j u
 - Persistent state: mount a host directory to `/opt/knowledge/var` for Qdrant snapshots, Neo4j data/logs, and audit ledgers.
 - Quick smoke check: `./infra/smoke-test.sh duskmantle/km:dev` builds the image, launches a disposable container, runs a smoke ingest, and verifies `/coverage`.
 - Helper scripts live in `bin/`:
-  - `bin/km-run [--detach]` starts the container with sensible defaults; override ports/mounts via `KM_IMAGE`, `KM_DATA_DIR`, `KM_REPO_DIR`, or `KM_DOCKER_RUN_ARGS`.
-- `bin/km-backup [archive.tgz]` archives the mounted state directory (default `./data`) into `./backups` with a timestamped filename.
+- `bin/km-run [--detach]` starts the container with sensible defaults; by default it mounts `.duskmantle/config` to `/opt/knowledge/var` and `.duskmantle/data` to `/workspace/repo`. Override via `KM_IMAGE`, `KM_DATA_DIR`, `KM_REPO_DIR`, or `KM_DOCKER_RUN_ARGS`.
+- `bin/km-backup [archive.tgz]` archives the mounted state directory (default `.duskmantle/config`) into `.duskmantle/backups` with a timestamped filename.
 - See `docs/ACCEPTANCE_DEMO_PLAYBOOK.md` for an end-to-end demo checklist that combines build, ingest, search/graph verification, backup/restore, and smoke testing.
 
 ## MCP Integration
@@ -127,7 +152,9 @@ Key tools (see `docs/MCP_INTERFACE_SPEC.md` for full schemas):
 | `km-graph-subsystem` | reader | Inspect subsystem details, related nodes, and artifacts. |
 | `km-graph-search` | reader | Search graph entities by term (subsystems, design docs, source files). |
 | `km-coverage-summary` | reader | Retrieve the latest coverage snapshot. |
+| `km-lifecycle-report` | maintainer | Summarise isolated graph nodes, stale design docs, and subsystems missing tests. |
 | `km-ingest-status` / `km-ingest-trigger` | maintainer | Inspect or trigger ingestion runs. |
+| `km-recipe-run` | maintainer | Execute multi-step knowledge recipes (health checks, release prep). |
 | `km-backup-trigger` | maintainer | Create a compressed state backup mirroring `bin/km-backup`. |
 | `km-feedback-submit` | maintainer | Record relevance votes for training datasets. |
 
@@ -137,85 +164,29 @@ All MCP usage is mirrored to Prometheus (`km_mcp_requests_total`, `km_mcp_reques
 
 - GitHub Actions `release.yml` builds wheels, Docker images, pushes the image to GitHub Container Registry (GHCR), runs smoke tests, and drafts a tagged release with artifacts (wheels, tarballs, checksums).
 - `dist/SHA256SUMS` and `dist/IMAGE_SHA256SUMS` contain SHA256 hashes generated by `scripts/checksums.sh`.
-- Container images are tagged `duskmantle/km:<version>` locally and published as `ghcr.io/<owner>/duskmantle-km:<version>` on GHCR. For this repository you can pull with `docker pull ghcr.io/tachyon-beep/duskmantle-km:1.0.0` (adjust owner/tag as needed).
+- Container images are tagged `duskmantle/km:<version>` locally and published as `ghcr.io/<owner>/duskmantle-km:<version>` on GHCR. For this repository you can pull with `docker pull ghcr.io/tachyon-beep/duskmantle-km:1.1.0` (adjust owner/tag as needed).
 - For air-gapped installs, download the image tarball from the release artifacts, load via `docker load -i duskmantle-km.tar`, and follow `docs/QUICK_START.md`.
+
 
 ## Configuration
 
-Key environment variables (all prefixed with `KM_`):
+- Full environment-variable reference: see [`docs/CONFIG_REFERENCE.md`](docs/CONFIG_REFERENCE.md).
+- Quick tips:
+  - Set `KM_AUTH_ENABLED=true` with new reader/maintainer tokens for any non-demo usage.
+  - `KM_WATCH_ENABLED=true` makes the container hash `/workspace/repo` every `KM_WATCH_INTERVAL` seconds and run `gateway-ingest` automatically.
+  - Scheduler (`KM_SCHEDULER_ENABLED=true`) and watcher can run together; both require maintainer tokens when auth is enabled.
+  - Use `bin/km-watch` host-side if you prefer to keep automation outside the container.
 
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `KM_REPO_PATH` | `/workspace/repo` | Mounted repository to ingest |
-| `KM_QDRANT_URL` | `http://localhost:6333` | Qdrant API endpoint |
-| `KM_QDRANT_COLLECTION` | `esper_knowledge_v1` | Collection name for embeddings |
-| `KM_NEO4J_URI` | `bolt://localhost:7687` | Neo4j Bolt URI |
-| `KM_NEO4J_USER`/`KM_NEO4J_PASSWORD` | `neo4j`/`neo4jadmin` | Neo4j authentication (override for production) |
-| `KM_NEO4J_AUTH_ENABLED` | `false` | Enable to require credentials (`true` for secured deployments) |
-| `KM_STATE_PATH` | `/opt/knowledge/var` | Base directory for audit and coverage artifacts |
-| `KM_EMBEDDING_MODEL` | `sentence-transformers/all-MiniLM-L6-v2` | Embedding model identifier |
-| `KM_INGEST_WINDOW`/`KM_INGEST_OVERLAP` | `1000` / `200` | Chunking parameters |
-| `KM_INGEST_DRY_RUN` | `false` | Disable writes for test runs |
-| `KM_INGEST_USE_DUMMY` | `false` | Force deterministic embeddings (non-prod) |
-| `KM_AUTH_ENABLED` | `false` | Toggle bearer-token checks on API routes |
-| `KM_READER_TOKEN` / `KM_ADMIN_TOKEN` | _unset_ | Tokens for reader/maintainer scopes |
-| `KM_RATE_LIMIT_REQUESTS` / `KM_RATE_LIMIT_WINDOW` | `120` / `60` | Rate limit budget (requests per seconds window) |
-| `KM_SCHEDULER_ENABLED` | `false` | Enable APScheduler ingestion jobs |
-| `KM_SCHEDULER_INTERVAL_MINUTES` | `30` | Interval (minutes) for scheduled ingestion runs when no cron expression is provided |
-| `KM_SCHEDULER_CRON` | _unset_ | Optional cron expression (UTC) for scheduled ingestion runs (overrides interval) |
-| `KM_COVERAGE_ENABLED` | `true` | Persist coverage reports after ingestion |
-| `KM_COVERAGE_HISTORY_LIMIT` | `5` | Number of historical coverage snapshots retained under `state_path/reports/history/` |
-| `KM_GRAPH_AUTO_MIGRATE` | `false`¹ | Run Neo4j schema migrations automatically at startup |
-| `KM_TRACING_ENABLED` | `false` | Enable OpenTelemetry tracing for the API and ingestion jobs |
-| `KM_TRACING_ENDPOINT` | _unset_ | OTLP HTTP collector endpoint (e.g., `http://otel-collector:4318/v1/traces`) |
-| `KM_TRACING_HEADERS` | _unset_ | Comma-separated `key=value` pairs forwarded to the OTLP exporter |
-| `KM_TRACING_SAMPLE_RATIO` | `1.0` | Fraction of requests/jobs sampled into traces (0.0 – 1.0) |
-| `KM_TRACING_SERVICE_NAME` | `duskmantle-knowledge-gateway` | Service name attached to exported spans |
-| `KM_TRACING_CONSOLE_EXPORT` | `false` | Mirror spans to stdout alongside OTLP export (local debugging) |
-| `KM_SEARCH_WEIGHT_PROFILE` | `default` | Named bundle of search weights (`default`, `analysis`, `operations`, `docs-heavy`) |
-| `KM_SEARCH_W_SUBSYSTEM` | `0.28` | Weight applied to subsystem affinity boosts in `/search` scoring (overrides profile) |
-| `KM_SEARCH_W_RELATIONSHIP` | `0.05` | Weight applied per relationship in `/search` scoring (capped at five, overrides profile) |
-| `KM_SEARCH_W_SUPPORT` | `0.09` | Weight applied to supporting artifacts (design docs/tests, overrides profile) |
-| `KM_SEARCH_W_COVERAGE_PENALTY` | `0.15` | Penalty applied in proportion to missing coverage (overrides profile) |
-| `KM_SEARCH_W_CRITICALITY` | `0.12` | Weight applied to subsystem criticality score (graph fallback when chunk metadata absent) |
-| `KM_SEARCH_VECTOR_WEIGHT` | `1.0` | Multiplier applied to vector similarity when combining hybrid scores |
-| `KM_SEARCH_LEXICAL_WEIGHT` | `0.25` | Multiplier applied to lexical overlap boosts in hybrid scoring |
-| `KM_SEARCH_HNSW_EF_SEARCH` | `128` | Overrides the Qdrant HNSW `ef` parameter for query-time recall tuning (set empty to use Qdrant default) |
-| `KM_SEARCH_SCORING_MODE` | `heuristic` | Choose `ml` to enable learned ranking coefficients (requires model artifact) |
-| `KM_SEARCH_MODEL_PATH` | _unset_ | Absolute path to model JSON when `KM_SEARCH_SCORING_MODE=ml` (defaults to `state_path/feedback/models/model.json`) |
-| `KM_SEARCH_WARN_GRAPH_MS` | `250` | Emit a warning log when a single graph enrichment exceeds this latency (milliseconds) |
-
-### Authentication & Tokens
-
-- Set `KM_AUTH_ENABLED=true` to require bearer tokens on API and CLI entry points. Provide `KM_READER_TOKEN` for read-only access (search/graph) and `KM_ADMIN_TOKEN` for maintainer operations (ingest, coverage, admin APIs).
-- Maintainer tokens automatically satisfy reader scopes; reader tokens are never accepted for maintainer endpoints.
-- The ingestion scheduler and CLI commands refuse to run when auth is enabled and `KM_ADMIN_TOKEN` is unset, preventing accidental unsecured automation.
-- Rotate tokens by updating the environment variables and restarting the container. `/graph/...` and `/search` return `401` when missing credentials and `403` when tokens are invalid or mis-scoped.
-
-### Tracing
-
-- Enable OpenTelemetry tracing with `KM_TRACING_ENABLED=true`. By default spans are exported to stdout via the console exporter; set `KM_TRACING_ENDPOINT` (e.g., `http://otel-collector:4318/v1/traces`) to send spans to an OTLP collector.
-- Supply optional headers via `KM_TRACING_HEADERS="Authorization=Bearer abc,Env=prod"` and adjust sampling with `KM_TRACING_SAMPLE_RATIO`.
-- When both `KM_TRACING_ENDPOINT` and `KM_TRACING_CONSOLE_EXPORT=true` are configured, spans are exported to the collector and mirrored to stdout for debugging.
-- Validate connectivity with `curl -I $KM_TRACING_ENDPOINT` and review `/metrics` for exporter failures (`uvicorn` 5xx). The observability guide includes troubleshooting steps for missing spans.
-
-Set these in your environment or an `.env` file before building/running the container.
-
-¹ The bundled container runtime exports `KM_GRAPH_AUTO_MIGRATE=true`. Production templates should set it to `false` and call `gateway-graph migrate` (or an equivalent pipeline step) during deployment. See `infra/examples/production.env` for a starter override file.
-
-### Observability & Security
+### Observability & Automation
 
 - Metrics exposed at `/metrics` (Prometheus format); audit history available at `/audit/history` (maintainer scope).
-- Coverage reports downloadable via `/coverage` (maintainer scope) or from `/opt/knowledge/var/reports/coverage_report.json`.
-- Logs emitted as JSON with `ingest_run_id`, artifact counts, and timing metadata.
-- Distributed tracing (FastAPI + ingestion pipeline) is available when `KM_TRACING_ENABLED=true`; point `KM_TRACING_ENDPOINT` at your OTLP collector or enable console export for local inspection.
-- Use the bundled CLI to review recent runs: `gateway-ingest audit-history --limit 10` (add `--json` for machine parsing).
-- Expose an MCP surface for Codex CLI and other agents by running `gateway-mcp` (install via `pip install -e .[dev]`). The adapter reads `KM_GATEWAY_URL`, `KM_READER_TOKEN`, and `KM_ADMIN_TOKEN` from the environment and mirrors usage into Prometheus metrics (`km_mcp_requests_total`, `km_mcp_request_seconds`, `km_mcp_failures_total`). Validate locally with `pytest -m mcp_smoke`.
-- When you need MCP access inside the containerized gateway, use `./bin/km-mcp-container`; it execs `gateway-mcp` within the running `km-gateway` container and preserves helper paths like `/workspace/repo/bin/km-backup`.
-- Hybrid search now blends dense vectors with lexical overlap; tune the mixture via `KM_SEARCH_VECTOR_WEIGHT` / `KM_SEARCH_LEXICAL_WEIGHT` and adjust recall with `KM_SEARCH_HNSW_EF_SEARCH`.
-- Upgrade/rollback instructions live in `docs/UPGRADE_ROLLBACK.md`; in short, backup via `bin/km-backup`, stop the container, pull/build the new tag, launch with `KM_NEO4J_DATABASE=knowledge`, re-run ingest if needed, and validate with `/healthz` + smoke scripts. Rollback restores the archived tarball and restarts the prior image.
-- Search telemetry and MCP feedback are persisted under `/opt/knowledge/var/feedback/events.log` for ranking model training; each entry records query text, scoring breakdown, optional context, and vote captured from the requesting agent.
-- Inspect the active search weighting with `gateway-search show-weights` or `GET /search/weights` (maintainer scope); slow graph lookups generate `graph_lookup_slow` warnings when they exceed `KM_SEARCH_WARN_GRAPH_MS`.
+- Coverage reports downloadable via `/coverage` or from `/opt/knowledge/var/reports/coverage_report.json`. Lifecycle summaries live at `/lifecycle` and the matching JSON under `/opt/knowledge/var/reports/lifecycle_report.json`.
+- Run `gateway-recipes list` (or `bin/km-recipe-run --help`) to discover automation bundles such as `release-prep` or `stale-audit`.
+- `bin/km-watch` (host) or the internal watcher provides continuous ingestion; adjust cadence with `KM_WATCH_INTERVAL` / `--interval`, and expose metrics via `KM_WATCH_METRICS_PORT` or `--metrics-port`.
+- Enable OpenTelemetry tracing with `KM_TRACING_ENABLED=true`; set `KM_TRACING_ENDPOINT` for remote collectors.
+- `gateway-ingest audit-history --limit 10` summarises the last runs; add `--json` for machine output.
+- Expose the MCP surface with `gateway-mcp` (local) or `bin/km-mcp-container` (inside the running container). MCP requests emit metrics (`km_mcp_requests_total`, etc.).
+- Import `docs/dashboards/gateway_overview.json` into Grafana for an out-of-the-box metrics view (ingest status, latency, search vs graph throughput).
 - Export training datasets from accumulated feedback with `gateway-search export-training-data` (choose CSV or JSONL, optionally require explicit votes). Outputs land in `/opt/knowledge/var/feedback/datasets/` by default.
 - Fit a first-pass ranking model with `gateway-search train-model <dataset.csv>` to produce JSON artifacts under `/opt/knowledge/var/feedback/models/`. The trainer solves a linear regression across captured signals and reports simple metrics (MSE, R²).
 - Apply retention or sanitisation with `gateway-search prune-feedback --max-age-days 30` before exporting, and redact sensitive columns via `gateway-search redact-dataset datasets/training.csv --drop-query --drop-context`.

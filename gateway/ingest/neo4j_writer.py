@@ -1,7 +1,9 @@
+"""Write ingestion artifacts and chunks into Neo4j."""
+
 from __future__ import annotations
 
 import logging
-from typing import Iterable, Any
+from collections.abc import Iterable, Mapping, Sequence
 
 from neo4j import Driver
 
@@ -11,18 +13,22 @@ logger = logging.getLogger(__name__)
 
 
 class Neo4jWriter:
+    """Persist artifacts and derived data into a Neo4j database."""
+
     def __init__(self, driver: Driver, database: str = "knowledge") -> None:
+        """Initialise the writer with a driver and target database."""
         self.driver = driver
         self.database = database
 
     def ensure_constraints(self) -> None:
+        """Create required uniqueness constraints if they do not exist."""
         cypher_statements = [
             "CREATE CONSTRAINT IF NOT EXISTS FOR (s:Subsystem) REQUIRE s.name IS UNIQUE",
             "CREATE CONSTRAINT IF NOT EXISTS FOR (f:SourceFile) REQUIRE f.path IS UNIQUE",
             "CREATE CONSTRAINT IF NOT EXISTS FOR (d:DesignDoc) REQUIRE d.path IS UNIQUE",
             "CREATE CONSTRAINT IF NOT EXISTS FOR (t:TestCase) REQUIRE t.path IS UNIQUE",
             "CREATE CONSTRAINT IF NOT EXISTS FOR (c:Chunk) REQUIRE c.chunk_id IS UNIQUE",
-            "CREATE CONSTRAINT IF NOT EXISTS FOR (m:LeylineMessage) REQUIRE m.name IS UNIQUE",
+            "CREATE CONSTRAINT IF NOT EXISTS FOR (m:IntegrationMessage) REQUIRE m.name IS UNIQUE",
             "CREATE CONSTRAINT IF NOT EXISTS FOR (tc:TelemetryChannel) REQUIRE tc.name IS UNIQUE",
             "CREATE CONSTRAINT IF NOT EXISTS FOR (cfg:ConfigFile) REQUIRE cfg.path IS UNIQUE",
         ]
@@ -31,16 +37,17 @@ class Neo4jWriter:
                 session.run(stmt)
 
     def sync_artifact(self, artifact: Artifact) -> None:
+        """Upsert the artifact node and related subsystem relationships."""
         label = _artifact_label(artifact)
         metadata = artifact.extra_metadata or {}
         subsystem_meta = metadata.get("subsystem_metadata")
         subsystem_properties = _subsystem_properties(subsystem_meta)
-        leyline_entities = _clean_string_list(metadata.get("leyline_entities"))
+        message_entities = _clean_string_list(metadata.get("message_entities"))
         telemetry_signals = _clean_string_list(metadata.get("telemetry_signals"))
         dependencies = _extract_dependencies(subsystem_meta)
 
         with self.driver.session(database=self.database) as session:
-            params = {
+            params: dict[str, object] = {
                 "path": artifact.path.as_posix(),
                 "artifact_type": artifact.artifact_type,
                 "git_commit": artifact.git_commit,
@@ -53,25 +60,13 @@ class Neo4jWriter:
                 "    node.git_commit = $git_commit, "
                 "    node.git_timestamp = $git_timestamp, "
                 "    node.subsystem = $subsystem",
-                **params,
+                parameters=params,
             )
-            if artifact.subsystem:
-                rel = _relationship_for_label(label)
-                if rel:
-                    session.run(
-                        "MERGE (s:Subsystem {name: $name})\n"
-                        "WITH s\n"
-                        f"MATCH (f:{label} {{path: $path}})\n"
-                        f"MERGE (f)-[:{rel}]->(s)",
-                        name=artifact.subsystem,
-                        path=artifact.path.as_posix(),
-                    )
 
             if artifact.subsystem:
                 subsystem_name = artifact.subsystem
                 session.run(
-                    "MERGE (s:Subsystem {name: $name})\n"
-                    "SET s += $properties",
+                    "MERGE (s:Subsystem {name: $name})\nSET s += $properties",
                     name=subsystem_name,
                     properties=subsystem_properties,
                 )
@@ -79,17 +74,13 @@ class Neo4jWriter:
                 rel = _relationship_for_label(label)
                 if rel:
                     session.run(
-                        f"MATCH (entity:{label} {{path: $path}})\n"
-                        "MERGE (s:Subsystem {name: $name})\n"
-                        f"MERGE (entity)-[:{rel}]->(s)",
+                        f"MATCH (entity:{label} {{path: $path}})\nMATCH (s:Subsystem {{name: $name}})\nMERGE (entity)-[:{rel}]->(s)",
                         name=subsystem_name,
                         path=artifact.path.as_posix(),
                     )
 
                 if dependencies:
-                    filtered_dependencies = [
-                        dep for dep in dependencies if dep and dep != subsystem_name
-                    ]
+                    filtered_dependencies = [dep for dep in dependencies if dep and dep != subsystem_name]
                     if filtered_dependencies:
                         session.run(
                             "MATCH (source:Subsystem {name: $name})\n"
@@ -100,14 +91,14 @@ class Neo4jWriter:
                             dependencies=filtered_dependencies,
                         )
 
-                if leyline_entities:
+                if message_entities:
                     session.run(
                         "MATCH (s:Subsystem {name: $name})\n"
                         "UNWIND $entities AS entity_name\n"
-                        "MERGE (m:LeylineMessage {name: entity_name})\n"
+                        "MERGE (m:IntegrationMessage {name: entity_name})\n"
                         "MERGE (s)-[:IMPLEMENTS]->(m)",
                         name=subsystem_name,
-                        entities=leyline_entities,
+                        entities=message_entities,
                     )
 
                 if telemetry_signals:
@@ -121,17 +112,18 @@ class Neo4jWriter:
                         signals=telemetry_signals,
                     )
 
-            if label == "SourceFile" and leyline_entities:
+            if label == "SourceFile" and message_entities:
                 session.run(
                     "MATCH (f:SourceFile {path: $path})\n"
                     "UNWIND $entities AS entity_name\n"
-                    "MERGE (m:LeylineMessage {name: entity_name})\n"
+                    "MERGE (m:IntegrationMessage {name: entity_name})\n"
                     "MERGE (f)-[:DECLARES]->(m)",
                     path=artifact.path.as_posix(),
-                    entities=leyline_entities,
+                    entities=message_entities,
                 )
 
     def sync_chunks(self, chunk_embeddings: Iterable[ChunkEmbedding]) -> None:
+        """Upsert chunk nodes and connect them to their owning artifacts."""
         with self.driver.session(database=self.database) as session:
             for item in chunk_embeddings:
                 artifact_type = item.chunk.metadata.get("artifact_type", "code")
@@ -148,11 +140,25 @@ class Neo4jWriter:
                     "WITH c\n"
                     f"MATCH (f:{label} {{path: $path}})\n"
                     "MERGE (f)-[:HAS_CHUNK]->(c)",
-                    **params,
+                    parameters=params,
                 )
+
+    def delete_artifact(self, path: str) -> None:
+        """Remove an artifact node and its chunks."""
+
+        with self.driver.session(database=self.database) as session:
+            session.run(
+                "MATCH (n {path: $path})\n"
+                "OPTIONAL MATCH (n)-[:HAS_CHUNK]->(c:Chunk)\n"
+                "WITH n, collect(c) AS chunks\n"
+                "FOREACH (chunk IN chunks | DETACH DELETE chunk)\n"
+                "DETACH DELETE n",
+                path=path,
+            )
 
 
 def _artifact_label(artifact: Artifact) -> str:
+    """Map artifact types to Neo4j labels."""
     mapping = {
         "doc": "DesignDoc",
         "code": "SourceFile",
@@ -164,6 +170,7 @@ def _artifact_label(artifact: Artifact) -> str:
 
 
 def _label_for_type(artifact_type: str) -> str:
+    """Return the default label for the given artifact type."""
     return {
         "doc": "DesignDoc",
         "code": "SourceFile",
@@ -174,6 +181,7 @@ def _label_for_type(artifact_type: str) -> str:
 
 
 def _relationship_for_label(label: str) -> str | None:
+    """Return the relationship used to link artifacts to subsystems."""
     return {
         "SourceFile": "BELONGS_TO",
         "DesignDoc": "DESCRIBES",
@@ -181,8 +189,10 @@ def _relationship_for_label(label: str) -> str | None:
     }.get(label)
 
 
-def _clean_string_list(values: Any) -> list[str]:
-    if not isinstance(values, (list, tuple, set)):
+def _clean_string_list(values: object) -> list[str]:
+    if values is None:
+        return []
+    if not isinstance(values, Sequence) or isinstance(values, (str, bytes, bytearray)):
         return []
     seen: dict[str, None] = {}
     for value in values:
@@ -204,12 +214,10 @@ def _normalize_subsystem_name(value: str | None) -> str | None:
     return text
 
 
-def _extract_dependencies(metadata: Any) -> list[str]:
-    if not isinstance(metadata, dict):
+def _extract_dependencies(metadata: Mapping[str, object] | None) -> list[str]:
+    if not isinstance(metadata, Mapping):
         return []
-    raw = metadata.get("dependencies") or metadata.get("depends_on") or metadata.get(
-        "depends_on_subsystems"
-    )
+    raw = metadata.get("dependencies") or metadata.get("depends_on") or metadata.get("depends_on_subsystems")
     dependencies = []
     if isinstance(raw, (list, tuple, set)):
         for value in raw:
@@ -225,10 +233,10 @@ def _extract_dependencies(metadata: Any) -> list[str]:
     return list(dict.fromkeys(dependencies))
 
 
-def _subsystem_properties(metadata: Any) -> dict[str, Any]:
-    if not isinstance(metadata, dict):
+def _subsystem_properties(metadata: Mapping[str, object] | None) -> dict[str, object]:
+    if not isinstance(metadata, Mapping):
         return {}
-    properties: dict[str, Any] = {}
+    properties: dict[str, object] = {}
     for key in ("description", "criticality", "owner", "domain"):
         value = metadata.get(key)
         if value:

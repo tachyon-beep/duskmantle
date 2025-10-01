@@ -17,10 +17,14 @@ This specification defines the Model Context Protocol (MCP) surface for the Dusk
 | `km-graph-subsystem` | reader | Inspect subsystem details, related nodes, and artifacts. |
 | `km-graph-search` | reader | Search graph entities by term (subsystems, design docs, source files). |
 | `km-coverage-summary` | reader | Retrieve latest coverage summary (artifacts, chunks, missing list). |
+| `km-lifecycle-report` | maintainer | Summarise isolated graph nodes, stale design docs, and subsystems missing tests. |
 | `km-ingest-status` | maintainer | Report last ingest run (run ID, success, counts, timestamp). |
 | `km-ingest-trigger` | maintainer | Force an ingest run using the configured profile. |
 | `km-feedback-submit` | maintainer | Record feedback on search results (vote, note, context). |
 | `km-backup-trigger` | maintainer | Trigger a backup (invokes `bin/km-backup` or equivalent API). |
+| `km-recipe-run` | maintainer | Execute a named recipe (daily health, release prep, stale audit). |
+| `km-upload` | maintainer | Copy an existing file into the knowledge workspace and optionally trigger ingest. |
+| `km-storetext` | maintainer | Persist ad-hoc text as a document within the knowledge workspace. |
 
 ### 2.1 Usage Cheat Sheet
 
@@ -47,6 +51,9 @@ The MCP server exposes the following helper summaries. These mirror the metadata
 - `km-coverage-summary`
   - No parameters. Mirrors `/coverage` and returns artifact/chunk counts plus freshness stats.
   - Example: `/sys mcp run duskmantle km-coverage-summary`.
+- `km-lifecycle-report`
+  - No parameters. Mirrors `/lifecycle` and lists isolated graph nodes, stale design docs (by age threshold), and subsystems missing tests.
+  - Example: `/sys mcp run duskmantle km-lifecycle-report`.
 - `km-ingest-status`
   - Optional: `profile` filter (default: latest run regardless of profile).
   - Example: `/sys mcp run duskmantle km-ingest-status --profile demo`.
@@ -57,10 +64,21 @@ The MCP server exposes the following helper summaries. These mirror the metadata
 - `km-backup-trigger`
   - No parameters. Requires maintainer token and returns backup archive metadata.
   - Example: `/sys mcp run duskmantle km-backup-trigger`.
+- `km-recipe-run`
+  - Required: `recipe` name. Optional: `vars` object mapping overrides. Executes the YAML recipe and returns the final outputs transcript.
+  - Example: `/sys mcp run duskmantle km-recipe-run --recipe release-prep --vars {"profile":"release"}`.
 - `km-feedback-submit`
   - Required: `request_id` and `chunk_id` (use the IDs from search responses).
   - Optional: `vote` (-1.0 to 1.0) and `note`.
   - Example: `/sys mcp run duskmantle km-feedback-submit --request-id req123 --chunk-id chunk456 --vote 1`.
+- `km-upload`
+  - Required: `source_path` (must be readable by the MCP host).
+  - Optional: `destination` (relative to `KM_CONTENT_ROOT`), `overwrite`, `ingest`.
+  - Example: `/sys mcp run duskmantle km-upload --source-path ./notes/design.md --destination docs/uploads/`.
+- `km-storetext`
+  - Required: `content` (text body).
+  - Optional: `title`, `destination`, `subsystem`, `tags`, `metadata`, `overwrite`, `ingest`.
+  - Example: `/sys mcp run duskmantle km-storetext --title "Release Notes" --content "## Summary"`.
 
 ## 3. Request & Response Schemas
 
@@ -75,7 +93,7 @@ The MCP server exposes the following helper summaries. These mirror the metadata
     "subsystems": ["Kasmina"],
     "artifact_types": ["doc", "code"],
     "namespaces": ["docs"],
-    "tags": ["Leyline"],
+    "tags": ["Integration"],
     "updated_after": "2024-01-01T00:00:00Z",
     "max_age_days": 30
   },
@@ -89,8 +107,8 @@ The MCP server exposes the following helper summaries. These mirror the metadata
 - **Response:** node serialization plus relationship list. Errors: `not_found`, `invalid_identifier`.
 
 ### 3.3 `km-graph-subsystem`
-- **Request:** `{ "name": "Kasmina", "depth": 1, "limit": 25, "cursor": null, "include_artifacts": true }`
-- **Response:** subsystem node, related nodes (with cursor), artifacts array.
+- **Request:** `{ "name": "Kasmina", "depth": 2, "limit": 25, "cursor": null, "include_artifacts": true }`
+- **Response:** subsystem node, related nodes (now including `hops`, `path`, `cursor`, `total`), artifacts array.
 
 ### 3.4 `km-graph-search`
 - **Request:** `{ "term": "ingest", "limit": 10 }`
@@ -125,8 +143,71 @@ The MCP server exposes the following helper summaries. These mirror the metadata
 - **Response:** acknowledgement with timestamp.
 
 ### 3.9 `km-backup-trigger`
+### 3.10 `km-recipe-run`
+- **Request:** `{ "recipe": "release-prep", "vars": {"profile": "release"} }`
+- **Response:** `{ "status": "success", "outputs": {...}, "steps": [...] }` where `steps` describes each tool invocation.
+- **Errors:** `recipe_not_found`, `tool_failed`, `assert_failed`, `timeout`.
+
 - **Request:** `{ "destination": null }`
 - **Response:** `{ "archive": "backups/km-backup-20250927T195120.tgz" }`
+
+### 3.10 `km-upload`
+- **Request:**
+```json
+{
+  "source_path": "./notes/design.md",
+  "destination": "docs/uploads/",
+  "overwrite": false,
+  "ingest": false
+}
+```
+  - `source_path`: required path to a file accessible by the MCP host/container.
+  - `destination`: optional relative path under the content root. When omitted, the file is copied to `<docs_subdir>/<filename>`.
+  - `overwrite`: allow replacing an existing file (default: `KM_UPLOAD_DEFAULT_OVERWRITE`).
+  - `ingest`: trigger an ingest run after the copy (default: `KM_UPLOAD_DEFAULT_INGEST`).
+- **Response:**
+```json
+{
+  "status": "success",
+  "stored_path": "/workspace/repo/docs/uploads/design.md",
+  "relative_path": "docs/uploads/design.md",
+  "overwritten": false,
+  "ingest_triggered": false,
+  "ingest_run": null
+}
+```
+- **Errors:** `invalid_request` (missing/invalid path), `forbidden` (insufficient scope), `upstream_error` (ingest failure).
+
+### 3.11 `km-storetext`
+- **Request:**
+```json
+{
+  "content": "## Body\nDetails\n",
+  "title": "Release Notes",
+  "destination": "docs/uploads/",
+  "subsystem": "Deployment",
+  "tags": ["release", "notes"],
+  "metadata": {"author": "agent"},
+  "overwrite": false,
+  "ingest": true
+}
+```
+  - `content`: required text body (UTF-8); a trailing newline is added automatically.
+  - `title`: optional; used for slug generation and stored in front matter.
+  - `destination`: optional relative path (defaults to the docs subdirectory).
+  - `subsystem`, `tags`, `metadata`: captured in YAML front matter to aid classification.
+  - `overwrite` / `ingest`: same defaults as `km-upload`.
+- **Response:**
+```json
+{
+  "status": "success",
+  "stored_path": "/workspace/repo/docs/uploads/release-notes.md",
+  "relative_path": "docs/uploads/release-notes.md",
+  "ingest_triggered": true,
+  "ingest_run": {"success": true, "run_id": "abc", "profile": "manual"}
+}
+```
+- **Errors:** `invalid_request` (empty content), `forbidden`, `upstream_error` (ingest failure).
 
 ## 4. Error Model
 - All responses include `status` and optionally `error`.

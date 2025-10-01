@@ -1,24 +1,27 @@
+"""Command-line helpers for triggering and inspecting ingestion runs."""
+
 from __future__ import annotations
 
 import argparse
-from datetime import datetime
 import logging
+from collections.abc import Iterable
+from datetime import datetime
 from pathlib import Path
-from typing import Iterable
 
 from rich.console import Console
 from rich.table import Table
 
 from gateway.config.settings import AppSettings, get_settings
 from gateway.ingest.audit import AuditLogger
-from gateway.observability import configure_logging, configure_tracing
 from gateway.ingest.service import execute_ingestion
+from gateway.observability import configure_logging, configure_tracing
 
 logger = logging.getLogger(__name__)
 console = Console()
 
 
 def _ensure_maintainer_scope(settings: AppSettings) -> None:
+    """Abort execution if maintainer credentials are missing during auth."""
     if settings.auth_enabled and not settings.maintainer_token:
         raise SystemExit("Maintainer token (KM_ADMIN_TOKEN) required when auth is enabled")
 
@@ -49,6 +52,20 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Use deterministic dummy embeddings (testing only)",
     )
+    incremental_group = rebuild_parser.add_mutually_exclusive_group()
+    incremental_group.add_argument(
+        "--incremental",
+        dest="incremental",
+        action="store_true",
+        help="Force incremental ingest even if disabled in configuration",
+    )
+    incremental_group.add_argument(
+        "--full-rebuild",
+        dest="incremental",
+        action="store_false",
+        help="Disable incremental ingest for this run",
+    )
+    rebuild_parser.set_defaults(incremental=None)
 
     history_parser = subparsers.add_parser(
         "audit-history",
@@ -75,6 +92,7 @@ def rebuild(
     repo: Path | None,
     dry_run: bool,
     dummy_embeddings: bool,
+    incremental: bool | None,
     settings: AppSettings | None = None,
 ) -> None:
     """Execute a full ingestion pass."""
@@ -88,7 +106,8 @@ def rebuild(
         repo_override=repo,
         dry_run=dry_run,
         use_dummy_embeddings=dummy_embeddings,
-        )
+        incremental=incremental,
+    )
     logger.info(
         "Ingestion run completed",
         extra={
@@ -112,8 +131,8 @@ def audit_history(
         settings = get_settings()
     _ensure_maintainer_scope(settings)
     audit_path = settings.state_path / "audit" / "audit.db"
-    logger = AuditLogger(audit_path)
-    entries = logger.recent(limit=limit)
+    audit_logger = AuditLogger(audit_path)
+    entries = audit_logger.recent(limit=limit)
 
     if output_json:
         console.print_json(data=entries)
@@ -127,6 +146,7 @@ def audit_history(
 
 
 def _render_audit_table(entries: Iterable[dict[str, object]]) -> Table:
+    """Render recent audit entries as a Rich table."""
     table = Table(title="Ingestion Audit History", show_lines=False)
     table.add_column("Run ID", overflow="fold")
     table.add_column("Profile")
@@ -138,9 +158,12 @@ def _render_audit_table(entries: Iterable[dict[str, object]]) -> Table:
 
     for entry in entries:
         started = _format_timestamp(entry.get("started_at"))
-        duration = f"{float(entry.get('duration_seconds', 0.0)):.2f}"
-        artifact_count = str(int(entry.get("artifact_count", 0)))
-        chunk_count = str(int(entry.get("chunk_count", 0)))
+        duration_value = _coerce_float(entry.get("duration_seconds", 0.0))
+        duration = f"{duration_value:.2f}" if duration_value is not None else "0.00"
+        artifact_count_value = _coerce_int(entry.get("artifact_count", 0))
+        artifact_count = str(artifact_count_value if artifact_count_value is not None else 0)
+        chunk_count_value = _coerce_int(entry.get("chunk_count", 0))
+        chunk_count = str(chunk_count_value if chunk_count_value is not None else 0)
         success = "✅" if entry.get("success") else "❌"
         table.add_row(
             str(entry.get("run_id", "-")),
@@ -155,11 +178,38 @@ def _render_audit_table(entries: Iterable[dict[str, object]]) -> Table:
 
 
 def _format_timestamp(raw: object) -> str:
-    try:
-        ts = float(raw)
-    except (TypeError, ValueError):  # pragma: no cover - defensive guard
+    """Format timestamps from the audit ledger for display."""
+    numeric = _coerce_float(raw)
+    if numeric is None:
         return "-"
-    return datetime.fromtimestamp(ts).isoformat(sep=" ", timespec="seconds")
+    return datetime.fromtimestamp(numeric).isoformat(sep=" ", timespec="seconds")
+
+
+def _coerce_int(value: object) -> int | None:
+    """Attempt to interpret the value as an integer."""
+    if isinstance(value, (int, float)):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _coerce_float(value: object) -> float | None:
+    """Attempt to interpret the value as a floating point number."""
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            return float(text)
+        except ValueError:
+            return None
+    return None
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -176,6 +226,7 @@ def main(argv: list[str] | None = None) -> None:
             repo=args.repo,
             dry_run=args.dry_run,
             dummy_embeddings=args.dummy_embeddings,
+            incremental=args.incremental,
             settings=settings,
         )
     elif args.command == "audit-history":

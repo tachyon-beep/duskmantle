@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage: km-playwright [--no-install] [--help] [PLAYWRIGHT_ARGS...]
+
+Run the Playwright UI smoke tests with optional argument passthrough.
+
+Options:
+  --no-install   Skip running npm ci before executing tests
+  --help         Show this help text
+
+Any additional arguments are forwarded to `npx playwright test`.
+USAGE
+}
+
+install_deps=true
+args=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --no-install)
+      install_deps=false
+      ;;
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    --)
+      shift
+      args+=("$@")
+      break
+      ;;
+    *)
+      args+=("$1")
+      ;;
+  esac
+  shift || break
+done
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+cd "$repo_root"
+
+if $install_deps; then
+  echo "[km-playwright] Installing Node dependencies via npm ci…"
+  npm ci
+else
+  echo "[km-playwright] Skipping dependency installation (use --no-install to disable)"
+fi
+
+exec npx playwright test "${args[@]}"

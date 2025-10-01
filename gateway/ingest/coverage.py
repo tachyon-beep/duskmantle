@@ -1,12 +1,12 @@
+"""Utilities for writing ingestion coverage reports."""
+
 from __future__ import annotations
 
 import json
 import time
 from contextlib import suppress
+from datetime import UTC, datetime
 from pathlib import Path
-
-from datetime import datetime, timezone
-from typing import Iterable
 
 from gateway.ingest.pipeline import IngestionConfig, IngestionResult
 from gateway.observability.metrics import (
@@ -14,6 +14,7 @@ from gateway.observability.metrics import (
     COVERAGE_LAST_RUN_STATUS,
     COVERAGE_LAST_RUN_TIMESTAMP,
     COVERAGE_MISSING_ARTIFACTS,
+    COVERAGE_STALE_ARTIFACTS,
 )
 
 
@@ -24,10 +25,12 @@ def write_coverage_report(
     output_path: Path,
     history_limit: int | None = None,
 ) -> None:
+    """Persist coverage metrics derived from an ingestion result."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
     missing = [detail for detail in result.artifacts if detail.get("chunk_count", 0) == 0]
+    removed = list(result.removed_artifacts)
     generated_at = time.time()
-    generated_at_iso = datetime.fromtimestamp(generated_at, tz=timezone.utc).isoformat()
+    generated_at_iso = datetime.fromtimestamp(generated_at, tz=UTC).isoformat()
     payload = {
         "generated_at": generated_at,
         "generated_at_iso": generated_at_iso,
@@ -44,6 +47,7 @@ def write_coverage_report(
         },
         "artifacts": result.artifacts,
         "missing_artifacts": missing,
+        "removed_artifacts": removed,
     }
     output_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
@@ -56,16 +60,16 @@ def write_coverage_report(
     COVERAGE_LAST_RUN_STATUS.labels(profile).set(1)
     COVERAGE_LAST_RUN_TIMESTAMP.labels(profile).set(generated_at)
     COVERAGE_MISSING_ARTIFACTS.labels(profile).set(len(missing))
+    COVERAGE_STALE_ARTIFACTS.labels(profile).set(len(removed))
     COVERAGE_HISTORY_SNAPSHOTS.labels(profile).set(len(snapshots))
 
 
-def _write_history_snapshot(
-    payload: dict[str, object], reports_dir: Path, history_limit: int
-) -> list[Path]:
+def _write_history_snapshot(payload: dict[str, object], reports_dir: Path, history_limit: int) -> list[Path]:
+    """Write coverage history snapshots and prune old entries."""
     history_dir = reports_dir / "history"
     history_dir.mkdir(parents=True, exist_ok=True)
 
-    timestamp = datetime.now(tz=timezone.utc).strftime("%Y%m%dT%H%M%S%f")
+    timestamp = datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%S%f")
     history_path = history_dir / f"coverage_{timestamp}.json"
     history_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 

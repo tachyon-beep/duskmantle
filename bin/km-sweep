@@ -1,0 +1,65 @@
+#!/usr/bin/env python3
+"""Copy supported document files into the docs/ subtree for ingestion."""
+
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
+from gateway.mcp.utils.files import sweep_documents
+DEFAULT_ROOT = Path.cwd() / ".duskmantle" / "data"
+DEFAULT_TARGET = Path("docs")
+
+
+def copy_documents(root: Path, target: Path, dry_run: bool) -> int:
+    results = list(sweep_documents(root, target, dry_run=dry_run))
+    copied = 0
+    for result in results:
+        if dry_run and result.reason == "dry-run":
+            print(f"DRY-RUN: would copy {result.source} -> {result.destination}")
+            copied += 1
+        elif result.copied:
+            copied += 1
+    return copied
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Copy markdown, text, and document files into the docs/ folder",
+    )
+    parser.add_argument(
+        "--root",
+        type=Path,
+        default=DEFAULT_ROOT,
+        help="Source tree to scan (default: .duskmantle/data)",
+    )
+    parser.add_argument(
+        "--target",
+        type=Path,
+        default=DEFAULT_TARGET,
+        help="Destination subdirectory under root (default: docs)",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print actions without copying files",
+    )
+    return parser
+
+
+def main() -> int:
+    parser = build_parser()
+    args = parser.parse_args()
+
+    copied = copy_documents(args.root.resolve(), args.target, args.dry_run)
+
+    if args.dry_run:
+        print(f"DRY-RUN: {copied} file(s) would be copied.")
+    else:
+        print(f"Copied {copied} file(s) into {args.root / args.target}.")
+
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover - CLI entry point
+    raise SystemExit(main())

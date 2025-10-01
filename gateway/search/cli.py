@@ -1,22 +1,17 @@
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
 import logging
+from datetime import UTC, datetime
 from pathlib import Path
 
 from rich.console import Console
 
 from gateway.config.settings import AppSettings, get_settings
 from gateway.observability import configure_logging, configure_tracing
-from gateway.search.exporter import ExportOptions, export_training_dataset
 from gateway.search.evaluation import evaluate_model
-from gateway.search.maintenance import (
-    PruneOptions,
-    RedactOptions,
-    prune_feedback_log,
-    redact_dataset,
-)
+from gateway.search.exporter import ExportOptions, export_training_dataset
+from gateway.search.maintenance import PruneOptions, RedactOptions, prune_feedback_log, redact_dataset
 from gateway.search.trainer import DatasetLoadError, save_artifact, train_from_dataset
 
 logger = logging.getLogger(__name__)
@@ -160,7 +155,7 @@ def export_training_data(
 
     datasets_dir = feedback_dir / "datasets"
     if output is None:
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
         suffix = "jsonl" if fmt == "jsonl" else "csv"
         output = datasets_dir / f"training-{timestamp}.{suffix}"
 
@@ -196,7 +191,7 @@ def train_model(
     models_dir = feedback_dir / "models"
 
     if output is None:
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
         output = models_dir / f"model-{timestamp}.json"
 
     try:
@@ -252,8 +247,7 @@ def prune_feedback(*, settings: AppSettings, max_age_days: int | None, max_reque
         return
 
     console.print(
-        f"Prune complete — retained {stats.retained_requests} of {stats.total_requests} requests"
-        f" (removed {stats.removed_requests})",
+        f"Prune complete — retained {stats.retained_requests} of {stats.total_requests} requests (removed {stats.removed_requests})",
         style="green",
     )
     logger.info(

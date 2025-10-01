@@ -3,11 +3,11 @@ from __future__ import annotations
 import json
 import threading
 import uuid
-from datetime import datetime, timezone
+from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Sequence
 
-from gateway.search.service import SearchResult, SearchResponse
+from gateway.search.service import SearchResponse
 
 
 class SearchFeedbackStore:
@@ -23,15 +23,15 @@ class SearchFeedbackStore:
         self,
         *,
         response: SearchResponse,
-        feedback: Mapping[str, Any] | None,
-        context: Any = None,
+        feedback: Mapping[str, object] | None,
+        context: object = None,
         request_id: str | None = None,
     ) -> None:
         if not response.results:
             return
 
         event_request_id = request_id or str(uuid.uuid4())
-        timestamp = datetime.now(timezone.utc).isoformat()
+        timestamp = datetime.now(UTC).isoformat()
 
         vote = None
         if feedback is not None:
@@ -61,10 +61,10 @@ class SearchFeedbackStore:
         )
         self._append(rows)
 
-    def _append(self, rows: Sequence[dict[str, Any]]) -> None:
+    def _append(self, rows: Sequence[Mapping[str, object]]) -> None:
         if not rows:
             return
-        payload = "\n".join(json.dumps(row, separators=(",", ":"), ensure_ascii=False) for row in rows)
+        payload = "\n".join(json.dumps(dict(row), separators=(",", ":"), ensure_ascii=False) for row in rows)
         with self._lock:
             with self.events_path.open("a", encoding="utf-8") as handle:
                 handle.write(payload)
@@ -78,15 +78,15 @@ def _serialize_results(
     timestamp: str,
     vote: float | None,
     note: str | None,
-    context: Any,
-    feedback: Mapping[str, Any] | None,
-) -> list[dict[str, Any]]:
+    context: object,
+    feedback: Mapping[str, object] | None,
+) -> list[dict[str, object]]:
     metadata = dict(response.metadata)
     event_context = context if isinstance(context, (dict, list, str)) else None
     if context is not None and event_context is None:
         event_context = repr(context)
 
-    rows: list[dict[str, Any]] = []
+    rows: list[dict[str, object]] = []
     for index, result in enumerate(response.results, start=1):
         chunk = dict(result.chunk)
         scoring = dict(result.scoring)

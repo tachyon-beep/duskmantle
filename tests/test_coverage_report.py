@@ -1,20 +1,22 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from collections.abc import Iterable
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
+from prometheus_client import REGISTRY
 
 from gateway.api.app import create_app
 from gateway.ingest.coverage import write_coverage_report
-from gateway.ingest.pipeline import IngestionConfig, IngestionResult, IngestionPipeline
-from gateway.observability.metrics import COVERAGE_HISTORY_SNAPSHOTS
-from prometheus_client import REGISTRY
+from gateway.ingest.pipeline import IngestionConfig, IngestionPipeline, IngestionResult
 from gateway.observability.metrics import (
+    COVERAGE_HISTORY_SNAPSHOTS,
     COVERAGE_LAST_RUN_STATUS,
     COVERAGE_LAST_RUN_TIMESTAMP,
     COVERAGE_MISSING_ARTIFACTS,
+    COVERAGE_STALE_ARTIFACTS,
 )
 
 
@@ -33,12 +35,14 @@ def test_write_coverage_report(tmp_path: Path) -> None:
             {"path": "docs/a.md", "artifact_type": "doc", "chunk_count": 1, "subsystem": None},
             {"path": "src/x.py", "artifact_type": "code", "chunk_count": 0, "subsystem": "X"},
         ],
+        removed_artifacts=[{"path": "docs/old.md", "artifact_type": "doc", "status": "deleted"}],
     )
 
     out = tmp_path / "coverage.json"
     COVERAGE_LAST_RUN_STATUS.labels("local").set(0)
     COVERAGE_MISSING_ARTIFACTS.labels("local").set(0)
     COVERAGE_LAST_RUN_TIMESTAMP.labels("local").set(0)
+    COVERAGE_STALE_ARTIFACTS.labels("local").set(0)
     write_coverage_report(result, config, output_path=out)
 
     data = json.loads(out.read_text())
@@ -47,18 +51,21 @@ def test_write_coverage_report(tmp_path: Path) -> None:
     assert data["summary"]["chunk_count"] == 3
     assert len(data["artifacts"]) == 2
     assert len(data["missing_artifacts"]) == 1
+    assert data["removed_artifacts"]
+    assert data["removed_artifacts"][0]["path"] == "docs/old.md"
 
     assert COVERAGE_LAST_RUN_STATUS.labels("local")._value.get() == 1
     assert COVERAGE_MISSING_ARTIFACTS.labels("local")._value.get() == 1
     assert COVERAGE_LAST_RUN_TIMESTAMP.labels("local")._value.get() > 0
     assert COVERAGE_HISTORY_SNAPSHOTS.labels("local")._value.get() == 1
+    assert COVERAGE_STALE_ARTIFACTS.labels("local")._value.get() == 1
 
 
 class StubQdrantWriter:
     def ensure_collection(self, vector_size: int) -> None:  # pragma: no cover - not used
         return None
 
-    def upsert_chunks(self, chunks) -> None:  # pragma: no cover - not used
+    def upsert_chunks(self, chunks: Iterable[object]) -> None:  # pragma: no cover - not used
         list(chunks)
 
 
@@ -66,17 +73,20 @@ class StubNeo4jWriter:
     def ensure_constraints(self) -> None:  # pragma: no cover - not used
         return None
 
-    def sync_artifact(self, artifact) -> None:
+    def sync_artifact(self, artifact: object) -> None:
         return None
 
-    def sync_chunks(self, chunk_embeddings) -> None:
+    def sync_chunks(self, chunk_embeddings: Iterable[object]) -> None:
         return None
 
 
-def test_coverage_endpoint_after_report_generation(tmp_path: Path, monkeypatch) -> None:
+def test_coverage_endpoint_after_report_generation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     repo = tmp_path / "repo"
     (repo / "docs").mkdir(parents=True)
-    (repo / "docs" / "overview.md").write_text("LeylineSync telemetry doc")
+    (repo / "docs" / "overview.md").write_text("IntegrationSync telemetry doc")
     # empty file to register as missing coverage
     (repo / "tests").mkdir()
     (repo / "tests" / "empty_test.py").write_text("")
@@ -102,6 +112,7 @@ def test_coverage_endpoint_after_report_generation(tmp_path: Path, monkeypatch) 
 
     monkeypatch.setenv("KM_AUTH_ENABLED", "true")
     monkeypatch.setenv("KM_ADMIN_TOKEN", "admin-token")
+    monkeypatch.setenv("KM_NEO4J_PASSWORD", "secure-pass")
     monkeypatch.setenv("KM_STATE_PATH", str(state_path))
     from gateway.config.settings import get_settings
 

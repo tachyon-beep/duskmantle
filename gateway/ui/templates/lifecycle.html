@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block title %}Duskmantle Console · Lifecycle{% endblock %}
+
+{% block content %}
+<div data-dm-lifecycle-root data-report-enabled="{{ 'true' if report_enabled else 'false' }}">
+<section class="dm-card dm-card--wide">
+  <div class="dm-panel-heading">
+    <h2>Lifecycle Dashboard</h2>
+    <div class="dm-actions">
+      <button class="dm-button" type="button" data-dm-lifecycle-refresh>Refresh</button>
+      <button class="dm-button dm-button--ghost" type="button" data-dm-lifecycle-download>Download JSON</button>
+      <button class="dm-button dm-button--ghost" type="button" data-dm-recipe-release>Copy Release Prep Recipe</button>
+      <button class="dm-button dm-button--ghost" type="button" data-dm-recipe-stale>Copy Stale Audit Recipe</button>
+    </div>
+  </div>
+  <p class="dm-note">Track stale design docs, isolated graph nodes, subsystems missing tests, and recently removed artifacts. Tokens with maintainer scope unlock full details.</p>
+  <p class="dm-form__status" role="status" aria-live="polite" data-dm-lifecycle-status>Provide a maintainer token to load lifecycle signals.</p>
+  <p class="dm-timestamp" data-dm-lifecycle-generated hidden aria-live="polite"></p>
+</section>
+
+<section class="dm-card" data-dm-lifecycle-summary hidden>
+  <h3>Summary</h3>
+  <div class="dm-metrics">
+    <div class="dm-metric" data-metric="stale_docs">
+      <span class="dm-metric__label">Stale Docs</span>
+      <span class="dm-metric__value">0</span>
+      <span class="dm-metric__spark" data-dm-lifecycle-spark="stale_docs">—</span>
+    </div>
+    <div class="dm-metric" data-metric="isolated_nodes">
+      <span class="dm-metric__label">Isolated Nodes</span>
+      <span class="dm-metric__value">0</span>
+      <span class="dm-metric__spark" data-dm-lifecycle-spark="isolated_nodes">—</span>
+    </div>
+    <div class="dm-metric" data-metric="subsystems_missing_tests">
+      <span class="dm-metric__label">Subsystems Missing Tests</span>
+      <span class="dm-metric__value">0</span>
+      <span class="dm-metric__spark" data-dm-lifecycle-spark="subsystems_missing_tests">—</span>
+    </div>
+    <div class="dm-metric" data-metric="removed_artifacts">
+      <span class="dm-metric__label">Recently Removed</span>
+      <span class="dm-metric__value">0</span>
+      <span class="dm-metric__spark" data-dm-lifecycle-spark="removed_artifacts">—</span>
+    </div>
+  </div>
+  <p class="dm-note">Trend spark lines update automatically once ingest history is available.</p>
+</section>
+
+<section class="dm-card dm-card--wide" data-dm-lifecycle-panels hidden>
+  <h3>Stale Docs</h3>
+  <div class="dm-table-scroll">
+    <table class="dm-table" data-dm-lifecycle-stale>
+      <thead>
+        <tr>
+          <th>Document</th>
+          <th>Subsystem</th>
+          <th>Age (days)</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <h3>Isolated Nodes</h3>
+  <div class="dm-table-scroll">
+    <table class="dm-table" data-dm-lifecycle-isolated>
+      <thead>
+        <tr>
+          <th>Node</th>
+          <th>Labels</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <h3>Subsystems Missing Tests</h3>
+  <div class="dm-table-scroll">
+    <table class="dm-table" data-dm-lifecycle-missing>
+      <thead>
+        <tr>
+          <th>Subsystem</th>
+          <th>Notes</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <h3>Recently Removed Artifacts</h3>
+  <div class="dm-table-scroll">
+    <table class="dm-table" data-dm-lifecycle-removed>
+      <thead>
+        <tr>
+          <th>Artifact</th>
+          <th>Removed</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="dm-actions dm-actions--stack">
+    <a class="dm-button" href="/recipes/release-prep.yaml" target="_blank" rel="noreferrer">Open Release Prep Recipe</a>
+    <a class="dm-button dm-button--ghost" href="/docs/MCP_RECIPES.md" target="_blank" rel="noreferrer">View MCP Recipes</a>
+  </div>
+</section>
+</div>
+{% endblock %}

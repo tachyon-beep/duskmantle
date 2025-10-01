@@ -1,20 +1,27 @@
+"""End-to-end validation of ingestion and graph-backed search."""
+
 from __future__ import annotations
 
 import os
+from collections.abc import Sequence
+from pathlib import Path
+from typing import cast
 
 import pytest
-
 from neo4j import GraphDatabase
+from qdrant_client import QdrantClient
 
 from gateway.graph.migrations.runner import MigrationRunner
 from gateway.graph.service import get_graph_service
+from gateway.ingest.embedding import Embedder
 from gateway.ingest.neo4j_writer import Neo4jWriter
 from gateway.ingest.pipeline import IngestionConfig, IngestionPipeline
-from gateway.search.service import SearchService
+from gateway.search import SearchService
 
 
 @pytest.mark.neo4j
-def test_ingestion_populates_graph(tmp_path: pytest.TempPathFactory) -> None:
+def test_ingestion_populates_graph(tmp_path: Path) -> None:
+    """Run ingestion and verify graph nodes, edges, and metadata."""
     uri = os.getenv("NEO4J_TEST_URI")
     user = os.getenv("NEO4J_TEST_USER", "neo4j")
     password = os.getenv("NEO4J_TEST_PASSWORD", "neo4jadmin")
@@ -25,12 +32,12 @@ def test_ingestion_populates_graph(tmp_path: pytest.TempPathFactory) -> None:
 
     repo_root = tmp_path / "repo"
     (repo_root / "docs").mkdir(parents=True)
-    (repo_root / "src" / "esper" / "telemetry").mkdir(parents=True)
+    (repo_root / "src" / "project" / "telemetry").mkdir(parents=True)
 
     sample_doc = repo_root / "docs" / "sample.md"
     sample_doc.write_text("# Sample\nGraph validation doc.\n")
 
-    sample_code = repo_root / "src" / "esper" / "telemetry" / "module.py"
+    sample_code = repo_root / "src" / "project" / "telemetry" / "module.py"
     sample_code.write_text("def handler():\n    return 'ok'\n")
 
     driver = GraphDatabase.driver(uri, auth=(user, password))
@@ -66,10 +73,7 @@ def test_ingestion_populates_graph(tmp_path: pytest.TempPathFactory) -> None:
             assert doc_record is not None
 
             constraints = session.run("SHOW CONSTRAINTS").data()
-            seen = {
-                (tuple(record.get("labelsOrTypes", [])), tuple(record.get("properties", [])))
-                for record in constraints
-            }
+            seen = {(tuple(record.get("labelsOrTypes", [])), tuple(record.get("properties", []))) for record in constraints}
             expected = {
                 (("Subsystem",), ("name",)),
                 (("SourceFile",), ("path",)),
@@ -93,10 +97,7 @@ def test_ingestion_populates_graph(tmp_path: pytest.TempPathFactory) -> None:
             assert code_record["s"]["name"] == "Telemetry"
 
             rel_counts = {
-                record["type"]: record["count"]
-                for record in session.run(
-                    "MATCH ()-[r]->() RETURN type(r) AS type, count(r) AS count"
-                )
+                record["type"]: record["count"] for record in session.run("MATCH ()-[r]->() RETURN type(r) AS type, count(r) AS count")
             }
             assert rel_counts.get("BELONGS_TO", 0) >= 1
             assert rel_counts.get("HAS_CHUNK", 0) >= 1
@@ -108,8 +109,7 @@ def test_ingestion_populates_graph(tmp_path: pytest.TempPathFactory) -> None:
                 limit=10,
             )
             assert any(
-                rel["type"] == "BELONGS_TO" and rel["target"]["properties"].get("name") == "Telemetry"
-                for rel in node_data["relationships"]
+                rel["type"] == "BELONGS_TO" and rel["target"]["properties"].get("name") == "Telemetry" for rel in node_data["relationships"]
             )
             subsystem_search = graph_service.search("telemetry", limit=5)
             assert any(result["label"] == "Subsystem" for result in subsystem_search["results"])
@@ -117,9 +117,18 @@ def test_ingestion_populates_graph(tmp_path: pytest.TempPathFactory) -> None:
         driver.close()
 
 
-class _DummyEmbedder:
-    def encode(self, texts):  # noqa: ANN001 - match interface
-        return [[0.1, 0.2, 0.3]]
+class _DummyEmbedder(Embedder):
+    """Minimal embedder returning deterministic vectors for tests."""
+
+    def __init__(self) -> None:
+        self.model_name = "test"
+
+    @property
+    def dimension(self) -> int:
+        return 3
+
+    def encode(self, texts: Sequence[str]) -> list[list[float]]:
+        return [[0.1, 0.2, 0.3] for _ in texts]
 
 
 class _FakePoint:
@@ -129,15 +138,18 @@ class _FakePoint:
 
 
 class _DummyQdrantClient:
+    """Stub Qdrant client that returns pre-seeded points."""
+
     def __init__(self, points: list[_FakePoint]) -> None:
         self._points = points
 
-    def search(self, **kwargs):  # noqa: ANN001 - mimic qdrant interface
+    def search(self, **_kwargs: object) -> list[_FakePoint]:
         return self._points
 
 
 @pytest.mark.neo4j
-def test_search_replay_against_real_graph(tmp_path: pytest.TempPathFactory) -> None:
+def test_search_replay_against_real_graph(tmp_path: Path) -> None:
+    """Replay saved search results against the populated knowledge graph."""
     uri = os.getenv("NEO4J_TEST_URI")
     user = os.getenv("NEO4J_TEST_USER", "neo4j")
     password = os.getenv("NEO4J_TEST_PASSWORD", "neo4jadmin")
@@ -148,12 +160,12 @@ def test_search_replay_against_real_graph(tmp_path: pytest.TempPathFactory) -> N
 
     repo_root = tmp_path / "repo"
     (repo_root / "docs").mkdir(parents=True)
-    (repo_root / "src" / "esper" / "telemetry").mkdir(parents=True)
+    (repo_root / "src" / "project" / "telemetry").mkdir(parents=True)
 
     doc_path = repo_root / "docs" / "sample.md"
     doc_path.write_text("# Sample\nGraph validation doc.\n")
 
-    code_path = repo_root / "src" / "esper" / "telemetry" / "module.py"
+    code_path = repo_root / "src" / "project" / "telemetry" / "module.py"
     code_path.write_text("def handler():\n    return 'ok'\n")
 
     driver = GraphDatabase.driver(uri, auth=(user, password))
@@ -210,7 +222,7 @@ def test_search_replay_against_real_graph(tmp_path: pytest.TempPathFactory) -> N
         ]
 
         search_service = SearchService(
-            qdrant_client=_DummyQdrantClient(qdrant_points),
+            qdrant_client=cast(QdrantClient, _DummyQdrantClient(qdrant_points)),
             collection_name="collection",
             embedder=_DummyEmbedder(),
         )

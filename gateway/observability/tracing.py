@@ -1,6 +1,6 @@
-from __future__ import annotations
+"""Tracing helpers for wiring OpenTelemetry exporters."""
 
-from typing import Mapping
+from __future__ import annotations
 
 from fastapi import FastAPI
 from opentelemetry import trace
@@ -9,11 +9,7 @@ from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.requests import RequestsInstrumentor
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import (
-    BatchSpanProcessor,
-    ConsoleSpanExporter,
-    SimpleSpanProcessor,
-)
+from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter, SimpleSpanProcessor, SpanExporter
 from opentelemetry.sdk.trace.sampling import ParentBased, TraceIdRatioBased
 
 from gateway.config.settings import AppSettings
@@ -50,7 +46,8 @@ def configure_tracing(app: FastAPI | None, settings: AppSettings) -> None:
     _TRACING_CONFIGURED = True
 
 
-def _select_exporter(settings: AppSettings):
+def _select_exporter(settings: AppSettings) -> SpanExporter:
+    """Choose the span exporter based on settings."""
     headers = _parse_headers(settings.tracing_headers)
     if settings.tracing_endpoint:
         return OTLPSpanExporter(endpoint=settings.tracing_endpoint, headers=headers)
@@ -60,7 +57,8 @@ def _select_exporter(settings: AppSettings):
     return ConsoleSpanExporter()
 
 
-def _parse_headers(header_string: str | None) -> Mapping[str, str] | None:
+def _parse_headers(header_string: str | None) -> dict[str, str] | None:
+    """Parse comma-separated OTLP header strings into a dict."""
     if not header_string:
         return None
 

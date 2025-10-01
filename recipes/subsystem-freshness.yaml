@@ -1,0 +1,26 @@
+version: 1
+name: subsystem-freshness
+summary: Inspect a subsystem graph and note dependencies for freshness review.
+variables:
+  subsystem: ReleaseTooling
+steps:
+  - id: subsystem
+    tool: km-graph-subsystem
+    params:
+      name: ${vars.subsystem}
+      depth: 2
+      include_artifacts: true
+    capture:
+      - name: subsystem
+        path: result
+  - id: recent-search
+    tool: km-search
+    params:
+      query: "${vars.subsystem}"
+      limit: 3
+    capture:
+      - name: search
+        path: result
+outputs:
+  subsystem: ${captures.subsystem}
+  search_results: ${captures.search}

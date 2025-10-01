@@ -1,9 +1,12 @@
+"""Chunk source artifacts into overlapping windows for indexing."""
+
 from __future__ import annotations
 
 import hashlib
 import math
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from gateway.ingest.artifacts import Artifact, Chunk
 
@@ -15,6 +18,7 @@ class Chunker:
     """Split artifacts into overlapping textual chunks."""
 
     def __init__(self, window: int = DEFAULT_WINDOW, overlap: int = DEFAULT_OVERLAP) -> None:
+        """Configure chunk sizes and overlap."""
         if window <= 0:
             raise ValueError("window must be positive")
         if overlap < 0:
@@ -23,6 +27,7 @@ class Chunker:
         self.overlap = overlap
 
     def split(self, artifact: Artifact) -> Iterable[Chunk]:
+        """Split the artifact content into `Chunk` instances."""
         text = artifact.content
         if not text.strip():
             return []
@@ -34,9 +39,9 @@ class Chunker:
         for idx, start in enumerate(range(0, len(text), step)):
             end = start + self.window
             chunk_text = text[start:end]
-            digest = hashlib.sha256(f"{artifact.path}:{idx}:{chunk_text}".encode("utf-8")).hexdigest()
+            digest = hashlib.sha256(f"{artifact.path}:{idx}:{chunk_text}".encode()).hexdigest()
             chunk_id = f"{artifact.path.as_posix()}::{idx}"
-            metadata = {
+            metadata: dict[str, Any] = {
                 "path": artifact.path.as_posix(),
                 "artifact_type": artifact.artifact_type,
                 "subsystem": artifact.subsystem,
@@ -62,6 +67,8 @@ class Chunker:
 
     @staticmethod
     def estimate_chunk_count(path: Path, text: str, *, window: int = DEFAULT_WINDOW, overlap: int = DEFAULT_OVERLAP) -> int:
+        """Estimate how many chunks a text would produce with the configured window."""
+        del path
         if not text:
             return 0
         step = window - overlap if window > overlap else window
@@ -69,6 +76,7 @@ class Chunker:
 
 
 def _derive_namespace(path: Path) -> str:
+    """Infer a namespace from a file path for tagging chunks."""
     parts = path.parts
     if not parts:
         return ""
@@ -78,8 +86,9 @@ def _derive_namespace(path: Path) -> str:
 
 
 def _build_tags(extra_metadata: dict[str, Any]) -> list[str]:
+    """Collect tag-like signals from artifact metadata."""
     tags: set[str] = set()
-    for key in ("leyline_entities", "telemetry_signals", "tags"):
+    for key in ("message_entities", "telemetry_signals", "tags"):
         values = extra_metadata.get(key)
         if isinstance(values, list):
             for value in values:

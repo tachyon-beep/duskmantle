@@ -1,0 +1,204 @@
+{
+  "title": "Duskmantle Gateway Overview",
+  "timezone": "browser",
+  "schemaVersion": 36,
+  "version": 1,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Last Ingest Status",
+      "targets": [
+        {
+          "expr": "km_ingest_last_run_status",
+          "legendFormat": "status"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "failed",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "ok",
+                  "color": "green"
+                }
+              }
+            }
+          ],
+          "unit": "none"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Last Ingest Timestamp",
+      "targets": [
+        {
+          "expr": "km_ingest_last_run_timestamp",
+          "legendFormat": "timestamp"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dateTimeAsIso"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 0
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Watcher Last Run",
+      "targets": [
+        {
+          "expr": "km_watch_last_run_timestamp",
+          "legendFormat": "last_run"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dateTimeAsIso"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 0
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Watcher Errors",
+      "targets": [
+        {
+          "expr": "increase(km_watch_runs_total{result=\"error\"}[1h])",
+          "legendFormat": "errors (1h)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 0
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Request Latency (p95)",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by(le) (rate(uvicorn_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "p95"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 4
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Search vs Graph Throughput",
+      "targets": [
+        {
+          "expr": "rate(uvicorn_requests_total{app=\"search\"}[5m])",
+          "legendFormat": "search/s"
+        },
+        {
+          "expr": "rate(uvicorn_requests_total{app=\"graph\"}[5m])",
+          "legendFormat": "graph/s"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 12
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Watcher Run Rate",
+      "targets": [
+        {
+          "expr": "rate(km_watch_runs_total{result=\"success\"}[5m])",
+          "legendFormat": "success/s"
+        },
+        {
+          "expr": "rate(km_watch_runs_total{result=\"error\"}[5m])",
+          "legendFormat": "error/s"
+        },
+        {
+          "expr": "rate(km_watch_runs_total{result=\"no_change\"}[5m])",
+          "legendFormat": "no_change/s"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 20
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Stale Artifacts Removed",
+      "targets": [
+        {
+          "expr": "increase(km_ingest_stale_resolved_total[1h])",
+          "legendFormat": "{{profile}}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 28
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Ingest Skips by Reason",
+      "targets": [
+        {
+          "expr": "increase(km_ingest_skips_total[1h])",
+          "legendFormat": "{{reason}}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 28
+      }
+    }
+  ]
+}

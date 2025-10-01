@@ -50,6 +50,7 @@ def test_checksums_script(tmp_path: Path) -> None:
         assert len(digest) == 64
         assert filename.startswith(str(target_dir))
 
+
 def test_generate_changelog(tmp_path: Path) -> None:
     repo_copy = tmp_path / "repo"
     subprocess.run(

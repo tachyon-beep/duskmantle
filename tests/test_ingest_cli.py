@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from pathlib import Path
 import time
+from pathlib import Path
 from unittest import mock
 
 import pytest
@@ -22,9 +22,9 @@ def reset_settings_cache() -> None:
 @pytest.fixture()
 def sample_repo(tmp_path: Path) -> Path:
     (tmp_path / "docs").mkdir(parents=True)
-    (tmp_path / "src" / "esper" / "kasmina").mkdir(parents=True)
+    (tmp_path / "src" / "project" / "kasmina").mkdir(parents=True)
     (tmp_path / "docs" / "spec.md").write_text("Sample doc")
-    (tmp_path / "src" / "esper" / "kasmina" / "module.py").write_text("print('hi')")
+    (tmp_path / "src" / "project" / "kasmina" / "module.py").write_text("print('hi')")
     return tmp_path
 
 
@@ -43,6 +43,8 @@ def test_cli_rebuild_dry_run(sample_repo: Path, monkeypatch: pytest.MonkeyPatch)
     with mock.patch("gateway.ingest.cli.execute_ingestion", return_value=dummy_result) as execute:
         cli.main(["rebuild", "--dry-run", "--dummy-embeddings"])
         execute.assert_called_once()
+        _, kwargs = execute.call_args
+        assert kwargs["incremental"] is None
 
 
 def test_cli_rebuild_requires_maintainer_token(sample_repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -66,6 +68,32 @@ def test_cli_rebuild_with_maintainer_token(sample_repo: Path, monkeypatch: pytes
     with mock.patch("gateway.ingest.cli.execute_ingestion", return_value=dummy_result) as execute:
         cli.main(["rebuild", "--dry-run", "--dummy-embeddings"])
         execute.assert_called_once()
+        _, kwargs = execute.call_args
+        assert kwargs["incremental"] is None
+
+
+def test_cli_rebuild_full_rebuild_flag(sample_repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("KM_REPO_PATH", str(sample_repo))
+    monkeypatch.setenv("KM_STATE_PATH", str(sample_repo / "state"))
+    dummy_result = mock.Mock(run_id="r", chunk_count=0, artifact_counts={})
+    with mock.patch("gateway.ingest.cli.execute_ingestion", return_value=dummy_result) as execute:
+        cli.main(["rebuild", "--full-rebuild"])
+        _, kwargs = execute.call_args
+        assert kwargs["incremental"] is False
+
+
+def test_cli_rebuild_incremental_flag(sample_repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("KM_REPO_PATH", str(sample_repo))
+    monkeypatch.setenv("KM_STATE_PATH", str(sample_repo / "state"))
+    monkeypatch.setenv("KM_INGEST_INCREMENTAL", "false")
+    get_settings.cache_clear()
+    dummy_result = mock.Mock(run_id="r", chunk_count=0, artifact_counts={})
+    with mock.patch("gateway.ingest.cli.execute_ingestion", return_value=dummy_result) as execute:
+        cli.main(["rebuild", "--incremental"])
+        _, kwargs = execute.call_args
+        assert kwargs["incremental"] is True
+    monkeypatch.delenv("KM_INGEST_INCREMENTAL", raising=False)
+    get_settings.cache_clear()
 
 
 def test_cli_audit_history_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:

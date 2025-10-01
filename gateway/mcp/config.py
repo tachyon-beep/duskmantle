@@ -5,15 +5,17 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
-from pydantic import AnyHttpUrl, Field
+from pydantic import Field
 from pydantic_settings import BaseSettings
 
 
 class MCPSettings(BaseSettings):
     """Settings controlling the MCP server runtime."""
 
-    gateway_url: AnyHttpUrl = Field(
-        "http://localhost:8000", alias="KM_GATEWAY_URL", description="Base URL of the gateway API"
+    gateway_url: str = Field(
+        "http://localhost:8000",
+        alias="KM_GATEWAY_URL",
+        description="Base URL of the gateway API",
     )
     reader_token: str | None = Field(
         default=None,
@@ -39,6 +41,26 @@ class MCPSettings(BaseSettings):
         default=Path("/opt/knowledge/var"),
         alias="KM_STATE_PATH",
         description="Path containing gateway state files (audit logs, backups, feedback)",
+    )
+    content_root: Path = Field(
+        default=Path("/workspace/repo"),
+        alias="KM_CONTENT_ROOT",
+        description="Root directory where MCP upload/storetext helpers write content",
+    )
+    content_docs_subdir: Path = Field(
+        default=Path("docs"),
+        alias="KM_CONTENT_DOCS_SUBDIR",
+        description="Default subdirectory under the content root for text documents",
+    )
+    upload_default_overwrite: bool = Field(
+        default=False,
+        alias="KM_UPLOAD_DEFAULT_OVERWRITE",
+        description="Allow MCP uploads to overwrite existing files by default",
+    )
+    upload_default_ingest: bool = Field(
+        default=False,
+        alias="KM_UPLOAD_DEFAULT_INGEST",
+        description="Trigger an ingest run immediately after MCP uploads by default",
     )
     ingest_profile_default: str = Field(
         default="manual",

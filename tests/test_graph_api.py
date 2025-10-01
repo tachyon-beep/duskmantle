@@ -1,30 +1,27 @@
 from __future__ import annotations
 
-from pathlib import Path
 import os
+from pathlib import Path
 from typing import Any
 
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from neo4j import GraphDatabase
 
+from gateway.api.app import create_app
+from gateway.graph import GraphNotFoundError
 from gateway.graph.migrations.runner import MigrationRunner
 from gateway.ingest.neo4j_writer import Neo4jWriter
 from gateway.ingest.pipeline import IngestionConfig, IngestionPipeline
 
-import pytest
-
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-
-from gateway.api.app import create_app
-from gateway.graph import GraphNotFoundError
-
 
 class DummyGraphService:
-    def __init__(self, responses: dict[str, Any]):
+    def __init__(self, responses: dict[str, Any]) -> None:
         self._responses = responses
         self.last_node_id: str | None = None
 
-    def get_subsystem(self, name: str, **kwargs: Any) -> dict[str, Any]:
+    def get_subsystem(self, name: str, **kwargs: object) -> dict[str, Any]:
         if name == "missing":
             raise GraphNotFoundError("Subsystem 'missing' not found")
         return self._responses["subsystem"]
@@ -37,6 +34,12 @@ class DummyGraphService:
 
     def search(self, term: str, *, limit: int) -> dict[str, Any]:
         return {"results": self._responses.get("search", [])}
+
+    def get_subsystem_graph(self, name: str, *, depth: int) -> dict[str, Any]:
+        return self._responses["subsystem_graph"]
+
+    def list_orphan_nodes(self, *, label: str | None, cursor: str | None, limit: int) -> dict[str, Any]:
+        return self._responses["orphans"]
 
     def run_cypher(self, query: str, parameters: dict[str, Any] | None) -> dict[str, Any]:
         return {"data": [{"row": ["ok"]}], "summary": {"resultConsumedAfterMs": 1, "database": "knowledge"}}
@@ -67,9 +70,19 @@ def app(monkeypatch: pytest.MonkeyPatch) -> FastAPI:
                                 "labels": ["Subsystem"],
                                 "properties": {"name": "analytics"},
                             },
+                            "hops": 1,
+                            "path": [
+                                {
+                                    "type": "DEPENDS_ON",
+                                    "direction": "OUT",
+                                    "source": "Subsystem:telemetry",
+                                    "target": "Subsystem:analytics",
+                                }
+                            ],
                         }
                     ],
                     "cursor": None,
+                    "total": 1,
                 },
                 "artifacts": [
                     {
@@ -78,6 +91,50 @@ def app(monkeypatch: pytest.MonkeyPatch) -> FastAPI:
                         "properties": {"path": "docs/telemetry.md"},
                     }
                 ],
+            },
+            "subsystem_graph": {
+                "subsystem": {
+                    "id": "Subsystem:telemetry",
+                    "labels": ["Subsystem"],
+                    "properties": {"name": "telemetry", "criticality": "high"},
+                },
+                "nodes": [
+                    {
+                        "id": "Subsystem:telemetry",
+                        "labels": ["Subsystem"],
+                        "properties": {"name": "telemetry", "criticality": "high"},
+                    },
+                    {
+                        "id": "Subsystem:analytics",
+                        "labels": ["Subsystem"],
+                        "properties": {"name": "analytics"},
+                    },
+                ],
+                "edges": [
+                    {
+                        "type": "DEPENDS_ON",
+                        "direction": "OUT",
+                        "source": "Subsystem:telemetry",
+                        "target": "Subsystem:analytics",
+                    }
+                ],
+                "artifacts": [
+                    {
+                        "id": "DesignDoc:docs/telemetry.md",
+                        "labels": ["DesignDoc"],
+                        "properties": {"path": "docs/telemetry.md"},
+                    }
+                ],
+            },
+            "orphans": {
+                "nodes": [
+                    {
+                        "id": "DesignDoc:docs/orphan.md",
+                        "labels": ["DesignDoc"],
+                        "properties": {"path": "docs/orphan.md"},
+                    }
+                ],
+                "cursor": None,
             },
             "node": {
                 "node": {
@@ -90,16 +147,14 @@ def app(monkeypatch: pytest.MonkeyPatch) -> FastAPI:
                         "type": "IMPLEMENTS",
                         "direction": "OUT",
                         "target": {
-                            "id": "LeylineMessage:LeylineSync",
-                            "labels": ["LeylineMessage"],
-                            "properties": {"name": "LeylineSync"},
+                            "id": "IntegrationMessage:IntegrationSync",
+                            "labels": ["IntegrationMessage"],
+                            "properties": {"name": "IntegrationSync"},
                         },
                     }
                 ],
             },
-            "search": [
-                {"id": "Subsystem:telemetry", "label": "Subsystem", "score": 0.9, "snippet": "telemetry"}
-            ],
+            "search": [{"id": "Subsystem:telemetry", "label": "Subsystem", "score": 0.9, "snippet": "telemetry"}],
         }
     )
     app.dependency_overrides[app.state.graph_service_dependency] = lambda: dummy_service
@@ -114,7 +169,10 @@ def test_graph_subsystem_returns_payload(app: FastAPI) -> None:
     body = response.json()
     assert body["subsystem"]["id"] == "Subsystem:telemetry"
     assert body["subsystem"]["properties"]["criticality"] == "high"
-    assert body["related"]["nodes"][0]["relationship"] == "DEPENDS_ON"
+    assert body["related"]["total"] == 1
+    related_entry = body["related"]["nodes"][0]
+    assert related_entry["relationship"] == "DEPENDS_ON"
+    assert related_entry["path"][0]["target"] == "Subsystem:analytics"
     assert body["artifacts"][0]["id"].startswith("DesignDoc:")
 
 
@@ -122,6 +180,23 @@ def test_graph_subsystem_not_found(app: FastAPI) -> None:
     client = TestClient(app)
     response = client.get("/graph/subsystems/missing")
     assert response.status_code == 404
+
+
+def test_graph_subsystem_graph_endpoint(app: FastAPI) -> None:
+    client = TestClient(app)
+    response = client.get("/graph/subsystems/telemetry/graph")
+    assert response.status_code == 200
+    data = response.json()
+    assert any(edge["type"] == "DEPENDS_ON" for edge in data["edges"])
+    assert data["nodes"][0]["id"] == "Subsystem:telemetry"
+
+
+def test_graph_orphans_endpoint(app: FastAPI) -> None:
+    client = TestClient(app)
+    response = client.get("/graph/orphans")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["nodes"][0]["id"] == "DesignDoc:docs/orphan.md"
 
 
 def test_graph_node_endpoint(app: FastAPI) -> None:
@@ -142,9 +217,7 @@ def test_graph_node_accepts_slash_encoded_ids(app: FastAPI) -> None:
 
 
 @pytest.mark.neo4j
-def test_graph_node_endpoint_live(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: pytest.PathLike[str]
-) -> None:
+def test_graph_node_endpoint_live(monkeypatch: pytest.MonkeyPatch, tmp_path: pytest.PathLike[str]) -> None:
     uri = os.getenv("NEO4J_TEST_URI")
     user = os.getenv("NEO4J_TEST_USER", "neo4j")
     password = os.getenv("NEO4J_TEST_PASSWORD", "neo4jadmin")
@@ -164,8 +237,7 @@ def test_graph_node_endpoint_live(
     doc_path = repo_root / "docs" / "sample.md"
     doc_path.write_text("# Sample\nGraph validation doc.\n")
 
-    driver = GraphDatabase.driver(uri, auth=(user, password))
-    try:
+    with GraphDatabase.driver(uri, auth=(user, password)) as driver:
         MigrationRunner(driver=driver, database=database).run()
         writer = Neo4jWriter(driver, database=database)
         writer.ensure_constraints()
@@ -179,8 +251,6 @@ def test_graph_node_endpoint_live(
             ),
         )
         assert pipeline.run().success
-    finally:
-        driver.close()
 
     get_settings.cache_clear()
     app = create_app()
@@ -193,9 +263,7 @@ def test_graph_node_endpoint_live(
 
 
 @pytest.mark.neo4j
-def test_graph_search_endpoint_live(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: pytest.PathLike[str]
-) -> None:
+def test_graph_search_endpoint_live(monkeypatch: pytest.MonkeyPatch, tmp_path: pytest.PathLike[str]) -> None:
     uri = os.getenv("NEO4J_TEST_URI")
     user = os.getenv("NEO4J_TEST_USER", "neo4j")
     password = os.getenv("NEO4J_TEST_PASSWORD", "neo4jadmin")
@@ -212,14 +280,11 @@ def test_graph_search_endpoint_live(
 
     repo_root = Path(tmp_path) / "repo"
     (repo_root / "docs").mkdir(parents=True)
-    (repo_root / "src" / "esper" / "telemetry").mkdir(parents=True)
+    (repo_root / "src" / "project" / "telemetry").mkdir(parents=True)
     (repo_root / "docs" / "sample.md").write_text("# Sample\nGraph validation doc.\n")
-    (repo_root / "src" / "esper" / "telemetry" / "module.py").write_text(
-        "def handler():\n    return 'ok'\n"
-    )
+    (repo_root / "src" / "project" / "telemetry" / "module.py").write_text("def handler():\n    return 'ok'\n")
 
-    driver = GraphDatabase.driver(uri, auth=(user, password))
-    try:
+    with GraphDatabase.driver(uri, auth=(user, password)) as driver:
         MigrationRunner(driver=driver, database=database).run()
         writer = Neo4jWriter(driver, database=database)
         writer.ensure_constraints()
@@ -233,8 +298,6 @@ def test_graph_search_endpoint_live(
             ),
         )
         assert pipeline.run().success
-    finally:
-        driver.close()
 
     get_settings.cache_clear()
     app = create_app()
@@ -256,6 +319,7 @@ def test_graph_search_endpoint(app: FastAPI) -> None:
 def test_graph_cypher_requires_maintainer_token(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("KM_AUTH_ENABLED", "true")
     monkeypatch.setenv("KM_ADMIN_TOKEN", "admin-token")
+    monkeypatch.setenv("KM_NEO4J_PASSWORD", "secure-pass")
     from gateway.config.settings import get_settings
 
     get_settings.cache_clear()
@@ -282,6 +346,7 @@ def test_graph_reader_scope(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("KM_AUTH_ENABLED", "true")
     monkeypatch.setenv("KM_READER_TOKEN", "reader-token")
     monkeypatch.setenv("KM_ADMIN_TOKEN", "admin-token")
+    monkeypatch.setenv("KM_NEO4J_PASSWORD", "secure-pass")
     from gateway.config.settings import get_settings
 
     get_settings.cache_clear()
@@ -303,10 +368,13 @@ def test_graph_reader_scope(monkeypatch: pytest.MonkeyPatch) -> None:
     client = TestClient(app)
 
     assert client.get("/graph/subsystems/kasmina").status_code == 401
-    assert client.get(
-        "/graph/subsystems/kasmina",
-        headers={"Authorization": "Bearer nope"},
-    ).status_code == 403
+    assert (
+        client.get(
+            "/graph/subsystems/kasmina",
+            headers={"Authorization": "Bearer nope"},
+        ).status_code
+        == 403
+    )
 
     ok_reader = client.get(
         "/graph/subsystems/kasmina",

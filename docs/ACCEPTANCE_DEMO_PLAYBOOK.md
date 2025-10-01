@@ -42,7 +42,8 @@ KM_IMAGE=duskmantle/km:<demo-tag> bin/km-run --detach
 Defaults:
 
 - Ports: API `8000`, Qdrant `6333`, Neo4j `7687`.
-- Data directory: `./data` mounted at `/opt/knowledge/var`.
+- State directory: `.duskmantle/config` mounted at `/opt/knowledge/var`.
+- Repository content: `.duskmantle/data` mounted at `/workspace/repo`.
 - Repo mount: current directory to `/workspace/repo`.
 
 Wait for readiness:
@@ -59,7 +60,7 @@ done
 Run a full ingest (real embeddings) to populate Qdrant/Neo4j:
 
 ```bash
-docker exec km-gateway gateway-ingest rebuild --profile demo
+docker exec duskmantle gateway-ingest rebuild --profile demo
 ```
 
 Expect logs indicating ~40 artifacts and ~314 chunks (values vary based on repo content). If you only need a smoke pass, you may add `--dummy-embeddings`, but remember to rebuild with real embeddings before running search demos (dummy embeddings produce 8-D vectors).
@@ -88,7 +89,7 @@ curl -s "http://localhost:8000/graph/nodes/DesignDoc%3Adocs%2FWORK_PACKAGES.md"
 Expect 200 responses with node payloads. If nodes are missing, confirm ingestion populated Neo4j by running:
 
 ```bash
-docker exec km-gateway /opt/knowledge/bin/neo4j-distribution/bin/cypher-shell \
+docker exec duskmantle /opt/knowledge/bin/neo4j-distribution/bin/cypher-shell \
   -a bolt://localhost:7687 -u neo4j -p neo4jadmin \
   "MATCH (d:DesignDoc) RETURN d.path LIMIT 5"
 ```
@@ -118,14 +119,14 @@ Record total artifacts and chunk counts.
 2. Stop the container:
 
    ```bash
-   docker rm -f km-gateway
+   docker rm -f duskmantle
    ```
 
 3. Clear the data directory and restore from backup:
 
    ```bash
-   docker run --rm -v $(pwd)/data:/data alpine:3.20 sh -c "rm -rf /data/*"
-   tar -xzf backups/<archive>.tgz -C data
+   docker run --rm -v $(pwd)/.duskmantle/config:/data alpine:3.20 sh -c "rm -rf /data/*"
+   tar -xzf backups/<archive>.tgz -C .duskmantle/config
    ```
 
 4. Relaunch the container and rerun health checks (`/readyz`, `/healthz`, `/coverage`).
@@ -162,19 +163,33 @@ Record the following in release notes or a demo log:
    ```
 
    - Provide `KM_READER_TOKEN` if auth is enabled and you want to restrict scope. The demo typically reuses the maintainer token for both.
-3. From the original terminal, run the MCP smoke marker:
+3. From the adapter prompt, exercise the content tools before running automated smoke tests:
+
+   ```
+   > km-upload {"source_path": "./docs/QUICK_START.md", "destination": "docs/demo/", "ingest": true}
+   < stored_path: /workspace/repo/docs/demo/QUICK_START.md ... ingest_triggered: true
+
+   > km-storetext {"title": "Demo Note", "content": "## Summary\n- MCP upload verified", "ingest": true}
+   < relative_path: "docs/demo-note.md" ...
+
+   > km-search {"query": "Demo Note", "limit": 3}
+   < results: [...]
+   ```
+
+   Confirm both commands report `status: success` and that `km_mcp_upload_total` / `km_mcp_storetext_total` increment in Prometheus.
+4. From the original terminal, run the MCP smoke marker:
 
    ```bash
    pytest -m mcp_smoke --maxfail=1 --disable-warnings
    ```
 
    This exercises `km-search`, `km-coverage-summary`, and `km-backup-trigger` over MCP. Confirm the Prometheus metrics `km_mcp_requests_total` and `km_mcp_request_seconds` increment by querying `http://localhost:8000/metrics`.
-4. Stop the adapter (Ctrl+C) once verification completes.
+5. Stop the adapter (Ctrl+C) once verification completes.
 
 ## 11. Cleanup
 
 ```bash
-docker rm -f km-gateway
+docker rm -f duskmantle
 rm -rf data backups
 ```
 

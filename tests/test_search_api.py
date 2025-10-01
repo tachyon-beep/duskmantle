@@ -2,17 +2,18 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from typing import Any
+from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from gateway.api.app import create_app
-from gateway.search.service import SearchResult, SearchResponse
+from gateway.search.service import SearchResponse, SearchResult
 
 
 class DummySearchService:
     def __init__(self) -> None:
-        self.last_filters: dict[str, Any] | None = None
+        self.last_filters: dict[str, object] | None = None
 
     def search(
         self,
@@ -20,11 +21,11 @@ class DummySearchService:
         query: str,
         limit: int,
         include_graph: bool,
-        graph_service,
+        graph_service: object,
         sort_by_vector: bool = False,
         request_id: str | None = None,
-        filters: dict[str, Any] | None = None,
-    ):
+        filters: dict[str, object] | None = None,
+    ) -> SearchResponse:
         self.last_filters = filters or {}
         return SearchResponse(
             query=query,
@@ -55,7 +56,7 @@ class DummySearchService:
         )
 
 
-def test_search_endpoint_returns_results(monkeypatch, tmp_path):
+def test_search_endpoint_returns_results(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("KM_AUTH_ENABLED", "false")
     monkeypatch.setenv("KM_STATE_PATH", str(tmp_path))
     from gateway.config.settings import get_settings
@@ -68,18 +69,45 @@ def test_search_endpoint_returns_results(monkeypatch, tmp_path):
 
     resp = client.post("/search", json={"query": "telemetry"})
     assert resp.status_code == 200
+    request_id_header = resp.headers.get("x-request-id")
+    assert request_id_header
     data = resp.json()
     assert data["results"][0]["chunk"]["artifact_path"] == "src/module.py"
     assert "scoring" in data["results"][0]
     assert data["results"][0]["graph_context"]["primary_node"]["id"] == "SourceFile:src/module.py"
     assert data["results"][0]["scoring"]["signals"]["subsystem_affinity"] == 1.0
     assert data["metadata"]["scoring_mode"] == "heuristic"
-    assert "request_id" in data["metadata"]
+    assert data["metadata"]["request_id"] == request_id_header
 
 
-def test_search_requires_reader_token(monkeypatch, tmp_path):
+def test_search_reuses_incoming_request_id(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("KM_AUTH_ENABLED", "false")
+    monkeypatch.setenv("KM_STATE_PATH", str(tmp_path))
+    from gateway.config.settings import get_settings
+
+    get_settings.cache_clear()
+    app = create_app()
+    service = DummySearchService()
+    app.dependency_overrides[app.state.search_service_dependency] = lambda: service
+    client = TestClient(app)
+
+    custom_request_id = "test-request-123"
+    resp = client.post(
+        "/search",
+        json={"query": "telemetry"},
+        headers={"X-Request-ID": custom_request_id},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert resp.headers.get("x-request-id") == custom_request_id
+    assert data["metadata"]["request_id"] == custom_request_id
+
+
+def test_search_requires_reader_token(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("KM_AUTH_ENABLED", "true")
     monkeypatch.setenv("KM_READER_TOKEN", "reader-token")
+    monkeypatch.setenv("KM_ADMIN_TOKEN", "admin-token")
+    monkeypatch.setenv("KM_NEO4J_PASSWORD", "secure-pass")
     monkeypatch.setenv("KM_STATE_PATH", str(tmp_path))
     from gateway.config.settings import get_settings
 
@@ -100,10 +128,11 @@ def test_search_requires_reader_token(monkeypatch, tmp_path):
     assert resp.status_code == 200
 
 
-def test_search_allows_maintainer_token(monkeypatch, tmp_path):
+def test_search_allows_maintainer_token(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("KM_AUTH_ENABLED", "true")
     monkeypatch.setenv("KM_READER_TOKEN", "reader-token")
     monkeypatch.setenv("KM_ADMIN_TOKEN", "admin-token")
+    monkeypatch.setenv("KM_NEO4J_PASSWORD", "secure-pass")
     monkeypatch.setenv("KM_STATE_PATH", str(tmp_path))
     from gateway.config.settings import get_settings
 
@@ -121,7 +150,7 @@ def test_search_allows_maintainer_token(monkeypatch, tmp_path):
     assert resp.status_code == 200
 
 
-def test_search_feedback_logged(monkeypatch, tmp_path):
+def test_search_feedback_logged(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("KM_AUTH_ENABLED", "false")
     monkeypatch.setenv("KM_STATE_PATH", str(tmp_path))
 
@@ -151,9 +180,10 @@ def test_search_feedback_logged(monkeypatch, tmp_path):
     assert row["feedback_vote"] == 4.0
     assert row["context"] == {"task": "deep-dive"}
     assert row["artifact_path"] == "src/module.py"
+    assert row["request_id"] == resp.json()["metadata"]["request_id"]
 
 
-def test_search_filters_passed_to_service(monkeypatch, tmp_path):
+def test_search_filters_passed_to_service(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("KM_AUTH_ENABLED", "false")
     monkeypatch.setenv("KM_STATE_PATH", str(tmp_path))
 
@@ -173,7 +203,7 @@ def test_search_filters_passed_to_service(monkeypatch, tmp_path):
                 "subsystems": ["Telemetry", "Analytics "],
                 "artifact_types": ["code", "doc"],
                 "namespaces": ["src", "docs"],
-                "tags": ["LeylineAlpha", "telemetrySignal"],
+                "tags": ["IntegrationAlpha", "telemetrySignal"],
                 "updated_after": "2024-01-01T00:00:00Z",
                 "max_age_days": 14,
             },
@@ -185,13 +215,13 @@ def test_search_filters_passed_to_service(monkeypatch, tmp_path):
     assert filters["subsystems"] == ["Telemetry", "Analytics"]
     assert filters["artifact_types"] == ["code", "doc"]
     assert filters["namespaces"] == ["src", "docs"]
-    assert filters["tags"] == ["LeylineAlpha", "telemetrySignal"]
+    assert filters["tags"] == ["IntegrationAlpha", "telemetrySignal"]
     assert isinstance(filters["updated_after"], datetime)
     assert filters["updated_after"].tzinfo is not None
     assert filters["max_age_days"] == 14
 
 
-def test_search_filters_invalid_type(monkeypatch, tmp_path):
+def test_search_filters_invalid_type(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("KM_AUTH_ENABLED", "false")
     monkeypatch.setenv("KM_STATE_PATH", str(tmp_path))
 
@@ -211,7 +241,7 @@ def test_search_filters_invalid_type(monkeypatch, tmp_path):
     assert resp.status_code == 422
 
 
-def test_search_filters_invalid_namespaces(monkeypatch, tmp_path):
+def test_search_filters_invalid_namespaces(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("KM_AUTH_ENABLED", "false")
     monkeypatch.setenv("KM_STATE_PATH", str(tmp_path))
 
@@ -231,7 +261,7 @@ def test_search_filters_invalid_namespaces(monkeypatch, tmp_path):
     assert resp.status_code == 422
 
 
-def test_search_filters_invalid_updated_after(monkeypatch, tmp_path):
+def test_search_filters_invalid_updated_after(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("KM_AUTH_ENABLED", "false")
     monkeypatch.setenv("KM_STATE_PATH", str(tmp_path))
 
@@ -251,7 +281,7 @@ def test_search_filters_invalid_updated_after(monkeypatch, tmp_path):
     assert resp.status_code == 422
 
 
-def test_search_filters_invalid_max_age(monkeypatch, tmp_path):
+def test_search_filters_invalid_max_age(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("KM_AUTH_ENABLED", "false")
     monkeypatch.setenv("KM_STATE_PATH", str(tmp_path))
 
@@ -271,9 +301,10 @@ def test_search_filters_invalid_max_age(monkeypatch, tmp_path):
     assert resp.status_code == 422
 
 
-def test_search_weights_endpoint(monkeypatch, tmp_path):
+def test_search_weights_endpoint(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("KM_AUTH_ENABLED", "true")
     monkeypatch.setenv("KM_ADMIN_TOKEN", "maintainer-token")
+    monkeypatch.setenv("KM_NEO4J_PASSWORD", "secure-pass")
     monkeypatch.setenv("KM_STATE_PATH", str(tmp_path))
 
     from gateway.config.settings import get_settings

@@ -61,7 +61,7 @@ env = { "KM_GATEWAY_URL" = "http://localhost:8000", "KM_ADMIN_TOKEN" = "maintain
 
 ### Container-scoped adapter
 
-Exec the server inside the running `km-gateway` container so agents see the in-container environment:
+Exec the server inside the running `duskmantle` container so agents see the in-container environment:
 
 ```toml
 [mcp_servers.duskmantle_container]
@@ -75,7 +75,7 @@ env = {
 }
 ```
 
-Set `KM_MCP_CONTAINER` if your container uses a different name than `km-gateway`.
+Set `KM_MCP_CONTAINER` if your container uses a different name than `duskmantle`.
 
 Restart Codex CLI after editing the config. List available MCP servers with `/sys mcp list` and invoke tools via `/sys mcp run duskmantle km-search --query "ingestion pipeline"`.
 

@@ -1,0 +1,14 @@
+version: 1
+name: stale-audit
+summary: Generate lifecycle signals highlighting stale docs and isolated graph nodes.
+steps:
+  - id: lifecycle
+    tool: km-lifecycle-report
+    capture:
+      - name: lifecycle
+        path: result
+    assert:
+      - path: result.stale_docs
+        exists: True
+outputs:
+  lifecycle: ${captures.lifecycle}

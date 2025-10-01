@@ -4,12 +4,14 @@ import json
 import math
 from pathlib import Path
 
+import pytest
+
 from gateway.search.cli import evaluate_trained_model
-from gateway.search.evaluation import evaluate_model
 from gateway.search.dataset import DatasetLoadError
+from gateway.search.evaluation import evaluate_model
 
 
-def test_evaluate_model(tmp_path):
+def test_evaluate_model(tmp_path: Path) -> None:
     fixture_dataset = Path("tests/fixtures/search/dataset.csv")
     fixture_model = Path("tests/fixtures/search/model.json")
 
@@ -20,7 +22,11 @@ def test_evaluate_model(tmp_path):
     assert metrics.spearman is None or -1.0 <= metrics.spearman <= 1.0
 
 
-def test_evaluate_cli(tmp_path, monkeypatch, capsys):
+def test_evaluate_cli(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     dataset_path = Path("tests/fixtures/search/dataset.csv")
     model_path = Path("tests/fixtures/search/model.json")
 
@@ -29,7 +35,7 @@ def test_evaluate_cli(tmp_path, monkeypatch, capsys):
     assert "Evaluation metrics" in captured.out
 
 
-def test_evaluate_model_with_empty_dataset(tmp_path):
+def test_evaluate_model_with_empty_dataset(tmp_path: Path) -> None:
     dataset_path = tmp_path / "empty.csv"
     dataset_path.write_text("request_id,feedback_vote\n", encoding="utf-8")
     model_path = tmp_path / "model.json"
@@ -50,4 +56,4 @@ def test_evaluate_model_with_empty_dataset(tmp_path):
     except DatasetLoadError:
         assert True
     else:  # pragma: no cover
-        assert False
+        raise AssertionError("Expected DatasetLoadError for empty dataset")

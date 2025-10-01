@@ -1,28 +1,32 @@
+"""Background scheduler that drives periodic ingestion runs."""
+
 from __future__ import annotations
 
 import logging
 import subprocess
+import time
+from collections.abc import Mapping
 from contextlib import suppress
 from pathlib import Path
-import time
 
-from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.triggers.cron import CronTrigger
-from apscheduler.triggers.interval import IntervalTrigger
+from apscheduler.schedulers.background import BackgroundScheduler  # type: ignore[import-untyped]
+from apscheduler.schedulers.base import SchedulerNotRunningError  # type: ignore[import-untyped]
+from apscheduler.triggers.cron import CronTrigger  # type: ignore[import-untyped]
+from apscheduler.triggers.interval import IntervalTrigger  # type: ignore[import-untyped]
 from filelock import FileLock, Timeout
 
 from gateway.config.settings import AppSettings
 from gateway.ingest.service import execute_ingestion
-from gateway.observability.metrics import (
-    SCHEDULER_LAST_SUCCESS_TIMESTAMP,
-    SCHEDULER_RUNS_TOTAL,
-)
+from gateway.observability.metrics import INGEST_SKIPS_TOTAL, SCHEDULER_LAST_SUCCESS_TIMESTAMP, SCHEDULER_RUNS_TOTAL
 
 logger = logging.getLogger(__name__)
 
 
 class IngestionScheduler:
+    """APScheduler wrapper that coordinates repo-aware ingestion jobs."""
+
     def __init__(self, settings: AppSettings) -> None:
+        """Initialise scheduler state and ensure the scratch directory exists."""
         self.settings = settings
         self.scheduler = BackgroundScheduler(timezone="UTC")
         self._started = False
@@ -32,6 +36,7 @@ class IngestionScheduler:
         self._last_head_path = self._state_dir / "last_repo_head.txt"
 
     def start(self) -> None:
+        """Register the ingestion job and begin scheduling if enabled."""
         if self._started or not self.settings.scheduler_enabled:
             return
         if self.settings.auth_enabled and not self.settings.maintainer_token:
@@ -40,6 +45,7 @@ class IngestionScheduler:
                 extra={"setting": "KM_ADMIN_TOKEN"},
             )
             SCHEDULER_RUNS_TOTAL.labels(result="skipped_auth").inc()
+            INGEST_SKIPS_TOTAL.labels(reason="auth").inc()
             return
         trigger_config = self.settings.scheduler_trigger_config()
         trigger = _build_trigger(trigger_config)
@@ -55,12 +61,14 @@ class IngestionScheduler:
         logger.info("Scheduler started", extra={"trigger": trigger_summary})
 
     def shutdown(self) -> None:
+        """Stop the scheduler and release APScheduler resources."""
         if self._started:
-            with suppress(Exception):
+            with suppress(SchedulerNotRunningError):
                 self.scheduler.shutdown(wait=False)
             self._started = False
 
     def _run_ingestion(self) -> None:
+        """Execute a single ingestion cycle, guarding with a file lock."""
         lock = FileLock(str(self._lock_path))
         try:
             try:
@@ -68,20 +76,18 @@ class IngestionScheduler:
             except Timeout:
                 logger.info("Scheduled ingestion skipped: another run is active")
                 SCHEDULER_RUNS_TOTAL.labels(result="skipped_lock").inc()
+                INGEST_SKIPS_TOTAL.labels(reason="lock").inc()
                 return
 
             last_head = self._read_last_head()
             current_head = _current_repo_head(self.settings.repo_root)
-            if (
-                not self.settings.dry_run
-                and current_head is not None
-                and current_head == last_head
-            ):
+            if not self.settings.dry_run and current_head is not None and current_head == last_head:
                 logger.info(
                     "Scheduled ingestion skipped: repository unchanged",
                     extra={"repo_head": current_head},
                 )
                 SCHEDULER_RUNS_TOTAL.labels(result="skipped_head").inc()
+                INGEST_SKIPS_TOTAL.labels(reason="head").inc()
                 return
 
             result = execute_ingestion(
@@ -107,11 +113,11 @@ class IngestionScheduler:
                 SCHEDULER_LAST_SUCCESS_TIMESTAMP.set(time.time())
             else:
                 SCHEDULER_RUNS_TOTAL.labels(result="failure").inc()
-        except Exception as exc:  # pragma: no cover - defensive
+        except (RuntimeError, subprocess.SubprocessError, OSError, ValueError) as exc:  # pragma: no cover - defensive
             logger.exception("Scheduled ingestion failed", extra={"error": str(exc)})
             SCHEDULER_RUNS_TOTAL.labels(result="failure").inc()
         finally:
-            with suppress(Exception):
+            with suppress(RuntimeError):
                 lock.release()
 
     def _read_last_head(self) -> str | None:
@@ -125,6 +131,7 @@ class IngestionScheduler:
 
 
 def _current_repo_head(repo_root: Path) -> str | None:
+    """Return the git HEAD sha for the repo, or ``None`` when unavailable."""
     try:
         return (
             subprocess.check_output(
@@ -132,15 +139,15 @@ def _current_repo_head(repo_root: Path) -> str | None:
                 cwd=repo_root,
                 text=True,
                 stderr=subprocess.DEVNULL,
-            )
-            .strip()
+            ).strip()
             or None
         )
-    except Exception:
+    except (subprocess.CalledProcessError, OSError):
         return None
 
 
-def _build_trigger(config: dict[str, object]):
+def _build_trigger(config: Mapping[str, object]) -> CronTrigger | IntervalTrigger:
+    """Construct the APScheduler trigger based on user configuration."""
     trigger_type = config.get("type")
     if trigger_type == "cron":
         expression = str(config.get("expression", "")).strip()
@@ -148,15 +155,41 @@ def _build_trigger(config: dict[str, object]):
             raise ValueError("scheduler_cron expression cannot be empty when provided")
         return CronTrigger.from_crontab(expression, timezone="UTC")
     if trigger_type == "interval":
-        minutes = int(config.get("minutes", 1))
-        minutes = max(1, minutes)
+        raw_minutes = config.get("minutes", 1)
+        minutes = _coerce_positive_int(raw_minutes, default=1)
         return IntervalTrigger(minutes=minutes)
     raise ValueError(f"Unsupported scheduler trigger type: {trigger_type}")
 
 
-def _describe_trigger(config: dict[str, object]) -> str:
+def _describe_trigger(config: Mapping[str, object]) -> str:
+    """Provide a human readable summary of the configured trigger."""
     if config.get("type") == "cron":
         return f"cron:{config.get('expression')}"
     if config.get("type") == "interval":
         return f"interval:{config.get('minutes')}m"
     return "unknown"
+
+
+def _coerce_positive_int(value: object, *, default: int) -> int:
+    """Best-effort conversion to a positive integer with sane defaults."""
+    numeric: int
+    if isinstance(value, bool):
+        numeric = int(value)
+    elif isinstance(value, int):
+        numeric = value
+    elif isinstance(value, float):
+        numeric = int(value)
+    elif isinstance(value, str):
+        text = value.strip()
+        if not text:
+            numeric = default
+        else:
+            try:
+                numeric = int(text)
+            except ValueError:
+                numeric = default
+    else:
+        numeric = default
+    if numeric < 1:
+        return max(1, default)
+    return numeric

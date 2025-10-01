@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from collections.abc import Sequence
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
 from prometheus_client import REGISTRY
 
 from gateway.graph.service import GraphService
-from gateway.search.service import SearchService
+from gateway.search import SearchOptions, SearchService, SearchWeights
 from gateway.search.trainer import ModelArtifact
 
 
@@ -17,8 +18,8 @@ def _metric_value(name: str, labels: dict[str, str] | None = None) -> float:
 
 
 class FakeEmbedder:
-    def encode(self, texts):
-        return [[0.1, 0.2, 0.3]]
+    def encode(self, texts: Sequence[str]) -> list[list[float]]:
+        return [[0.1, 0.2, 0.3] for _ in texts]
 
 
 class FakePoint:
@@ -28,23 +29,23 @@ class FakePoint:
 
 
 class FakeQdrantClient:
-    def __init__(self, points: list[FakePoint]):
+    def __init__(self, points: list[FakePoint]) -> None:
         self._points = points
-        self.last_kwargs: dict[str, Any] = {}
+        self.last_kwargs: dict[str, object] = {}
 
-    def search(self, **kwargs):  # noqa: ANN001 - interface matches Qdrant client
-        self.last_kwargs = kwargs
+    def search(self, **kwargs: object) -> list[FakePoint]:
+        self.last_kwargs = dict(kwargs)
         return self._points
 
 
 class DummyGraphService(GraphService):  # type: ignore[misc]
-    def __init__(self, response: dict[str, Any]):
+    def __init__(self, response: dict[str, Any]) -> None:
         self._response = response
 
     def get_node(self, node_id: str, *, relationships: str, limit: int) -> dict[str, Any]:  # type: ignore[override]
         return self._response
 
-    def get_subsystem(self, *args, **kwargs):  # pragma: no cover - not used
+    def get_subsystem(self, *args: object, **kwargs: object) -> dict[str, Any]:  # pragma: no cover - not used
         raise NotImplementedError
 
     def search(self, term: str, *, limit: int) -> dict[str, Any]:  # pragma: no cover - not used
@@ -67,7 +68,7 @@ def sample_points() -> list[FakePoint]:
                 "artifact_type": "code",
                 "subsystem": "core",
                 "namespace": "src",
-                "tags": ["LeylineAlpha"],
+                "tags": ["IntegrationAlpha"],
                 "git_timestamp": 1704067200,
                 "text": "def foo(): pass",
             },
@@ -104,13 +105,14 @@ def graph_response() -> dict[str, Any]:
                 },
             },
         ],
-        "related_artifacts": [
-            {"id": "DesignDoc:docs/design/core.md", "relationship": "DESCRIBES"}
-        ],
+        "related_artifacts": [{"id": "DesignDoc:docs/design/core.md", "relationship": "DESCRIBES"}],
     }
 
 
-def test_search_service_enriches_with_graph(sample_points, graph_response) -> None:
+def test_search_service_enriches_with_graph(
+    sample_points: list[FakePoint],
+    graph_response: dict[str, Any],
+) -> None:
     search_service = SearchService(
         qdrant_client=FakeQdrantClient(sample_points),
         collection_name="collection",
@@ -145,7 +147,7 @@ def test_search_service_enriches_with_graph(sample_points, graph_response) -> No
     assert "coverage_penalty" in signals
 
 
-def test_search_service_handles_missing_graph(sample_points) -> None:
+def test_search_service_handles_missing_graph(sample_points: list[FakePoint]) -> None:
     search_service = SearchService(
         qdrant_client=FakeQdrantClient(sample_points),
         collection_name="collection",
@@ -160,10 +162,9 @@ def test_search_service_handles_missing_graph(sample_points) -> None:
     assert response.results[0].graph_context is None
     assert response.metadata["graph_context_included"] is False
     scoring = response.results[0].scoring
-    base_component = (
-        scoring.get("weighted_vector_score", scoring.get("vector_score", 0.0))
-        + scoring.get("weighted_lexical_score", 0.0)
-    )
+    weighted_vector_score = scoring.get("weighted_vector_score", scoring.get("vector_score", 0.0))
+    weighted_lexical_score = scoring.get("weighted_lexical_score", 0.0)
+    base_component = weighted_vector_score + weighted_lexical_score
     assert scoring["adjusted_score"] == pytest.approx(base_component)
     assert response.metadata["scoring_mode"] == "heuristic"
     assert response.metadata["weight_profile"] == "custom"
@@ -175,13 +176,13 @@ def test_search_service_handles_missing_graph(sample_points) -> None:
 
 
 class MapGraphService(GraphService):  # type: ignore[misc]
-    def __init__(self, data: dict[str, dict[str, Any]]):
+    def __init__(self, data: dict[str, dict[str, Any]]) -> None:
         self._data = data
 
     def get_node(self, node_id: str, *, relationships: str, limit: int) -> dict[str, Any]:  # type: ignore[override]
         return self._data.get(node_id, {"node": {}, "relationships": [], "related_artifacts": []})
 
-    def get_subsystem(self, *args, **kwargs):  # pragma: no cover - unused
+    def get_subsystem(self, *args: object, **kwargs: object) -> dict[str, Any]:  # pragma: no cover - unused
         raise NotImplementedError
 
     def search(self, term: str, *, limit: int) -> dict[str, Any]:  # pragma: no cover - unused
@@ -195,7 +196,7 @@ class MapGraphService(GraphService):  # type: ignore[misc]
 
 
 class CountingGraphService(GraphService):  # type: ignore[misc]
-    def __init__(self, response: dict[str, Any], depth: int = 2):
+    def __init__(self, response: dict[str, Any], depth: int = 2) -> None:
         self._response = response
         self._depth = depth
         self.node_calls = 0
@@ -209,7 +210,7 @@ class CountingGraphService(GraphService):  # type: ignore[misc]
         self.depth_calls += 1
         return self._depth
 
-    def get_subsystem(self, *args, **kwargs):  # pragma: no cover - unused
+    def get_subsystem(self, *args: object, **kwargs: object) -> dict[str, Any]:  # pragma: no cover - unused
         raise NotImplementedError
 
     def search(self, term: str, *, limit: int) -> dict[str, Any]:  # pragma: no cover - unused
@@ -219,13 +220,13 @@ class CountingGraphService(GraphService):  # type: ignore[misc]
         raise NotImplementedError
 
 
-def test_search_hnsw_search_params(sample_points) -> None:
+def test_search_hnsw_search_params(sample_points: list[FakePoint]) -> None:
     client = FakeQdrantClient(sample_points)
     search_service = SearchService(
         qdrant_client=client,
         collection_name="collection",
         embedder=FakeEmbedder(),
-        hnsw_ef_search=256,
+        options=SearchOptions(hnsw_ef_search=256),
     )
 
     response = search_service.search(
@@ -269,7 +270,7 @@ def test_lexical_score_affects_ranking() -> None:
         qdrant_client=FakeQdrantClient(points),
         collection_name="collection",
         embedder=FakeEmbedder(),
-        lexical_weight=0.5,
+        weights=SearchWeights(lexical=0.5),
     )
 
     response = search_service.search(
@@ -369,7 +370,10 @@ def test_search_service_orders_by_adjusted_score() -> None:
     assert [r.chunk["subsystem"] for r in response_vector_sorted.results] == ["other", "core"]
 
 
-def test_search_service_caches_graph_lookups(sample_points, graph_response) -> None:
+def test_search_service_caches_graph_lookups(
+    sample_points: list[FakePoint],
+    graph_response: dict[str, Any],
+) -> None:
     points = [
         FakePoint(
             {
@@ -401,15 +405,9 @@ def test_search_service_caches_graph_lookups(sample_points, graph_response) -> N
         embedder=FakeEmbedder(),
     )
 
-    miss_before = _metric_value(
-        "km_search_graph_cache_events_total", {"status": "miss"}
-    )
-    hit_before = _metric_value(
-        "km_search_graph_cache_events_total", {"status": "hit"}
-    )
-    error_before = _metric_value(
-        "km_search_graph_cache_events_total", {"status": "error"}
-    )
+    miss_before = _metric_value("km_search_graph_cache_events_total", {"status": "miss"})
+    hit_before = _metric_value("km_search_graph_cache_events_total", {"status": "hit"})
+    error_before = _metric_value("km_search_graph_cache_events_total", {"status": "error"})
     lookup_count_before = _metric_value("km_search_graph_lookup_seconds_count")
     score_count_before = _metric_value("km_search_adjusted_minus_vector_count")
 
@@ -426,26 +424,11 @@ def test_search_service_caches_graph_lookups(sample_points, graph_response) -> N
     for result in response.results:
         assert result.scoring["signals"]["path_depth"] == pytest.approx(2.0)
 
-    assert (
-        _metric_value("km_search_graph_cache_events_total", {"status": "miss"})
-        - miss_before
-    ) == pytest.approx(1.0)
-    assert (
-        _metric_value("km_search_graph_cache_events_total", {"status": "hit"})
-        - hit_before
-    ) == pytest.approx(1.0)
-    assert (
-        _metric_value("km_search_graph_cache_events_total", {"status": "error"})
-        - error_before
-    ) == pytest.approx(0.0)
-    assert (
-        _metric_value("km_search_graph_lookup_seconds_count") - lookup_count_before
-    ) == pytest.approx(1.0)
-    assert (
-        _metric_value("km_search_adjusted_minus_vector_count") - score_count_before
-    ) == pytest.approx(len(response.results))
-
-
+    assert (_metric_value("km_search_graph_cache_events_total", {"status": "miss"}) - miss_before) == pytest.approx(1.0)
+    assert (_metric_value("km_search_graph_cache_events_total", {"status": "hit"}) - hit_before) == pytest.approx(1.0)
+    assert (_metric_value("km_search_graph_cache_events_total", {"status": "error"}) - error_before) == pytest.approx(0.0)
+    assert (_metric_value("km_search_graph_lookup_seconds_count") - lookup_count_before) == pytest.approx(1.0)
+    assert (_metric_value("km_search_adjusted_minus_vector_count") - score_count_before) == pytest.approx(len(response.results))
 
 
 def test_search_service_filters_artifact_types() -> None:
@@ -457,7 +440,7 @@ def test_search_service_filters_artifact_types() -> None:
                 "artifact_type": "code",
                 "subsystem": "core",
                 "namespace": "src",
-                "tags": ["LeylineAlpha"],
+                "tags": ["IntegrationAlpha"],
                 "git_timestamp": 1704067200,
                 "text": "code chunk",
             },
@@ -506,7 +489,7 @@ def test_search_service_filters_namespaces() -> None:
                 "artifact_type": "code",
                 "subsystem": "core",
                 "namespace": "src",
-                "tags": ["LeylineAlpha"],
+                "tags": ["IntegrationAlpha"],
                 "git_timestamp": 1704067200,
                 "text": "core code",
             },
@@ -555,7 +538,7 @@ def test_search_service_filters_tags() -> None:
                 "artifact_type": "code",
                 "subsystem": "core",
                 "namespace": "src",
-                "tags": ["LeylineAlpha", "Operations"],
+                "tags": ["IntegrationAlpha", "Operations"],
                 "git_timestamp": 1704067200,
                 "text": "core code",
             },
@@ -596,8 +579,8 @@ def test_search_service_filters_tags() -> None:
 
 
 def test_search_service_filters_recency_updated_after() -> None:
-    recent_ts = datetime.now(timezone.utc) - timedelta(days=5)
-    old_ts = datetime.now(timezone.utc) - timedelta(days=120)
+    recent_ts = datetime.now(UTC) - timedelta(days=5)
+    old_ts = datetime.now(UTC) - timedelta(days=120)
     points = [
         FakePoint(
             {
@@ -606,7 +589,7 @@ def test_search_service_filters_recency_updated_after() -> None:
                 "artifact_type": "code",
                 "subsystem": "core",
                 "namespace": "src",
-                "tags": ["LeylineAlpha"],
+                "tags": ["IntegrationAlpha"],
                 "git_timestamp": int(recent_ts.timestamp()),
                 "text": "recent",
             },
@@ -633,7 +616,7 @@ def test_search_service_filters_recency_updated_after() -> None:
         embedder=FakeEmbedder(),
     )
 
-    cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+    cutoff = datetime.now(UTC) - timedelta(days=30)
     response = search_service.search(
         query="core",
         limit=5,
@@ -651,7 +634,7 @@ def test_search_service_filters_recency_updated_after() -> None:
 
 
 def test_search_service_filters_recency_max_age_days() -> None:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     points = [
         FakePoint(
             {
@@ -660,7 +643,7 @@ def test_search_service_filters_recency_max_age_days() -> None:
                 "artifact_type": "code",
                 "subsystem": "core",
                 "namespace": "src",
-                "tags": ["LeylineAlpha"],
+                "tags": ["IntegrationAlpha"],
                 "git_timestamp": int((now - timedelta(days=2)).timestamp()),
                 "text": "fresh",
             },
@@ -700,7 +683,7 @@ def test_search_service_filters_recency_max_age_days() -> None:
     assert response.metadata["filters_applied"]["max_age_days"] == 30
 
 
-def test_search_service_filters_subsystem_via_graph(graph_response) -> None:
+def test_search_service_filters_subsystem_via_graph(graph_response: dict[str, Any]) -> None:
     points = [
         FakePoint(
             {
@@ -754,6 +737,7 @@ def test_search_service_filters_subsystem_via_graph(graph_response) -> None:
     assert response.results[0].chunk["artifact_path"] == "src/module.py"
     assert response.metadata["filters_applied"]["subsystems"] == ["Telemetry"]
 
+
 def test_search_service_ml_model_reorders_results() -> None:
     points = [
         FakePoint(
@@ -805,7 +789,7 @@ def test_search_service_ml_model_reorders_results() -> None:
         qdrant_client=FakeQdrantClient(points),
         collection_name="collection",
         embedder=FakeEmbedder(),
-        scoring_mode="ml",
+        options=SearchOptions(scoring_mode="ml"),
         model_artifact=artifact,
     )
 

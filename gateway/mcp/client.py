@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Mapping
+from types import TracebackType
 from typing import Any
 from urllib.parse import quote as _quote
 
@@ -23,6 +25,7 @@ class GatewayClient:
         self._client: httpx.AsyncClient | None = None
 
     async def __aenter__(self) -> GatewayClient:
+        """Open the underlying HTTP client."""
         if self._client is not None:
             raise RuntimeError("GatewayClient already started")
         timeout = httpx.Timeout(self._settings.request_timeout_seconds)
@@ -33,30 +36,40 @@ class GatewayClient:
         )
         return self
 
-    async def __aexit__(self, exc_type, exc, tb) -> None:  # noqa: D401 - required signature
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:  # noqa: D401 - required signature
         if self._client is not None:
             await self._client.aclose()
         self._client = None
 
     @property
     def settings(self) -> MCPSettings:
+        """Return the settings used to configure the client."""
         return self._settings
 
     async def search(self, payload: dict[str, Any]) -> dict[str, Any]:
-        return await self._request(
+        """Perform a search request against the gateway."""
+        data = await self._request(
             "POST",
             "/search",
             json_payload=payload,
             require_reader=True,
         )
+        return _expect_dict(data, "search")
 
     async def graph_node(self, node_id: str, *, relationships: str, limit: int) -> dict[str, Any]:
-        return await self._request(
+        """Fetch a graph node by ID."""
+        data = await self._request(
             "GET",
             f"/graph/nodes/{_quote_segment(node_id)}",
             params={"relationships": relationships, "limit": limit},
             require_reader=True,
         )
+        return _expect_dict(data, "graph-node")
 
     async def graph_subsystem(
         self,
@@ -67,36 +80,52 @@ class GatewayClient:
         cursor: str | None,
         limit: int,
     ) -> dict[str, Any]:
-        params: dict[str, Any] = {
+        """Retrieve subsystem details and related artifacts."""
+        params: dict[str, _ParamValue] = {
             "depth": depth,
             "include_artifacts": include_artifacts,
             "limit": limit,
         }
         if cursor is not None:
             params["cursor"] = cursor
-        return await self._request(
+        data = await self._request(
             "GET",
             f"/graph/subsystems/{_quote_segment(name)}",
             params=params,
             require_reader=True,
         )
+        return _expect_dict(data, "graph-subsystem")
 
     async def graph_search(self, term: str, *, limit: int) -> dict[str, Any]:
-        return await self._request(
+        """Perform a graph search by term."""
+        data = await self._request(
             "GET",
             "/graph/search",
             params={"q": term, "limit": limit},
             require_reader=True,
         )
+        return _expect_dict(data, "graph-search")
 
     async def coverage_summary(self) -> dict[str, Any]:
-        return await self._request(
+        """Fetch the coverage summary endpoint as a dict."""
+        data = await self._request(
             "GET",
             "/coverage",
             require_admin=True,
         )
+        return _expect_dict(data, "coverage")
+
+    async def lifecycle_report(self) -> dict[str, Any]:
+        """Fetch the lifecycle report payload."""
+        data = await self._request(
+            "GET",
+            "/lifecycle",
+            require_admin=True,
+        )
+        return _expect_dict(data, "lifecycle")
 
     async def audit_history(self, *, limit: int = 10) -> list[dict[str, Any]]:
+        """Return recent audit history entries."""
         data = await self._request(
             "GET",
             "/audit/history",
@@ -112,11 +141,12 @@ class GatewayClient:
         method: str,
         path: str,
         *,
-        json_payload: Any | None = None,
-        params: dict[str, Any] | None = None,
+        json_payload: Mapping[str, object] | list[object] | None = None,
+        params: Mapping[str, _ParamValue] | None = None,
         require_admin: bool = False,
         require_reader: bool = False,
-    ) -> Any:
+    ) -> object:
+        """Issue an HTTP request with token management and error handling."""
         if self._client is None:
             raise RuntimeError("GatewayClient is not running")
 
@@ -136,11 +166,13 @@ class GatewayClient:
         if self._settings.log_requests:
             logger.debug("MCP -> Gateway %s %s", method, path)
 
+        request_params = dict(params) if params is not None else None
+
         response = await self._client.request(
             method,
             path,
             json=json_payload,
-            params=params,
+            params=request_params,
             headers=headers or None,
         )
 
@@ -158,6 +190,7 @@ class GatewayClient:
 
 
 def _extract_error_detail(response: httpx.Response) -> str:
+    """Extract a human-readable error detail from an HTTP response."""
     try:
         payload = response.json()
     except json.JSONDecodeError:
@@ -169,15 +202,30 @@ def _extract_error_detail(response: httpx.Response) -> str:
     return response.text or "Unknown error"
 
 
-def _safe_json(response: httpx.Response) -> Any | None:
+def _safe_json(response: httpx.Response) -> Mapping[str, object] | list[object] | None:
+    """Safely decode a JSON response, returning ``None`` on failure."""
     try:
-        return response.json()
+        payload = response.json()
     except json.JSONDecodeError:
         return None
+    if isinstance(payload, dict):
+        return payload
+    if isinstance(payload, list):
+        return payload
+    return None
 
 
 def _quote_segment(value: str) -> str:
     return _quote(value, safe="")
+
+
+_ParamValue = str | int | float | bool | None
+
+
+def _expect_dict(data: object, operation: str) -> dict[str, Any]:
+    if not isinstance(data, dict):
+        raise GatewayRequestError(status_code=500, detail=f"Unexpected response for {operation}", payload=data)
+    return data
 
 
 __all__ = ["GatewayClient"]

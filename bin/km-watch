@@ -1,0 +1,197 @@
+#!/usr/bin/env python3
+"""Watch .duskmantle/data for changes and trigger ingestion."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import shlex
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+from gateway.observability.metrics import WATCH_RUNS_TOTAL
+
+from prometheus_client import Gauge, start_http_server
+
+
+def compute_fingerprints(root: Path) -> dict[str, str]:
+    fingerprints: dict[str, str] = {}
+    if not root.exists():
+        return fingerprints
+    for path in sorted(root.rglob("*")):
+        if not path.is_file():
+            continue
+        rel = str(path.relative_to(root))
+        h = hashlib.sha256()
+        with path.open("rb") as f:
+            for chunk in iter(lambda: f.read(65536), b""):
+                h.update(chunk)
+        fingerprints[rel] = h.hexdigest()
+    return fingerprints
+
+
+def load_fingerprints(path: Path) -> dict[str, str]:
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text())
+    except json.JSONDecodeError:
+        return {}
+
+
+def save_fingerprints(path: Path, data: dict[str, str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=2, sort_keys=True))
+
+
+def diff_fingerprints(old: dict[str, str], new: dict[str, str]) -> bool:
+    if old.keys() != new.keys():
+        return True
+    for key, value in new.items():
+        if old.get(key) != value:
+            return True
+    return False
+
+
+def trigger_command(command: list[str] | str) -> int:
+    parts = _normalize_command(command)
+    printable = " ".join(parts)
+    print("[km-watch] Change detected. Running:", printable)
+    return subprocess.run(  # noqa: S603,S607
+        parts,
+        check=False,
+        shell=False,
+    ).returncode
+
+
+def _normalize_command(command: list[str] | str) -> list[str]:
+    if isinstance(command, str):
+        return shlex.split(command)
+    return list(command)
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Watch .duskmantle/data for file changes and trigger ingestion.")
+    parser.add_argument(
+        "--root",
+        default=os.getenv("KM_WATCH_ROOT", str(Path.cwd() / ".duskmantle" / "data")),
+        help="Directory to monitor for changes (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--fingerprints",
+        default=os.getenv(
+            "KM_WATCH_FINGERPRINTS",
+            str(Path.cwd() / ".duskmantle" / "cache" / "fingerprints.json"),
+        ),
+        help="File used to store fingerprints (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--command",
+        default=os.getenv("KM_WATCH_COMMAND"),
+        help="Command to execute when changes are detected (default: docker exec based on container/profile flags)",
+    )
+    parser.add_argument(
+        "--container",
+        default=os.getenv("KM_CONTAINER_NAME", "duskmantle"),
+        help="Container name for docker exec fallback",
+    )
+    parser.add_argument(
+        "--profile",
+        default=os.getenv("KM_WATCH_PROFILE", "local"),
+        help="Ingestion profile for docker exec fallback",
+    )
+    parser.add_argument(
+        "--no-dummy",
+        action="store_true",
+        help="Run without --dummy-embeddings during docker exec fallback",
+    )
+    parser.add_argument(
+        "--shell",
+        action="store_true",
+        help="Deprecated: commands are always run without a shell",
+    )
+    parser.add_argument(
+        "--metrics-port",
+        type=int,
+        default=int(os.getenv("KM_WATCH_METRICS_PORT", "0")),
+        help="Expose watch metrics on this port (0 disables)",
+    )
+    parser.add_argument(
+        "--interval",
+        type=float,
+        default=float(os.getenv("KM_WATCH_INTERVAL", "30")),
+        help="Polling interval in seconds (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--once",
+        action="store_true",
+        help="Check once and exit (useful for CI)",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    root = Path(args.root).resolve()
+    fingerprint_path = Path(args.fingerprints).resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    previous = load_fingerprints(fingerprint_path)
+
+    metrics_enabled = args.metrics_port > 0
+    last_run_gauge: Gauge | None = None
+    if metrics_enabled:
+        start_http_server(args.metrics_port)
+        last_run_gauge = Gauge(
+            "km_watch_last_run_timestamp",
+            "Unix timestamp of the most recent watch-triggered ingestion",
+        )
+
+    if args.command:
+        if args.shell:
+            print("[km-watch] --shell is deprecated; running command without shell", file=sys.stderr)
+        command = shlex.split(args.command)
+    else:
+        cmd = [
+            "docker",
+            "exec",
+            args.container,
+            "gateway-ingest",
+            "rebuild",
+            "--profile",
+            args.profile,
+        ]
+        if not args.no_dummy:
+            cmd.append("--dummy-embeddings")
+        command = cmd
+
+    while True:
+        current = compute_fingerprints(root)
+        if diff_fingerprints(previous, current):
+            rc = trigger_command(command)
+            if rc != 0:
+                print(
+                    f"[km-watch] Ingest command exited with {rc}; retaining previous fingerprints",
+                    file=sys.stderr,
+                )
+                WATCH_RUNS_TOTAL.labels(result="error").inc()
+            else:
+                save_fingerprints(fingerprint_path, current)
+                previous = current
+                WATCH_RUNS_TOTAL.labels(result="success").inc()
+                if last_run_gauge is not None:
+                    last_run_gauge.set(time.time())
+        else:
+            print("[km-watch] No changes detected")
+            WATCH_RUNS_TOTAL.labels(result="no_change").inc()
+        if args.once:
+            break
+        time.sleep(args.interval)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

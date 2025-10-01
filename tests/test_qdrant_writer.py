@@ -2,10 +2,8 @@ from __future__ import annotations
 
 from unittest import mock
 
-import pytest
-
+from gateway.ingest.artifacts import Artifact, Chunk, ChunkEmbedding
 from gateway.ingest.qdrant_writer import QdrantWriter
-from gateway.ingest.artifacts import Chunk, Artifact, ChunkEmbedding
 
 
 class RecordingClient:
@@ -18,7 +16,12 @@ class RecordingClient:
         if name not in self._collections:
             raise RuntimeError("missing")
 
-    def recreate_collection(self, collection_name, vectors_config, optimizers_config):  # noqa: ANN001
+    def recreate_collection(
+        self,
+        collection_name: str,
+        vectors_config: object,
+        optimizers_config: object,
+    ) -> None:
         self._collections.add(collection_name)
         self.recreate_calls.append(
             {
@@ -29,7 +32,7 @@ class RecordingClient:
             }
         )
 
-    def upsert(self, collection_name, points):  # noqa: ANN001
+    def upsert(self, collection_name: str, points: object) -> None:
         self.upserts.append({"collection": collection_name, "points": points})
 
 
@@ -54,7 +57,7 @@ def build_chunk(path: str, text: str, metadata: dict[str, object]) -> ChunkEmbed
     return ChunkEmbedding(chunk=chunk, vector=[0.1, 0.2])
 
 
-def test_ensure_collection_creates_when_missing():
+def test_ensure_collection_creates_when_missing() -> None:
     client = RecordingClient()
     writer = QdrantWriter(client, "km_test")
 
@@ -67,7 +70,7 @@ def test_ensure_collection_creates_when_missing():
     assert call["segments"] == 2
 
 
-def test_ensure_collection_noop_when_exists():
+def test_ensure_collection_noop_when_exists() -> None:
     client = RecordingClient()
     client._collections.add("km_test")
     writer = QdrantWriter(client, "km_test")
@@ -77,7 +80,7 @@ def test_ensure_collection_noop_when_exists():
     assert not client.recreate_calls
 
 
-def test_upsert_chunks_builds_points():
+def test_upsert_chunks_builds_points() -> None:
     client = RecordingClient()
     writer = QdrantWriter(client, "km_test")
 
@@ -96,7 +99,7 @@ def test_upsert_chunks_builds_points():
     assert payload.payload["tags"] == ["intro"]
 
 
-def test_upsert_chunks_noop_on_empty():
+def test_upsert_chunks_noop_on_empty() -> None:
     client = RecordingClient()
     writer = QdrantWriter(client, "km_test")
     writer.upsert_chunks([])

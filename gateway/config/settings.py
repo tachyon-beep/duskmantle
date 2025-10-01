@@ -1,3 +1,5 @@
+"""Pydantic-based configuration for the knowledge gateway."""
+
 from __future__ import annotations
 
 from functools import lru_cache
@@ -6,7 +8,6 @@ from typing import Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
-
 
 SEARCH_WEIGHT_PROFILES: dict[str, dict[str, float]] = {
     "default": {
@@ -54,9 +55,13 @@ class AppSettings(BaseSettings):
 
     repo_root: Path = Field(Path("/workspace/repo"), alias="KM_REPO_PATH")
     state_path: Path = Field(Path("/opt/knowledge/var"), alias="KM_STATE_PATH")
+    content_root: Path = Field(Path("/workspace/repo"), alias="KM_CONTENT_ROOT")
+    content_docs_subdir: Path = Field(Path("docs"), alias="KM_CONTENT_DOCS_SUBDIR")
+    upload_default_overwrite: bool = Field(False, alias="KM_UPLOAD_DEFAULT_OVERWRITE")
+    upload_default_ingest: bool = Field(False, alias="KM_UPLOAD_DEFAULT_INGEST")
     qdrant_url: str = Field("http://localhost:6333", alias="KM_QDRANT_URL")
     qdrant_api_key: str | None = Field(None, alias="KM_QDRANT_API_KEY")
-    qdrant_collection: str = Field("esper_knowledge_v1", alias="KM_QDRANT_COLLECTION")
+    qdrant_collection: str = Field("km_knowledge_v1", alias="KM_QDRANT_COLLECTION")
 
     neo4j_uri: str = Field("bolt://localhost:7687", alias="KM_NEO4J_URI")
     neo4j_user: str = Field("neo4j", alias="KM_NEO4J_USER")
@@ -67,22 +72,29 @@ class AppSettings(BaseSettings):
     ingest_window: int = Field(1000, alias="KM_INGEST_WINDOW")
     ingest_overlap: int = Field(200, alias="KM_INGEST_OVERLAP")
     ingest_use_dummy_embeddings: bool = Field(False, alias="KM_INGEST_USE_DUMMY")
+    ingest_incremental_enabled: bool = Field(True, alias="KM_INGEST_INCREMENTAL")
+    ingest_parallel_workers: int = Field(2, alias="KM_INGEST_PARALLEL_WORKERS")
+    ingest_max_pending_batches: int = Field(4, alias="KM_INGEST_MAX_PENDING_BATCHES")
     scheduler_enabled: bool = Field(False, alias="KM_SCHEDULER_ENABLED")
     scheduler_interval_minutes: int = Field(30, alias="KM_SCHEDULER_INTERVAL_MINUTES")
     scheduler_cron: str | None = Field(None, alias="KM_SCHEDULER_CRON")
     coverage_enabled: bool = Field(True, alias="KM_COVERAGE_ENABLED")
     coverage_history_limit: int = Field(5, alias="KM_COVERAGE_HISTORY_LIMIT")
 
+    lifecycle_report_enabled: bool = Field(True, alias="KM_LIFECYCLE_REPORT_ENABLED")
+    lifecycle_stale_days: int = Field(30, alias="KM_LIFECYCLE_STALE_DAYS")
+    lifecycle_history_limit: int = Field(10, alias="KM_LIFECYCLE_HISTORY_LIMIT")
+
     tracing_enabled: bool = Field(False, alias="KM_TRACING_ENABLED")
     tracing_endpoint: str | None = Field(None, alias="KM_TRACING_ENDPOINT")
     tracing_headers: str | None = Field(None, alias="KM_TRACING_HEADERS")
-    tracing_service_name: str = Field(
-        "duskmantle-knowledge-gateway", alias="KM_TRACING_SERVICE_NAME"
-    )
+    tracing_service_name: str = Field("duskmantle-knowledge-gateway", alias="KM_TRACING_SERVICE_NAME")
     tracing_sample_ratio: float = Field(1.0, alias="KM_TRACING_SAMPLE_RATIO")
     tracing_console_export: bool = Field(False, alias="KM_TRACING_CONSOLE_EXPORT")
 
     graph_auto_migrate: bool = Field(False, alias="KM_GRAPH_AUTO_MIGRATE")
+    graph_subsystem_cache_ttl_seconds: int = Field(30, alias="KM_GRAPH_SUBSYSTEM_CACHE_TTL")
+    graph_subsystem_cache_max_entries: int = Field(128, alias="KM_GRAPH_SUBSYSTEM_CACHE_MAX")
 
     search_weight_profile: Literal[
         "default",
@@ -96,9 +108,7 @@ class AppSettings(BaseSettings):
     search_weight_coverage_penalty: float = Field(0.15, alias="KM_SEARCH_W_COVERAGE_PENALTY")
     search_weight_criticality: float = Field(0.12, alias="KM_SEARCH_W_CRITICALITY")
     search_sort_by_vector: bool = Field(False, alias="KM_SEARCH_SORT_BY_VECTOR")
-    search_scoring_mode: Literal["heuristic", "ml"] = Field(
-        "heuristic", alias="KM_SEARCH_SCORING_MODE"
-    )
+    search_scoring_mode: Literal["heuristic", "ml"] = Field("heuristic", alias="KM_SEARCH_SCORING_MODE")
     search_model_path: Path | None = Field(None, alias="KM_SEARCH_MODEL_PATH")
     search_warn_slow_graph_ms: int = Field(250, alias="KM_SEARCH_WARN_GRAPH_MS")
     search_vector_weight: float = Field(1.0, alias="KM_SEARCH_VECTOR_WEIGHT")
@@ -151,6 +161,20 @@ class AppSettings(BaseSettings):
             return None
         return int(value)
 
+    @field_validator("graph_subsystem_cache_ttl_seconds")
+    @classmethod
+    def _sanitize_graph_cache_ttl(cls, value: int) -> int:
+        if value < 0:
+            return 0
+        return value
+
+    @field_validator("graph_subsystem_cache_max_entries")
+    @classmethod
+    def _sanitize_graph_cache_max(cls, value: int) -> int:
+        if value < 1:
+            return 1
+        return value
+
     def resolved_search_weights(self) -> tuple[str, dict[str, float]]:
         """Return the active search weight profile name and resolved weights."""
 
@@ -158,7 +182,7 @@ class AppSettings(BaseSettings):
         base = dict(SEARCH_WEIGHT_PROFILES.get(profile, SEARCH_WEIGHT_PROFILES["default"]))
 
         overrides: dict[str, float] = {}
-        fields_set = getattr(self, "model_fields_set", set())
+        fields_set: set[str] = getattr(self, "model_fields_set", set())
 
         if "search_weight_subsystem" in fields_set:
             overrides["weight_subsystem"] = self.search_weight_subsystem
@@ -193,7 +217,29 @@ class AppSettings(BaseSettings):
     def _validate_history_limit(cls, value: int) -> int:
         if value < 1:
             return 1
+        if value > 100:
+            return 100
         return value
+
+    @field_validator("lifecycle_stale_days")
+    @classmethod
+    def _validate_lifecycle_stale(cls, value: int) -> int:
+        if value < 0:
+            return 0
+        if value > 365:
+            return 365
+        return value
+
+    @field_validator("ingest_parallel_workers", "ingest_max_pending_batches", mode="before")
+    @classmethod
+    def _ensure_positive_parallelism(cls, value: int) -> int:
+        try:
+            numeric = int(value)
+        except (TypeError, ValueError):
+            return 1
+        if numeric < 1:
+            return 1
+        return numeric
 
 
 @lru_cache(maxsize=1)

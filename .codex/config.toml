@@ -1,9 +1,0 @@
-[mcp_servers.duskmantle]
-command = "./bin/km-mcp"
-args = ["--transport", "stdio"]
-env = { "KM_GATEWAY_URL" = "http://localhost:8000", "KM_ADMIN_TOKEN" = "maintainer-token" }
-
-[mcp_servers.duskmantle_container]
-command = "./bin/km-mcp-container"
-args = []
-env = { "KM_GATEWAY_URL" = "http://localhost:8000", "KM_ADMIN_TOKEN" = "maintainer-token" }

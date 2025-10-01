@@ -1,3 +1,5 @@
+"""Console entry point that launches the FastAPI application."""
+
 from __future__ import annotations
 
 import uvicorn

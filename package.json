@@ -1,0 +1,18 @@
+{
+  "name": "duskmantle-knowledge-gateway",
+  "version": "1.1.0",
+  "private": true,
+  "scripts": {
+    "test:ui": "playwright test",
+    "test:ui:headed": "playwright test --headed",
+    "lint:ts": "eslint \"playwright/**/*.ts\""
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.2",
+    "@types/node": "^24.6.1",
+    "@typescript-eslint/eslint-plugin": "^8.45.0",
+    "@typescript-eslint/parser": "^8.45.0",
+    "eslint": "^9.36.0",
+    "markdownlint-cli": "^0.45.0"
+  }
+}

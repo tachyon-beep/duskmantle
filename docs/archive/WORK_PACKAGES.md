@@ -32,7 +32,7 @@ This document distills the design and implementation plans into focused work pac
 - **Prerequisites:** WP3 (ingestion producing metadata to project into the graph).
 - **Deliverables:** Neo4j initialization scripts, ingest-to-graph sync, API responses enriched with subsystem/telemetry links, graph-specific tests.
 - **Early Close Items:** Graph schema defined in design docs and implemented via `gateway/ingest/neo4j_writer.py` (constraints, node relationships, chunk links).
-- **Outcome:** Neo4j migrations create domain entities, ingestion writer emits subsystem/Leyline/Telemetry relationships, `/graph/*` endpoints and hybrid search tests validate payloads.
+- **Outcome:** Neo4j migrations create domain entities, ingestion writer emits subsystem/Integration/Telemetry relationships, `/graph/*` endpoints and hybrid search tests validate payloads.
 
 ## Work Package 5 — Observability & Security Hardening *(In Progress)*
 - **Scope:** Add metrics endpoint, structured logging, OpenTelemetry spans, token-based auth with reader/maintainer scopes, rate limiting, and scheduling (APScheduler jobs for periodic ingest/coverage).

@@ -6,14 +6,11 @@ import pytest
 from prometheus_client import REGISTRY
 
 from gateway.api.app import create_app
-from gateway.observability.metrics import (
-    GRAPH_MIGRATION_LAST_STATUS,
-    GRAPH_MIGRATION_LAST_TIMESTAMP,
-)
+from gateway.observability.metrics import GRAPH_MIGRATION_LAST_STATUS, GRAPH_MIGRATION_LAST_TIMESTAMP
 
 
 @pytest.fixture(autouse=True)
-def reset_settings_cache():
+def reset_settings_cache() -> None:
     from gateway.config.settings import get_settings
 
     get_settings.cache_clear()
@@ -22,7 +19,7 @@ def reset_settings_cache():
 
 
 @pytest.fixture(autouse=True)
-def reset_migration_metrics():
+def reset_migration_metrics() -> None:
     GRAPH_MIGRATION_LAST_STATUS.set(0)
     GRAPH_MIGRATION_LAST_TIMESTAMP.set(0)
     yield
@@ -35,7 +32,7 @@ def _metric(name: str) -> float | None:
     return float(value) if value is not None else None
 
 
-def test_auto_migrate_runs_when_enabled(monkeypatch):
+def test_auto_migrate_runs_when_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("KM_GRAPH_AUTO_MIGRATE", "true")
 
     fake_driver = mock.Mock()
@@ -56,7 +53,7 @@ def test_auto_migrate_runs_when_enabled(monkeypatch):
     assert _metric("km_graph_migration_last_timestamp")
 
 
-def test_auto_migrate_skipped_when_disabled(monkeypatch):
+def test_auto_migrate_skipped_when_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("KM_GRAPH_AUTO_MIGRATE", raising=False)
 
     fake_driver = mock.Mock()
@@ -76,7 +73,7 @@ def test_auto_migrate_skipped_when_disabled(monkeypatch):
     assert _metric("km_graph_migration_last_timestamp") == 0.0
 
 
-def test_auto_migrate_records_failure(monkeypatch):
+def test_auto_migrate_records_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("KM_GRAPH_AUTO_MIGRATE", "true")
 
     fake_driver = mock.Mock()

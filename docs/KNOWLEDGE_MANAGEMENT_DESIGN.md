@@ -2,7 +2,7 @@
 
 ## 1. Executive Summary
 
-This design delivers a turnkey knowledge management appliance for Esper-Lite engineers and a small circle of power users. A single Docker image bundles the Python Knowledge Gateway, embedded Qdrant vector store, and Neo4j graph database, preconfigured for one-command startup. Users mount a host directory for persistent data, run the container, and immediately gain retrieval-augmented answers and graph-aware insights over repository artifacts without assembling infrastructure themselves.
+This design delivers a turnkey knowledge management appliance for engineering teams engineers and a small circle of power users. A single Docker image bundles the Python Knowledge Gateway, embedded Qdrant vector store, and Neo4j graph database, preconfigured for one-command startup. Users mount a host directory for persistent data, run the container, and immediately gain retrieval-augmented answers and graph-aware insights over repository artifacts without assembling infrastructure themselves.
 
 ## 2. Architectural Overview
 
@@ -47,7 +47,7 @@ The runtime is a trio of co-located services managed inside the container by a l
 ### 3.2 Qdrant Vector Store
 
 - Runs using the official Qdrant binary inside the container.
-- Collection `esper_knowledge_v1` sized for MiniLM (384 dimensions). Uses on-disk storage rooted at `/opt/knowledge/var/qdrant`.
+- Collection `km_knowledge_v1` sized for MiniLM (384 dimensions). Uses on-disk storage rooted at `/opt/knowledge/var/qdrant`.
 - HNSW parameters preset for balanced recall/latency given modest corpus (<5M chunks).
 
 ### 3.3 Neo4j Graph Database
@@ -64,8 +64,8 @@ The runtime is a trio of co-located services managed inside the container by a l
 |-------|---------|
 | `path` | Relative file path of source artifact |
 | `artifact_type` | Enum: `doc`, `code`, `test`, `proto`, `config` |
-| `subsystem` | Derived domain (e.g., `Kasmina`) |
-| `leyline_entities` | Array of detected message names |
+| `subsystem` | Derived domain (e.g., `analytics`) |
+| `message_entities` | Array of detected message names |
 | `telemetry_signals` | Array of detected channel IDs |
 | `git_commit` | Last indexed commit SHA |
 | `git_timestamp` | Last modified epoch seconds |
@@ -76,7 +76,7 @@ The runtime is a trio of co-located services managed inside the container by a l
 
 ### 4.2 Graph Schema
 
-- Nodes: `Subsystem`, `SourceFile`, `DesignDoc`, `TestCase`, `LeylineMessage`, `TelemetryChannel`, optional `Chunk` nodes.
+- Nodes: `Subsystem`, `SourceFile`, `DesignDoc`, `TestCase`, `IntegrationMessage`, `TelemetryChannel`, optional `Chunk` nodes.
 - Relationships: `BELONGS_TO`, `DESCRIBES`, `VALIDATES`, `IMPLEMENTS`, `EMITS`, `DEPENDS_ON`, `HAS_CHUNK`.
 - Constraints and indexes are applied at container startup via Cypher migrations embedded in the gateway image.
 
@@ -89,8 +89,8 @@ The runtime is a trio of co-located services managed inside the container by a l
 
 ### 5.1 Discovery & Classification
 
-- The container expects the repository to be mounted at `/workspace/repo`. Discovery is implemented in `gateway/ingest/discovery.py` and walks `docs/`, `src/esper/`, `tests/`, `src/esper/leyline/_generated/`, and optional `.codacy/` paths.
-- Subsystem inference is derived from path prefixes (e.g., `src/esper/kasmina/` → `Kasmina`) with regex fallbacks for Leyline messages and telemetry tags inside the file content.
+- The container expects the repository to be mounted at `/workspace/repo`. Discovery is implemented in `gateway/ingest/discovery.py` and walks `docs/`, dynamically detected packages beneath `src/` (using `pyproject.toml` or, failing that, the directory structure), `tests/`, and optional `.codacy/` paths.
+- Subsystem inference is derived from the first directory beneath each detected package root (e.g., `src/gateway/analytics/` → `Analytics`) with regex fallbacks for integration message tags and telemetry identifiers inside the file content.
 - Git metadata (last commit hash/timestamp) is captured via lightweight `git log` calls when available; failures degrade gracefully to `None`.
 
 ### 5.2 Chunking & Embedding
@@ -124,7 +124,7 @@ The runtime is a trio of co-located services managed inside the container by a l
 ### 6.2 Graph Reasoning Use Cases
 
 - `GET /graph/subsystem/{name}` surfaces connected subsystems, telemetry channels, and docs.
-- `GET /graph/leyline/{message}` reveals implementers and source definitions.
+- `GET /graph/messages/{message}` reveals implementers and source definitions.
 - `POST /graph/cypher` (maintainer scope) executes read-only Cypher queries to support advanced users.
 - Schema migrations for the graph are applied via the `gateway-graph migrate` CLI, which enforces constraints and records applied versions inside Neo4j.
 

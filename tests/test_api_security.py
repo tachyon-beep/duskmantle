@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 
+from gateway import get_version
 from gateway.api.app import create_app
-from gateway.search.service import SearchResult, SearchResponse
 from gateway.config.settings import get_settings
+from gateway.graph.service import GraphService
+from gateway.search.service import SearchResponse
 
 
 @pytest.fixture(autouse=True)
@@ -24,6 +27,7 @@ def test_audit_requires_token(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setenv("KM_AUTH_ENABLED", "true")
     monkeypatch.setenv("KM_READER_TOKEN", "reader-token")
     monkeypatch.setenv("KM_ADMIN_TOKEN", "admin-token")
+    monkeypatch.setenv("KM_NEO4J_PASSWORD", "secure-pass")
 
     app = create_app()
     client = TestClient(app)
@@ -49,14 +53,13 @@ def test_coverage_endpoint(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
     state_path = tmp_path / "state"
     report_path = state_path / "reports"
     report_path.mkdir(parents=True)
-    (report_path / "coverage_report.json").write_text(
-        json.dumps({"summary": {"artifact_total": 2}})
-    )
+    (report_path / "coverage_report.json").write_text(json.dumps({"summary": {"artifact_total": 2}}))
 
     monkeypatch.setenv("KM_STATE_PATH", str(state_path))
     monkeypatch.setenv("KM_AUTH_ENABLED", "true")
     monkeypatch.setenv("KM_READER_TOKEN", "reader-token")
     monkeypatch.setenv("KM_ADMIN_TOKEN", "admin-token")
+    monkeypatch.setenv("KM_NEO4J_PASSWORD", "secure-pass")
 
     app = create_app()
     client = TestClient(app)
@@ -80,6 +83,7 @@ def test_coverage_missing_report(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     monkeypatch.setenv("KM_STATE_PATH", str(tmp_path / "state"))
     monkeypatch.setenv("KM_AUTH_ENABLED", "true")
     monkeypatch.setenv("KM_ADMIN_TOKEN", "admin-token")
+    monkeypatch.setenv("KM_NEO4J_PASSWORD", "secure-pass")
 
     app = create_app()
     client = TestClient(app)
@@ -90,6 +94,7 @@ def test_coverage_missing_report(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     )
     assert resp.status_code == 404
     assert resp.json()["detail"] == "Coverage report not found"
+
 
 def test_rate_limiting(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("KM_RATE_LIMIT_REQUESTS", "2")
@@ -105,6 +110,41 @@ def test_rate_limiting(monkeypatch: pytest.MonkeyPatch) -> None:
     assert resp.json()["detail"] == "Rate limit exceeded"
 
 
+def test_startup_logs_configuration(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    monkeypatch.setenv("KM_AUTH_ENABLED", "false")
+    monkeypatch.setenv("KM_STATE_PATH", str(tmp_path / "state"))
+
+    with caplog.at_level(logging.INFO):
+        create_app()
+
+    startup_records = [record for record in caplog.records if getattr(record, "event", "") == "startup_config"]
+    assert startup_records, "expected startup_config log record"
+    record = startup_records[-1]
+    assert record.version == get_version()
+    assert record.embedding_model
+    assert isinstance(record.search_weights, dict)
+    assert record.search_weight_profile
+
+
+def test_secure_mode_without_admin_token_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("KM_STATE_PATH", str(tmp_path / "state"))
+    monkeypatch.setenv("KM_AUTH_ENABLED", "true")
+    monkeypatch.setenv("KM_NEO4J_PASSWORD", "super-secure")
+
+    with pytest.raises(RuntimeError, match="KM_ADMIN_TOKEN"):
+        create_app()
+
+
+def test_secure_mode_requires_custom_neo4j_password(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("KM_STATE_PATH", str(tmp_path / "state"))
+    monkeypatch.setenv("KM_AUTH_ENABLED", "true")
+    monkeypatch.setenv("KM_ADMIN_TOKEN", "maintainer-token")
+    monkeypatch.setenv("KM_NEO4J_PASSWORD", "neo4jadmin")
+
+    with pytest.raises(RuntimeError, match="KM_NEO4J_PASSWORD"):
+        create_app()
+
+
 def test_rate_limiting_search(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("KM_RATE_LIMIT_REQUESTS", "2")
     monkeypatch.setenv("KM_RATE_LIMIT_WINDOW", "60")
@@ -112,7 +152,8 @@ def test_rate_limiting_search(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
     monkeypatch.setenv("KM_STATE_PATH", str(tmp_path))
 
     app = create_app()
-    def _dummy_search_service():
+
+    def _dummy_search_service() -> object:
         class _Dummy:
             def search(
                 self,
@@ -120,7 +161,7 @@ def test_rate_limiting_search(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
                 query: str,
                 limit: int,
                 include_graph: bool,
-                graph_service,
+                graph_service: GraphService,
                 sort_by_vector: bool = False,
                 request_id: str | None = None,
                 filters: dict[str, Any] | None = None,

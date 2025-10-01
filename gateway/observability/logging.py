@@ -1,22 +1,24 @@
+"""Structured logging configuration for the gateway."""
+
 from __future__ import annotations
 
 import logging
 import sys
-from typing import Any, MutableMapping
+from typing import Any
 
-from pythonjsonlogger import jsonlogger
+from pythonjsonlogger import json
 
 _LOG_CONFIGURED = False
 
 
-class IngestAwareFormatter(jsonlogger.JsonFormatter):
+class IngestAwareFormatter(json.JsonFormatter):
     """JSON formatter that enforces consistent keys."""
 
     def add_fields(
         self,
-        log_record: MutableMapping[str, Any],
+        log_record: dict[str, Any],
         record: logging.LogRecord,
-        message_dict: MutableMapping[str, Any],
+        message_dict: dict[str, Any],
     ) -> None:
         super().add_fields(log_record, record, message_dict)
         log_record.setdefault("level", record.levelname)
@@ -25,6 +27,7 @@ class IngestAwareFormatter(jsonlogger.JsonFormatter):
 
 
 def configure_logging() -> None:
+    """Configure root logging with a JSON formatter once per process."""
     global _LOG_CONFIGURED
     if _LOG_CONFIGURED:
         return

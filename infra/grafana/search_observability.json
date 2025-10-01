@@ -1,0 +1,206 @@
+{
+  "title": "Duskmantle Search Health",
+  "tags": [
+    "duskmantle",
+    "search"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "title": "Search Requests by Outcome",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum by (status) (increase(km_search_requests_total{environment=~\"$environment\"}[5m]))",
+          "legendFormat": "{{status}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "legend": {
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "title": "Graph Cache Hit Ratio",
+      "type": "stat",
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 12,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(km_search_graph_cache_events_total{status=\"hit\", environment=~\"$environment\"}[5m])) / clamp_min(sum(increase(km_search_graph_cache_events_total{status=~\"hit|miss\", environment=~\"$environment\"}[5m])), 1)",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "orientation": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "percentage",
+            "steps": [
+              {
+                "color": "red",
+                "value": 0
+              },
+              {
+                "color": "orange",
+                "value": 0.85
+              },
+              {
+                "color": "green",
+                "value": 0.9
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "title": "Graph Cache Events",
+      "type": "barchart",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "sum by (status) (increase(km_search_graph_cache_events_total{environment=~\"$environment\"}[5m]))",
+          "legendFormat": "{{status}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Neo4j Lookup Latency (P95)",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(km_search_graph_lookup_seconds_bucket{environment=~\"$environment\"}[5m])) by (le))",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "orange",
+                "value": 0.2
+              },
+              {
+                "color": "red",
+                "value": 0.25
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Ranking Delta Moving Average",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "targets": [
+        {
+          "expr": "avg_over_time(km_search_adjusted_minus_vector_sum{environment=~\"$environment\"}[5m]) / clamp_min(avg_over_time(km_search_adjusted_minus_vector_count{environment=~\"$environment\"}[5m]), 1)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": -0.2
+              },
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 0.2
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Graph Migration Status",
+      "type": "stat",
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 12,
+        "y": 16
+      },
+      "targets": [
+        {
+          "expr": "km_graph_migration_last_status",
+          "refId": "A"
+        }
+      ]
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "environment",
+        "type": "query",
+        "datasource": "Prometheus",
+        "query": "label_values(km_search_requests_total, environment)",
+        "refresh": 2,
+        "hide": 0
+      }
+    ]
+  }
+}

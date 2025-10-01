@@ -2,18 +2,14 @@ from __future__ import annotations
 
 import json
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import List, Sequence
 
 import numpy as np
 
-from gateway.search.dataset import (
-    DatasetLoadError,
-    build_feature_matrix,
-    load_dataset_records,
-)
+from gateway.search.dataset import DatasetLoadError, build_feature_matrix, load_dataset_records
 
 FEATURE_FIELDS: Sequence[str] = (
     "vector_score",
@@ -59,7 +55,7 @@ def train_from_dataset(path: Path) -> ModelArtifact:
 
     artifact = ModelArtifact(
         model_type="linear_regression",
-        created_at=datetime.now(timezone.utc).isoformat(),
+        created_at=datetime.now(UTC).isoformat(),
         feature_names=list(FEATURE_FIELDS),
         coefficients=result.weights,
         intercept=result.intercept,

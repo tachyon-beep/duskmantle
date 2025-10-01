@@ -1,53 +1,72 @@
 from __future__ import annotations
 
+"""Unit tests for the lightweight Neo4j writer integration layer."""
+
 from pathlib import Path
-from types import SimpleNamespace
+from types import SimpleNamespace, TracebackType
+from typing import Any, cast
+
+from neo4j import Driver
 
 from gateway.ingest.artifacts import Artifact, Chunk, ChunkEmbedding
 from gateway.ingest.neo4j_writer import Neo4jWriter
 
 
 class RecordingSession:
+    """Stubbed session that records Cypher queries for assertions."""
+
     def __init__(self) -> None:
         self.queries: list[tuple[str, dict[str, object]]] = []
 
-    def run(self, query: str, **params):
+    def run(self, query: str, **params: object) -> SimpleNamespace:
         self.queries.append((query, params))
         return SimpleNamespace(single=lambda: None)
 
-    def __enter__(self) -> "RecordingSession":  # pragma: no cover - trivial
+    def __enter__(self) -> RecordingSession:  # pragma: no cover - trivial
         return self
 
-    def __exit__(self, exc_type, exc, tb) -> None:  # pragma: no cover - trivial
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:  # pragma: no cover - trivial
         return None
 
 
 class RecordingDriver:
+    """Stubbed driver that yields recording sessions."""
+
     def __init__(self) -> None:
         self.sessions: list[RecordingSession] = []
 
-    def session(self, database: str):  # noqa: ARG002 - database unused
+    def session(self, *, database: str | None = None) -> RecordingSession:
+        """Return a new recording session; database name is ignored."""
+        _ = database  # pragma: no cover - value unused in stub
         session = RecordingSession()
         self.sessions.append(session)
         return session
 
 
 def _make_writer() -> tuple[Neo4jWriter, RecordingDriver]:
+    """Create a writer bound to a recording driver for inspection."""
+
     driver = RecordingDriver()
-    return Neo4jWriter(driver=driver, database="knowledge"), driver
+    return Neo4jWriter(driver=cast(Driver, driver), database="knowledge"), driver
 
 
-def test_sync_artifact_creates_domain_relationships():
+def test_sync_artifact_creates_domain_relationships() -> None:
+    """Artifacts trigger the expected Cypher commands and relationships."""
     writer, driver = _make_writer()
     artifact = Artifact(
-        path=Path("src/esper/nissa/handler.py"),
+        path=Path("src/project/nissa/handler.py"),
         artifact_type="code",
         subsystem="Nissa",
         content="",
         git_commit="abc123",
         git_timestamp=1700000000,
         extra_metadata={
-            "leyline_entities": ["LeylineSync"],
+            "message_entities": ["IntegrationSync"],
             "telemetry_signals": ["TelemetryEvent"],
             "subsystem_metadata": {
                 "description": "Runtime orchestrator",
@@ -69,23 +88,49 @@ def test_sync_artifact_creates_domain_relationships():
 
     # Subsystem metadata applied
     subsystem_updates = [params for query, params in queries if "SET s += $properties" in query]
-    assert subsystem_updates and subsystem_updates[0]["properties"]["description"] == "Runtime orchestrator"
+    assert subsystem_updates
+    properties = subsystem_updates[0].get("properties")
+    assert isinstance(properties, dict)
+    description = cast(Any, properties.get("description"))
+    assert description == "Runtime orchestrator"
 
     # Dependency edge
     assert any("DEPENDS_ON" in query for query, _ in queries)
 
-    # Leyline message relationships
-    assert "LeylineMessage" in cypher_text and "IMPLEMENTS" in cypher_text
+    # Integration message relationships
+    assert "IntegrationMessage" in cypher_text and "IMPLEMENTS" in cypher_text
     assert "DECLARES" in cypher_text
 
     # Telemetry channel relationship
     assert "TelemetryChannel" in cypher_text and "EMITS" in cypher_text
 
 
-def test_sync_chunks_links_chunk_to_artifact():
+def test_sync_artifact_merges_subsystem_edge_once() -> None:
+    """Syncing an artifact does not duplicate the subsystem relationship."""
     writer, driver = _make_writer()
     artifact = Artifact(
-        path=Path("src/esper/nissa/handler.py"),
+        path=Path("src/project/nissa/handler.py"),
+        artifact_type="code",
+        subsystem="Nissa",
+        content="",
+        git_commit="abc123",
+        git_timestamp=1700000000,
+    )
+
+    writer.sync_artifact(artifact)
+
+    queries = driver.sessions[0].queries
+    subsystem_edge_queries = [query for query, _ in queries if "BELONGS_TO" in query]
+
+    assert len(subsystem_edge_queries) == 1
+    assert "MERGE (entity" in subsystem_edge_queries[0]
+
+
+def test_sync_chunks_links_chunk_to_artifact() -> None:
+    """Chunk synchronization creates chunk nodes and linking edges."""
+    writer, driver = _make_writer()
+    artifact = Artifact(
+        path=Path("src/project/nissa/handler.py"),
         artifact_type="code",
         subsystem="Nissa",
         content="",
@@ -94,7 +139,7 @@ def test_sync_chunks_links_chunk_to_artifact():
     )
     chunk = Chunk(
         artifact=artifact,
-        chunk_id="src/esper/nissa/handler.py::0",
+        chunk_id="src/project/nissa/handler.py::0",
         text="example",
         sequence=0,
         content_digest="digest",

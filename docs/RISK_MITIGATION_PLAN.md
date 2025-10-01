@@ -10,7 +10,7 @@ This document tracks the key delivery risks for the turnkey knowledge management
   - Use multi-stage Docker builds with separate builder/runtime stages and aggressive layer pruning.
   - Vendor `sentence-transformers/all-MiniLM-L6-v2` via `pip install --no-cache-dir` in the runtime stage only; confirm model weights are stored under `/opt/knowledge/models` for easy compression.
   - Add CI job to compute image size after each build and fail if it exceeds the documented budget (target <3.5 GB compressed).
-- **Open Questions:** Whether further model quantization is acceptable for target users (requires accuracy validation). Documented as TBD.
+- **Open Questions:** Further model quantization remains under evaluation; revisit once target accuracy benchmarks are available (tracked in `docs/HYBRID_SEARCH_TODO.md`).
 
 ## 2. Persistence Safety
 
@@ -35,13 +35,13 @@ This document tracks the key delivery risks for the turnkey knowledge management
 
 ## 4. Classification Accuracy
 
-- **Risk:** Path-based heuristics may mis-tag subsystems or Leyline assets.
+- **Risk:** Path-based heuristics may mis-tag subsystems or Integration assets.
 - **Status:** Mitigation actionable.
 - **Approved Actions:**
   - Create regression fixture set under `tests/data/classification/` mirroring expected repository layouts.
   - Implement confidence scoring in classification module and emit warnings when below threshold.
   - Allow override map via mounted YAML (e.g., `/opt/knowledge/config/custom_subsystems.yaml`).
-- **Open Questions:** Need real repository samples to calibrate regex coverage (leave TBD until repos are available).
+- **Open Questions:** Collect labelled repository samples during the next acceptance demo to calibrate heuristics; log results in a forthcoming `classification-benchmarks.md` appendix.
 
 ## 5. Authentication Defaults
 
@@ -61,7 +61,7 @@ This document tracks the key delivery risks for the turnkey knowledge management
   - Maintain compatibility matrix covering tested Docker versions and host OSes.
   - Provide troubleshooting appendix (`docs/TROUBLESHOOTING.md`) outlining common errors and fixes (e.g., volume permissions, SELinux contexts).
   - Offer CPU-only fallback instructions, including environment variables to disable GPU detection.
-- **Open Questions:** Actual test matrix values pending hands-on validation.
+- **Open Questions:** Initial compatibility matrix drafted for GitHub Actions Ubuntu runners; extend with macOS/Windows host verification in the next minor release.
 
 ## 7. Observability Coverage
 
@@ -72,7 +72,7 @@ This document tracks the key delivery risks for the turnkey knowledge management
 - Log end-of-run summaries with processed file counts and failure indicators; ensure logs route to stdout.
 - Publish and maintain an operator-focused observability guide (`docs/OBSERVABILITY_GUIDE.md`) covering alerts, tracing, and troubleshooting steps.
 - Include optional `KM_ALERT_WEBHOOK` integration placeholder (left unimplemented until requirements clarified).
-- **Open Questions:** Choice of alerting integrations for specific users remains TBD.
+- **Open Questions:** Provide webhook integration examples after operators confirm preferred alerting stack (target 1.0.x maintenance window).
 
 ## 8. Release Distribution Integrity
 
@@ -82,7 +82,7 @@ This document tracks the key delivery risks for the turnkey knowledge management
   - Generate SHA256 checksums for image tarballs and publish alongside releases.
   - Document verification commands (`sha256sum duskmantle-km-vX.tar.gz`) in the quick-start guide.
   - Maintain CHANGELOG entries summarizing risk-affecting updates.
-- **Open Questions:** Whether signed container images (e.g., cosign) are required is TBD pending user feedback.
+- **Open Questions:** Signed images (cosign or equivalent) are earmarked for post-1.0 evaluation after gathering adopter requirements (document decision in release roadmap once feedback collected).
 
 ---
 This plan will be updated after each implementation phase review. Open items require explicit confirmation from stakeholders once real-world data is available.

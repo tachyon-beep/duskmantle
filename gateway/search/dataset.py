@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import csv
 import json
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
-from typing import Any, Iterable, List, Mapping, Sequence, Tuple
 
 from gateway.search.exporter import FIELDNAMES
 
@@ -14,11 +14,11 @@ class DatasetLoadError(RuntimeError):
     """Raised when a dataset cannot be parsed."""
 
 
-def load_dataset_records(path: Path) -> list[Mapping[str, Any]]:
+def load_dataset_records(path: Path) -> list[Mapping[str, object]]:
     if not path.exists():
         raise DatasetLoadError(f"Dataset not found: {path}")
 
-    rows: list[Mapping[str, Any]] = []
+    rows: list[Mapping[str, object]] = []
     suffix = path.suffix.lower()
     if suffix == ".csv":
         with path.open("r", encoding="utf-8") as handle:
@@ -50,21 +50,22 @@ def load_dataset_records(path: Path) -> list[Mapping[str, Any]]:
 
 
 def build_feature_matrix(
-    records: Iterable[Mapping[str, Any]],
+    records: Iterable[Mapping[str, object]],
     feature_names: Sequence[str],
-) -> Tuple[List[List[float]], List[float], List[str]]:
-    features: List[List[float]] = []
-    targets: List[float] = []
-    request_ids: List[str] = []
+) -> tuple[list[list[float]], list[float], list[str]]:
+    features: list[list[float]] = []
+    targets: list[float] = []
+    request_ids: list[str] = []
 
     for record in records:
         vote = _parse_float(record.get(TARGET_FIELD))
         if vote is None:
             continue
-        row_features: List[float] = []
+        row_features: list[float] = []
         for name in feature_names:
             value = record.get(name)
-            row_features.append(_parse_float(value) or 0.0)
+            parsed = _parse_float(value)
+            row_features.append(parsed if parsed is not None else 0.0)
         features.append(row_features)
         targets.append(vote)
         request_ids.append(str(record.get("request_id")))
@@ -74,15 +75,20 @@ def build_feature_matrix(
     return features, targets, request_ids
 
 
-def _parse_float(value: Any) -> float | None:
-    if value is None or value == "":
+def _parse_float(value: object) -> float | None:
+    if value is None:
         return None
     if isinstance(value, (int, float)):
         return float(value)
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            return float(text)
+        except ValueError:
+            return None
+    return None
 
 
 __all__ = [
