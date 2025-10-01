@@ -8,6 +8,9 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.48.2",
+    "@typescript-eslint/eslint-plugin": "^8.45.0",
+    "@typescript-eslint/parser": "^8.45.0",
+    "eslint": "^9.36.0",
     "markdownlint-cli": "^0.45.0"
   }
 }

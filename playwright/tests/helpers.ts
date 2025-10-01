@@ -12,14 +12,16 @@ export async function bootstrapSession(page: Page, options: TokenOptions = {}): 
 
   await page.addInitScript(
     ({ readerToken: reader, maintainerToken: maintainer, CLIPBOARD_PROP: prop }) => {
+      const globals = globalThis as typeof globalThis & { [key: string]: unknown };
+
       if (reader) {
-        window.sessionStorage.setItem('dm.readerToken', reader);
+        globals.sessionStorage.setItem('dm.readerToken', reader);
       }
       if (maintainer) {
-        window.sessionStorage.setItem('dm.maintainerToken', maintainer);
+        globals.sessionStorage.setItem('dm.maintainerToken', maintainer);
       }
 
-      (window as unknown as { [key: string]: unknown })[prop] = '';
+      globals[prop] = '';
 
       const nav = navigator as Navigator & {
         clipboard?: {
@@ -35,10 +37,10 @@ export async function bootstrapSession(page: Page, options: TokenOptions = {}): 
 
       const shim: ClipboardShim = {
         writeText: async (text: string) => {
-          (window as unknown as { [key: string]: unknown })[prop] = text;
+          globals[prop] = text;
         },
         readText: async () => {
-          const value = (window as unknown as { [key: string]: unknown })[prop];
+          const value = globals[prop];
           return typeof value === 'string' ? value : '';
         },
       };
@@ -68,15 +70,17 @@ export async function setSessionTokens(page: Page, options: TokenOptions): Promi
   const { readerToken = null, maintainerToken = null } = options;
   await page.evaluate(
     ({ readerToken: reader, maintainerToken: maintainer }) => {
+      const globals = globalThis as typeof globalThis & { sessionStorage: Storage };
+
       if (reader) {
-        window.sessionStorage.setItem('dm.readerToken', reader);
+        globals.sessionStorage.setItem('dm.readerToken', reader);
       } else {
-        window.sessionStorage.removeItem('dm.readerToken');
+        globals.sessionStorage.removeItem('dm.readerToken');
       }
       if (maintainer) {
-        window.sessionStorage.setItem('dm.maintainerToken', maintainer);
+        globals.sessionStorage.setItem('dm.maintainerToken', maintainer);
       } else {
-        window.sessionStorage.removeItem('dm.maintainerToken');
+        globals.sessionStorage.removeItem('dm.maintainerToken');
       }
     },
     { readerToken, maintainerToken },
@@ -85,7 +89,7 @@ export async function setSessionTokens(page: Page, options: TokenOptions): Promi
 
 export async function readClipboard(page: Page): Promise<string> {
   return page.evaluate<string>((prop) => {
-    const value = (window as unknown as { [key: string]: unknown })[prop];
+    const value = (globalThis as typeof globalThis & { [key: string]: unknown })[prop];
     return typeof value === 'string' ? value : '';
   }, CLIPBOARD_PROP);
 }
