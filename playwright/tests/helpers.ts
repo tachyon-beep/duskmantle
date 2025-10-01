@@ -28,11 +28,19 @@ export async function bootstrapSession(page: Page, options: TokenOptions = {}): 
         };
       };
 
-      const shim = {
+      type ClipboardShim = {
+        writeText: (text: string) => Promise<void>;
+        readText: () => Promise<string>;
+      };
+
+      const shim: ClipboardShim = {
         writeText: async (text: string) => {
           (window as unknown as { [key: string]: unknown })[prop] = text;
         },
-        readText: async () => (window as unknown as { [key: string]: unknown })[prop] ?? '',
+        readText: async () => {
+          const value = (window as unknown as { [key: string]: unknown })[prop];
+          return typeof value === 'string' ? value : '';
+        },
       };
 
       if (nav.clipboard) {
@@ -76,5 +84,8 @@ export async function setSessionTokens(page: Page, options: TokenOptions): Promi
 }
 
 export async function readClipboard(page: Page): Promise<string> {
-  return page.evaluate((prop) => (window as unknown as { [key: string]: unknown })[prop] ?? '', CLIPBOARD_PROP);
+  return page.evaluate<string>((prop) => {
+    const value = (window as unknown as { [key: string]: unknown })[prop];
+    return typeof value === 'string' ? value : '';
+  }, CLIPBOARD_PROP);
 }
