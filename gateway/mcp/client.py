@@ -6,7 +6,7 @@ import json
 import logging
 from collections.abc import Mapping
 from types import TracebackType
-from typing import Any, TypeVar
+from typing import Any
 from urllib.parse import quote as _quote
 
 import httpx

@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import base64
 from collections import OrderedDict
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from threading import Lock
 from time import monotonic
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 from neo4j import Driver, ManagedTransaction
 from neo4j.graph import Node, Relationship

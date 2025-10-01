@@ -139,7 +139,7 @@ def _prepare_state(state_path: Path) -> None:
         ),
     ]
 
-    for index, (point_time, payload) in enumerate(history_entries, start=1):
+    for _index, (point_time, payload) in enumerate(history_entries, start=1):
         timestamp = point_time.strftime("%Y%m%dT%H%M%S000000")
         _write_json(history_dir / f"lifecycle_{timestamp}.json", payload)
 
@@ -168,7 +168,7 @@ def main() -> None:
     config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning")
     server = uvicorn.Server(config)
 
-    def _handle_stop(*_args) -> None:
+    def _handle_stop(*_args: object) -> None:
         server.should_exit = True
 
     signal.signal(signal.SIGINT, _handle_stop)

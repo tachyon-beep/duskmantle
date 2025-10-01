@@ -41,7 +41,7 @@ def test_diff_fingerprints_detects_changes() -> None:
     assert diff_fingerprints(old, new_added) is True
 
 
-def test_watch_metrics_increment(tmp_path: Path):
+def test_watch_metrics_increment(tmp_path: Path) -> None:
     main = module["main"]
 
     root_success = tmp_path / "success"

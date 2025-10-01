@@ -1,4 +1,5 @@
 /* eslint-env browser */
+/* global document, window, console, sessionStorage, fetch, navigator, Blob, URL, URLSearchParams, FormData, Intl */
 
 (function () {
   const scope = document.querySelector('[data-dm-scope="layout"]');

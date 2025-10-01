@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from gateway import get_version
 from gateway.api.app import create_app
 from gateway.config.settings import get_settings
+from gateway.graph.service import GraphService
 from gateway.search.service import SearchResponse
 
 
@@ -152,7 +153,7 @@ def test_rate_limiting_search(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
 
     app = create_app()
 
-    def _dummy_search_service():
+    def _dummy_search_service() -> object:
         class _Dummy:
             def search(
                 self,
@@ -160,7 +161,7 @@ def test_rate_limiting_search(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
                 query: str,
                 limit: int,
                 include_graph: bool,
-                graph_service,
+                graph_service: GraphService,
                 sort_by_vector: bool = False,
                 request_id: str | None = None,
                 filters: dict[str, Any] | None = None,

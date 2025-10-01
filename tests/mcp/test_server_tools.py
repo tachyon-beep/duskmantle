@@ -5,7 +5,6 @@ from __future__ import annotations
 # pylint: disable=missing-function-docstring,missing-class-docstring,
 # pylint: disable=protected-access,redefined-outer-name,import-outside-toplevel,
 # pylint: disable=unused-argument,unused-variable
-
 from collections.abc import Awaitable, Callable, Iterator
 from pathlib import Path
 from typing import Any, cast
@@ -39,7 +38,7 @@ def _reset_mcp_metrics() -> Iterator[None]:
 @pytest.fixture
 def mcp_server() -> Iterator[ServerFixture]:
     server = build_server(settings=MCPSettings())
-    state = cast(MCPServerState, getattr(server, "_duskmantle_state"))
+    state = cast(MCPServerState, server._duskmantle_state)
     yield server, state
     state.client = None
 
@@ -68,7 +67,7 @@ ToolCallable = Callable[..., Awaitable[Any]]
 
 
 def _tool_fn(tool: object) -> ToolCallable:
-    return cast(ToolCallable, getattr(tool, "fn"))
+    return cast(ToolCallable, tool.fn)
 
 
 @pytest.mark.asyncio

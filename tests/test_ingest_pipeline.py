@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
 
 import pytest
 from prometheus_client import REGISTRY
 
-from gateway.ingest.pipeline import IngestionConfig, IngestionPipeline
+from gateway.ingest.pipeline import IngestionConfig, IngestionPipeline, IngestionResult
 
 
 class StubQdrantWriter:
@@ -17,7 +18,7 @@ class StubQdrantWriter:
     def ensure_collection(self, vector_size: int) -> None:
         self.collection_sizes.append(vector_size)
 
-    def upsert_chunks(self, chunks) -> None:
+    def upsert_chunks(self, chunks: Iterable[object]) -> None:
         self.upsert_payloads.append(len(list(chunks)))
 
     def delete_artifact(self, artifact_path: str) -> None:
@@ -38,10 +39,10 @@ class StubNeo4jWriter:
     def ensure_constraints(self) -> None:  # pragma: no cover - not used in unit test
         pass
 
-    def sync_artifact(self, artifact) -> None:
+    def sync_artifact(self, artifact: object) -> None:
         self.artifacts.append(artifact.path.as_posix())
 
-    def sync_chunks(self, chunk_embeddings) -> None:
+    def sync_chunks(self, chunk_embeddings: Iterable[object]) -> None:
         for item in chunk_embeddings:
             self.chunk_ids.append(item.chunk.chunk_id)
 
@@ -139,7 +140,7 @@ def test_pipeline_skips_unchanged_artifacts(tmp_path: Path) -> None:
 
     ledger_path = tmp_path / "state" / "reports" / "artifact_ledger.json"
 
-    def _run(incremental: bool = True):
+    def _run(incremental: bool = True) -> IngestionResult:
         qdrant = StubQdrantWriter()
         neo4j = StubNeo4jWriter()
         config = IngestionConfig(

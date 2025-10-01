@@ -56,4 +56,4 @@ def test_evaluate_model_with_empty_dataset(tmp_path: Path) -> None:
     except DatasetLoadError:
         assert True
     else:  # pragma: no cover
-        assert False
+        raise AssertionError("Expected DatasetLoadError for empty dataset")

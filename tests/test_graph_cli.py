@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from unittest import mock
 
+import pytest
+
 from gateway.graph import cli
 
 
@@ -12,7 +14,7 @@ class DummySettings:
     neo4j_database = "knowledge"
 
 
-def test_graph_cli_migrate_runs_runner(monkeypatch):
+def test_graph_cli_migrate_runs_runner(monkeypatch: pytest.MonkeyPatch) -> None:
     dummy_settings = DummySettings()
     monkeypatch.setattr(cli, "get_settings", lambda: dummy_settings)
 
@@ -28,7 +30,10 @@ def test_graph_cli_migrate_runs_runner(monkeypatch):
     fake_driver.close.assert_called_once()
 
 
-def test_graph_cli_dry_run_prints_pending(monkeypatch, capsys):
+def test_graph_cli_dry_run_prints_pending(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     dummy_settings = DummySettings()
     monkeypatch.setattr(cli, "get_settings", lambda: dummy_settings)
 

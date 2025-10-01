@@ -9,7 +9,7 @@ RECIPES = Path("docs/MCP_RECIPES.md").read_text().splitlines()
 
 
 @pytest.mark.mcp_smoke
-@pytest.mark.parametrize("line", [l for l in RECIPES if l.strip().startswith("km-")])
+@pytest.mark.parametrize("line", [recipe_line for recipe_line in RECIPES if recipe_line.strip().startswith("km-")])
 def test_recipe_lines_are_valid_json(line: str) -> None:
     stripped = line.strip()
     if "{" not in stripped:

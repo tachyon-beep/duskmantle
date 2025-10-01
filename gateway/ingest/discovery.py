@@ -6,8 +6,7 @@ import json
 import logging
 import re
 import subprocess
-from collections.abc import Iterable
-from typing import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from fnmatch import fnmatch
 from pathlib import Path

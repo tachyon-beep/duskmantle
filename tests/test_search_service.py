@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -17,8 +18,8 @@ def _metric_value(name: str, labels: dict[str, str] | None = None) -> float:
 
 
 class FakeEmbedder:
-    def encode(self, texts):
-        return [[0.1, 0.2, 0.3]]
+    def encode(self, texts: Sequence[str]) -> list[list[float]]:
+        return [[0.1, 0.2, 0.3] for _ in texts]
 
 
 class FakePoint:
@@ -28,23 +29,23 @@ class FakePoint:
 
 
 class FakeQdrantClient:
-    def __init__(self, points: list[FakePoint]):
+    def __init__(self, points: list[FakePoint]) -> None:
         self._points = points
-        self.last_kwargs: dict[str, Any] = {}
+        self.last_kwargs: dict[str, object] = {}
 
-    def search(self, **kwargs):  # noqa: ANN001 - interface matches Qdrant client
-        self.last_kwargs = kwargs
+    def search(self, **kwargs: object) -> list[FakePoint]:
+        self.last_kwargs = dict(kwargs)
         return self._points
 
 
 class DummyGraphService(GraphService):  # type: ignore[misc]
-    def __init__(self, response: dict[str, Any]):
+    def __init__(self, response: dict[str, Any]) -> None:
         self._response = response
 
     def get_node(self, node_id: str, *, relationships: str, limit: int) -> dict[str, Any]:  # type: ignore[override]
         return self._response
 
-    def get_subsystem(self, *args, **kwargs):  # pragma: no cover - not used
+    def get_subsystem(self, *args: object, **kwargs: object) -> dict[str, Any]:  # pragma: no cover - not used
         raise NotImplementedError
 
     def search(self, term: str, *, limit: int) -> dict[str, Any]:  # pragma: no cover - not used
@@ -108,7 +109,10 @@ def graph_response() -> dict[str, Any]:
     }
 
 
-def test_search_service_enriches_with_graph(sample_points, graph_response) -> None:
+def test_search_service_enriches_with_graph(
+    sample_points: list[FakePoint],
+    graph_response: dict[str, Any],
+) -> None:
     search_service = SearchService(
         qdrant_client=FakeQdrantClient(sample_points),
         collection_name="collection",
@@ -143,7 +147,7 @@ def test_search_service_enriches_with_graph(sample_points, graph_response) -> No
     assert "coverage_penalty" in signals
 
 
-def test_search_service_handles_missing_graph(sample_points) -> None:
+def test_search_service_handles_missing_graph(sample_points: list[FakePoint]) -> None:
     search_service = SearchService(
         qdrant_client=FakeQdrantClient(sample_points),
         collection_name="collection",
@@ -170,13 +174,13 @@ def test_search_service_handles_missing_graph(sample_points) -> None:
 
 
 class MapGraphService(GraphService):  # type: ignore[misc]
-    def __init__(self, data: dict[str, dict[str, Any]]):
+    def __init__(self, data: dict[str, dict[str, Any]]) -> None:
         self._data = data
 
     def get_node(self, node_id: str, *, relationships: str, limit: int) -> dict[str, Any]:  # type: ignore[override]
         return self._data.get(node_id, {"node": {}, "relationships": [], "related_artifacts": []})
 
-    def get_subsystem(self, *args, **kwargs):  # pragma: no cover - unused
+    def get_subsystem(self, *args: object, **kwargs: object) -> dict[str, Any]:  # pragma: no cover - unused
         raise NotImplementedError
 
     def search(self, term: str, *, limit: int) -> dict[str, Any]:  # pragma: no cover - unused
@@ -190,7 +194,7 @@ class MapGraphService(GraphService):  # type: ignore[misc]
 
 
 class CountingGraphService(GraphService):  # type: ignore[misc]
-    def __init__(self, response: dict[str, Any], depth: int = 2):
+    def __init__(self, response: dict[str, Any], depth: int = 2) -> None:
         self._response = response
         self._depth = depth
         self.node_calls = 0
@@ -204,7 +208,7 @@ class CountingGraphService(GraphService):  # type: ignore[misc]
         self.depth_calls += 1
         return self._depth
 
-    def get_subsystem(self, *args, **kwargs):  # pragma: no cover - unused
+    def get_subsystem(self, *args: object, **kwargs: object) -> dict[str, Any]:  # pragma: no cover - unused
         raise NotImplementedError
 
     def search(self, term: str, *, limit: int) -> dict[str, Any]:  # pragma: no cover - unused
@@ -214,7 +218,7 @@ class CountingGraphService(GraphService):  # type: ignore[misc]
         raise NotImplementedError
 
 
-def test_search_hnsw_search_params(sample_points) -> None:
+def test_search_hnsw_search_params(sample_points: list[FakePoint]) -> None:
     client = FakeQdrantClient(sample_points)
     search_service = SearchService(
         qdrant_client=client,
@@ -364,7 +368,10 @@ def test_search_service_orders_by_adjusted_score() -> None:
     assert [r.chunk["subsystem"] for r in response_vector_sorted.results] == ["other", "core"]
 
 
-def test_search_service_caches_graph_lookups(sample_points, graph_response) -> None:
+def test_search_service_caches_graph_lookups(
+    sample_points: list[FakePoint],
+    graph_response: dict[str, Any],
+) -> None:
     points = [
         FakePoint(
             {
@@ -674,7 +681,7 @@ def test_search_service_filters_recency_max_age_days() -> None:
     assert response.metadata["filters_applied"]["max_age_days"] == 30
 
 
-def test_search_service_filters_subsystem_via_graph(graph_response) -> None:
+def test_search_service_filters_subsystem_via_graph(graph_response: dict[str, Any]) -> None:
     points = [
         FakePoint(
             {

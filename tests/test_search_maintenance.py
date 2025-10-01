@@ -23,7 +23,7 @@ def _write_events(path: Path, requests: list[tuple[str, datetime, list[dict[str,
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def test_prune_feedback_log_by_age(tmp_path):
+def test_prune_feedback_log_by_age(tmp_path: Path) -> None:
     now = datetime(2024, 9, 1, 12, 0, tzinfo=UTC)
     older = now - timedelta(days=40)
     recent = now - timedelta(days=5)
@@ -49,7 +49,7 @@ def test_prune_feedback_log_by_age(tmp_path):
     assert "req-new" in contents
 
 
-def test_redact_dataset_csv(tmp_path):
+def test_redact_dataset_csv(tmp_path: Path) -> None:
     dataset = tmp_path / "dataset.csv"
     dataset.write_text(
         'request_id,query,context_json,feedback_note\nreq-1,search term,{"task":"deep dive"},useful\n',
@@ -68,7 +68,7 @@ def test_redact_dataset_csv(tmp_path):
     assert "useful" not in text
 
 
-def test_redact_dataset_jsonl(tmp_path):
+def test_redact_dataset_jsonl(tmp_path: Path) -> None:
     dataset = tmp_path / "dataset.jsonl"
     dataset.write_text(
         json.dumps(

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 from prometheus_client import REGISTRY
 
@@ -63,7 +65,7 @@ class StubQdrantWriter:
     def ensure_collection(self, vector_size: int) -> None:  # pragma: no cover - not used
         return None
 
-    def upsert_chunks(self, chunks) -> None:  # pragma: no cover - not used
+    def upsert_chunks(self, chunks: Iterable[object]) -> None:  # pragma: no cover - not used
         list(chunks)
 
 
@@ -71,14 +73,17 @@ class StubNeo4jWriter:
     def ensure_constraints(self) -> None:  # pragma: no cover - not used
         return None
 
-    def sync_artifact(self, artifact) -> None:
+    def sync_artifact(self, artifact: object) -> None:
         return None
 
-    def sync_chunks(self, chunk_embeddings) -> None:
+    def sync_chunks(self, chunk_embeddings: Iterable[object]) -> None:
         return None
 
 
-def test_coverage_endpoint_after_report_generation(tmp_path: Path, monkeypatch) -> None:
+def test_coverage_endpoint_after_report_generation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     repo = tmp_path / "repo"
     (repo / "docs").mkdir(parents=True)
     (repo / "docs" / "overview.md").write_text("IntegrationSync telemetry doc")

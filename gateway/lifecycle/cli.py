@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Iterable, Mapping
 from datetime import datetime
 from pathlib import Path
-from typing import Iterable, Mapping
 
 from rich.console import Console
 from rich.table import Table

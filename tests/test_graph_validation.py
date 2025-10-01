@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Sequence, cast
+from typing import cast
 
 import pytest
 from neo4j import GraphDatabase
@@ -142,7 +143,7 @@ class _DummyQdrantClient:
     def __init__(self, points: list[_FakePoint]) -> None:
         self._points = points
 
-    def search(self, **_kwargs: Any) -> list[_FakePoint]:
+    def search(self, **_kwargs: object) -> list[_FakePoint]:
         return self._points
 
 

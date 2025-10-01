@@ -120,8 +120,7 @@ def neo4j_test_environment() -> Iterator[dict[str, str | None]]:
             subprocess.run(
                 cmd,
                 check=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                capture_output=True,
                 text=True,
             )
         except subprocess.CalledProcessError as exc:  # pragma: no cover - environment dependent
@@ -172,8 +171,7 @@ def neo4j_test_environment() -> Iterator[dict[str, str | None]]:
             subprocess.run(
                 ["docker", "rm", "-f", container_name],
                 check=False,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                capture_output=True,
             )
 
 

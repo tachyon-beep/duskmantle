@@ -17,11 +17,11 @@ from gateway.ingest.pipeline import IngestionConfig, IngestionPipeline
 
 
 class DummyGraphService:
-    def __init__(self, responses: dict[str, Any]):
+    def __init__(self, responses: dict[str, Any]) -> None:
         self._responses = responses
         self.last_node_id: str | None = None
 
-    def get_subsystem(self, name: str, **kwargs: Any) -> dict[str, Any]:
+    def get_subsystem(self, name: str, **kwargs: object) -> dict[str, Any]:
         if name == "missing":
             raise GraphNotFoundError("Subsystem 'missing' not found")
         return self._responses["subsystem"]

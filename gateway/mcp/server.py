@@ -10,7 +10,7 @@ from functools import lru_cache
 from pathlib import Path
 from textwrap import dedent
 from time import perf_counter
-from typing import Any
+from typing import Any, cast
 
 from fastmcp import Context, FastMCP
 
@@ -199,7 +199,7 @@ def build_server(settings: MCPSettings | None = None) -> FastMCP:
         instructions=instructions,
         lifespan=state.lifespan(),
     )
-    setattr(server, "_duskmantle_state", state)
+    cast(Any, server)._duskmantle_state = state
     _initialise_metric_labels()
 
     @server.tool(name="km-help", description="Return usage notes for Duskmantle MCP tools")
