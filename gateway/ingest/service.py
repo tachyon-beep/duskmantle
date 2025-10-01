@@ -1,3 +1,5 @@
+"""High-level orchestration routines for running ingestion."""
+
 from __future__ import annotations
 
 import logging

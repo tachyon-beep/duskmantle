@@ -13,12 +13,15 @@ from pathlib import Path
 from typing import Any, cast
 from uuid import uuid4
 
+from apscheduler.schedulers.base import SchedulerNotRunningError  # type: ignore[import-untyped]
 from fastapi import Body, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from neo4j import Driver, GraphDatabase
+from neo4j.exceptions import Neo4jError, ServiceUnavailable
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from qdrant_client import QdrantClient
+from qdrant_client.http.exceptions import UnexpectedResponse
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -29,6 +32,7 @@ from gateway.api.auth import require_maintainer, require_reader
 from gateway.config.settings import AppSettings, get_settings
 from gateway.graph import GraphNotFoundError, GraphQueryError, GraphService, get_graph_service
 from gateway.graph.migrations import MigrationRunner
+from gateway.ingest.audit import AuditLogger
 from gateway.ingest.embedding import Embedder
 from gateway.ingest.lifecycle import summarize_lifecycle
 from gateway.observability import (
@@ -94,11 +98,13 @@ def _build_lifespan(settings: AppSettings) -> Callable[[FastAPI], AbstractAsyncC
         try:
             yield
         finally:  # pragma: no cover - exercised via integration tests
-            with suppress(Exception):
+            try:
                 scheduler.shutdown()
+            except SchedulerNotRunningError:
+                pass
             driver = getattr(app.state, "graph_driver", None)
             if driver:
-                with suppress(Exception):
+                with suppress(Neo4jError, OSError):
                     driver.close()
 
     return cast(Callable[[FastAPI], AbstractAsyncContextManager[None]], lifespan)
@@ -118,7 +124,7 @@ def _configure_rate_limits(app: FastAPI, settings: AppSettings) -> Limiter:
 def _init_feedback_store(settings: AppSettings) -> SearchFeedbackStore | None:
     try:
         return SearchFeedbackStore(settings.state_path / "feedback")
-    except Exception as exc:  # pragma: no cover - defensive guard
+    except (OSError, RuntimeError, json.JSONDecodeError) as exc:  # pragma: no cover - defensive guard
         logger.warning("Search feedback logging disabled: %s", exc)
         return None
 
@@ -136,7 +142,7 @@ def _load_search_model(settings: AppSettings) -> ModelArtifact | None:
             "Search scoring mode set to 'ml' but model file %s not found; falling back to heuristic",
             model_path,
         )
-    except Exception as exc:  # pragma: no cover - defensive
+    except (json.JSONDecodeError, OSError, ValueError) as exc:  # pragma: no cover - defensive
         logger.warning("Failed to load search ranking model: %s", exc)
     return None
 
@@ -158,7 +164,7 @@ def _init_graph_driver(settings: AppSettings) -> Driver | None:
 def _init_qdrant_client(settings: AppSettings) -> QdrantClient | None:
     try:
         return QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
-    except Exception as exc:  # pragma: no cover - offline scenarios
+    except (ValueError, ConnectionError, RuntimeError) as exc:  # pragma: no cover - offline scenarios
         logger.warning("Qdrant client initialization failed: %s", exc)
         return None
 
@@ -169,7 +175,7 @@ def _create_graph_driver(settings: AppSettings) -> Driver | None:
             settings.neo4j_uri,
             auth=(settings.neo4j_user, settings.neo4j_password),
         )
-    except Exception as exc:  # pragma: no cover - connection may fail in dev/test
+    except (Neo4jError, ServiceUnavailable, OSError) as exc:  # pragma: no cover - connection may fail in dev/test
         logger.warning("Neo4j driver initialization failed: %s", exc)
         _set_migration_metrics(0, timestamp=time.time())
         return None
@@ -182,8 +188,8 @@ def _run_graph_auto_migration(driver: Driver, database: str) -> None:
 
     try:
         runner.run()
-    except Exception:  # pragma: no cover - defensive
-        logger.exception("Graph auto-migration failed")
+    except (Neo4jError, RuntimeError) as exc:  # pragma: no cover - defensive
+        logger.exception("Graph auto-migration failed: %s", exc)
         _set_migration_metrics(0, timestamp=time.time())
         return
 
@@ -194,7 +200,7 @@ def _run_graph_auto_migration(driver: Driver, database: str) -> None:
 def _fetch_pending_migrations(runner: MigrationRunner) -> list[str] | None:
     try:
         return runner.pending_ids()
-    except Exception as exc:  # pragma: no cover - defensive preflight
+    except (Neo4jError, RuntimeError) as exc:  # pragma: no cover - defensive preflight
         logger.warning(
             "Graph auto-migration preflight failed; attempting run anyway: %s",
             exc,
@@ -297,7 +303,7 @@ def create_app() -> FastAPI:
         driver = getattr(request.app.state, "graph_driver", None)
         if driver is None:
             raise HTTPException(status_code=503, detail="Graph service unavailable")
-        service = getattr(request.app.state, "_graph_service_instance", None)
+        service = getattr(request.app.state, "graph_service_instance", None)
         if service is None or service.driver is not driver:
             cache_ttl = settings.graph_subsystem_cache_ttl_seconds
             cache_max = settings.graph_subsystem_cache_max_entries
@@ -307,7 +313,7 @@ def create_app() -> FastAPI:
                 cache_ttl=cache_ttl,
                 cache_max_entries=cache_max,
             )
-            request.app.state._graph_service_instance = service
+            request.app.state.graph_service_instance = service
         return service
 
     def search_service_dependency(request: Request) -> SearchService | None:
@@ -318,7 +324,7 @@ def create_app() -> FastAPI:
         if embedder is None:
             try:
                 embedder = Embedder(settings.embedding_model)
-            except Exception as exc:  # pragma: no cover - loading errors logged
+            except (RuntimeError, ValueError, OSError) as exc:  # pragma: no cover - loading errors logged
                 logger.warning("Failed to initialize embedder: %s", exc)
                 return None
             request.app.state.search_embedder = embedder
@@ -354,22 +360,23 @@ def create_app() -> FastAPI:
 
     @app.get("/metrics", tags=["observability"])
     @limiter.limit(metrics_limit)
-    def metrics_endpoint(request: Request) -> Response:  # noqa: ARG001 - request used by limiter
+    def metrics_endpoint(request: Request) -> Response:
         """Expose Prometheus metrics."""
+        del request
         return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
     @app.get("/audit/history", dependencies=[Depends(require_maintainer)], tags=["observability"])
     @limiter.limit("30/minute")
-    def audit_history(request: Request, limit: int = 20) -> JSONResponse:  # noqa: ARG001 - request used by limiter
-        from gateway.ingest.audit import AuditLogger
-
+    def audit_history(request: Request, limit: int = 20) -> JSONResponse:
+        del request
         audit_path = settings.state_path / "audit" / "audit.db"
-        logger = AuditLogger(audit_path)
-        return JSONResponse(logger.recent(limit=limit))
+        audit_logger = AuditLogger(audit_path)
+        return JSONResponse(audit_logger.recent(limit=limit))
 
     @app.get("/coverage", dependencies=[Depends(require_maintainer)], tags=["observability"])
     @limiter.limit("30/minute")
-    def coverage_report(request: Request) -> JSONResponse:  # noqa: ARG001 - request used by limiter
+    def coverage_report(request: Request) -> JSONResponse:
+        del request
         report_path = settings.state_path / "reports" / "coverage_report.json"
         if not report_path.exists():
             raise HTTPException(status_code=404, detail="Coverage report not found")
@@ -382,7 +389,8 @@ def create_app() -> FastAPI:
 
     @app.get("/lifecycle", dependencies=[Depends(require_maintainer)], tags=["observability"])
     @limiter.limit("30/minute")
-    def lifecycle_report(request: Request) -> JSONResponse:  # noqa: ARG001
+    def lifecycle_report(request: Request) -> JSONResponse:
+        del request
         report_path = settings.state_path / "reports" / "lifecycle_report.json"
         if not report_path.exists():
             raise HTTPException(status_code=404, detail="Lifecycle report not found")
@@ -395,7 +403,8 @@ def create_app() -> FastAPI:
 
     @app.get("/lifecycle/history", dependencies=[Depends(require_maintainer)], tags=["observability"])
     @limiter.limit("30/minute")
-    def lifecycle_history(request: Request, limit: int = 30) -> JSONResponse:  # noqa: ARG001
+    def lifecycle_history(request: Request, limit: int = 30) -> JSONResponse:
+        del request
         history_dir = settings.state_path / "reports" / "lifecycle_history"
         if settings.lifecycle_history_limit <= 0:
             return JSONResponse({"history": []})
@@ -525,12 +534,11 @@ def create_app() -> FastAPI:
         except HTTPException:
             SEARCH_REQUESTS_TOTAL.labels(status="failure").inc()
             raise
-        except Exception as exc:  # pragma: no cover
+        except (UnexpectedResponse, RuntimeError, ValueError, TimeoutError) as exc:  # pragma: no cover
             SEARCH_REQUESTS_TOTAL.labels(status="failure").inc()
             logger.error("Search failed: %s", exc)
             raise HTTPException(status_code=500, detail="Search failed") from exc
-        else:
-            SEARCH_REQUESTS_TOTAL.labels(status="success").inc()
+        SEARCH_REQUESTS_TOTAL.labels(status="success").inc()
 
         metadata: dict[str, Any] = dict(response.metadata)
         payload_json = {
@@ -578,8 +586,7 @@ def create_app() -> FastAPI:
                     float(vote_value)
                 except ValueError:
                     return False
-                else:
-                    return True
+                return True
             return False
 
         if feedback_store is not None and response.results and not _has_vote(feedback_mapping):
@@ -596,13 +603,14 @@ def create_app() -> FastAPI:
                     context=context_payload,
                     request_id=request_id,
                 )
-            except Exception:
+            except (OSError, RuntimeError, TypeError, ValueError):
                 logger.warning("Failed to record search feedback", exc_info=True)
         return JSONResponse(payload_json)
 
     @app.get("/search/weights", dependencies=[Depends(require_maintainer)], tags=["search"])
     @limiter.limit("60/minute")
-    def search_weights(request: Request) -> JSONResponse:  # noqa: ARG001 - used by limiter
+    def search_weights(request: Request) -> JSONResponse:
+        del request
         profile, weights = settings.resolved_search_weights()
         return JSONResponse(
             {
@@ -616,13 +624,14 @@ def create_app() -> FastAPI:
     @limiter.limit(metrics_limit)
     def graph_subsystem(
         name: str,
-        request: Request,  # noqa: ARG001 - required by rate limiter
+        request: Request,
         depth: int = 1,
         include_artifacts: bool = True,
         cursor: str | None = None,
         limit: int = 25,
         service: GraphService = Depends(graph_service_dependency),  # noqa: B008
     ) -> JSONResponse:
+        del request
         limit = max(1, min(limit, 100))
         try:
             payload = service.get_subsystem(
@@ -642,10 +651,11 @@ def create_app() -> FastAPI:
     @limiter.limit(metrics_limit)
     def graph_subsystem_graph(
         name: str,
-        request: Request,  # noqa: ARG001
+        request: Request,
         depth: int = 2,
         service: GraphService = Depends(graph_service_dependency),  # noqa: B008
     ) -> JSONResponse:
+        del request
         depth = max(1, depth)
         try:
             payload = service.get_subsystem_graph(name, depth=depth)
@@ -663,11 +673,12 @@ def create_app() -> FastAPI:
     @limiter.limit(metrics_limit)
     def graph_node(
         node_id: str,
-        request: Request,  # noqa: ARG001
+        request: Request,
         relationships: str = "outgoing",
         limit: int = 50,
         service: GraphService = Depends(graph_service_dependency),  # noqa: B008
     ) -> JSONResponse:
+        del request
         relationships_normalized = relationships.lower()
         if relationships_normalized not in {"outgoing", "incoming", "all", "none"}:
             raise HTTPException(status_code=400, detail="Invalid relationships parameter")
@@ -687,11 +698,12 @@ def create_app() -> FastAPI:
     @app.get("/graph/search", dependencies=[Depends(require_reader)], tags=["graph"])
     @limiter.limit(metrics_limit)
     def graph_search(
-        request: Request,  # noqa: ARG001
+        request: Request,
         q: str,
         limit: int = 20,
         service: GraphService = Depends(graph_service_dependency),  # noqa: B008
     ) -> JSONResponse:
+        del request
         limit = max(1, min(limit, 50))
         payload = service.search(q, limit=limit)
         return JSONResponse(payload)
@@ -699,12 +711,13 @@ def create_app() -> FastAPI:
     @app.get("/graph/orphans", dependencies=[Depends(require_reader)], tags=["graph"])
     @limiter.limit(metrics_limit)
     def graph_orphans(
-        request: Request,  # noqa: ARG001
+        request: Request,
         label: str | None = None,
         cursor: str | None = None,
         limit: int = 50,
         service: GraphService = Depends(graph_service_dependency),  # noqa: B008
     ) -> JSONResponse:
+        del request
         limit = max(1, min(limit, 200))
         try:
             payload = service.list_orphan_nodes(label=label, cursor=cursor, limit=limit)
@@ -715,10 +728,11 @@ def create_app() -> FastAPI:
     @app.post("/graph/cypher", dependencies=[Depends(require_maintainer)], tags=["graph"])
     @limiter.limit("30/minute")
     def graph_cypher(
-        request: Request,  # noqa: ARG001
+        request: Request,
         payload: dict[str, Any] = Body(...),  # noqa: B008
         service: GraphService = Depends(graph_service_dependency),  # noqa: B008
     ) -> JSONResponse:
+        del request
         query = payload.get("query")
         if not isinstance(query, str) or not query.strip():
             raise HTTPException(status_code=422, detail="Field 'query' is required")
@@ -749,7 +763,7 @@ def _parse_iso8601_to_utc(value: str) -> datetime | None:
     return parsed.astimezone(UTC)
 
 
-def _rate_limit_handler(request: Request, exc: Exception) -> JSONResponse:  # pragma: no cover - thin wrapper
+def _rate_limit_handler(_request: Request, exc: Exception) -> JSONResponse:  # pragma: no cover - thin wrapper
     if not isinstance(exc, RateLimitExceeded):
         raise exc
     return JSONResponse(
@@ -791,7 +805,7 @@ def _coverage_health(settings: AppSettings) -> dict[str, object]:
 
     try:
         data = json.loads(report_path.read_text(encoding="utf-8"))
-    except Exception as exc:  # pragma: no cover - defensive
+    except (OSError, json.JSONDecodeError) as exc:  # pragma: no cover - defensive
         info.update({"status": "invalid", "error": str(exc)})
         return info
 
@@ -840,7 +854,7 @@ def _audit_health(settings: AppSettings) -> dict[str, object]:
     try:
         with sqlite3.connect(audit_path) as conn:
             conn.execute("SELECT 1")
-    except Exception as exc:  # pragma: no cover - defensive
+    except sqlite3.Error as exc:  # pragma: no cover - defensive
         info.update({"status": "error", "error": str(exc)})
         return info
 

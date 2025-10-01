@@ -18,6 +18,7 @@ import yaml
 from gateway.mcp.backup import trigger_backup
 from gateway.mcp.client import GatewayClient
 from gateway.mcp.config import MCPSettings
+from gateway.mcp.exceptions import GatewayRequestError
 from gateway.mcp.ingest import latest_ingest_status, trigger_ingest
 
 from .models import Capture, Condition, Recipe, WaitConfig
@@ -52,6 +53,7 @@ class RecipeRunResult:
     outputs: dict[str, object] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, object]:
+        """Serialise the run result to a JSON-friendly mapping."""
         return {
             "recipe": self.recipe.name,
             "started_at": self.started_at,
@@ -76,14 +78,17 @@ class ToolExecutor:
     """Abstract tool executor interface."""
 
     async def call(self, tool: str, params: dict[str, object]) -> object:  # pragma: no cover - interface
+        """Invoke a named tool with the given parameters."""
         raise NotImplementedError
 
     async def __aenter__(self) -> ToolExecutor:  # pragma: no cover - interface
+        """Allow derived executors to perform async setup."""
         return self
 
     async def __aexit__(
         self, exc_type: type[BaseException] | None, exc: BaseException | None, tb: TracebackType | None
     ) -> None:  # pragma: no cover - interface
+        """Allow derived executors to perform async teardown."""
         return None
 
 
@@ -96,17 +101,20 @@ class GatewayToolExecutor(ToolExecutor):
         self._client: GatewayClient | None = None
 
     async def __aenter__(self) -> GatewayToolExecutor:
+        """Open the shared gateway client for tool execution."""
         self._client_manager = GatewayClient(self.settings)
         self._client = await self._client_manager.__aenter__()
         return self
 
     async def __aexit__(self, exc_type: type[BaseException] | None, exc: BaseException | None, tb: TracebackType | None) -> None:
+        """Close the shared gateway client when execution completes."""
         if self._client_manager is not None:
             await self._client_manager.__aexit__(exc_type, exc, tb)
         self._client = None
         self._client_manager = None
 
     async def call(self, tool: str, params: dict[str, object]) -> object:
+        """Route tool invocations to the appropriate gateway operation."""
         if self._client is None:
             raise RuntimeError("Gateway client not initialised")
         client = self._client
@@ -187,8 +195,6 @@ def _resolve_template(value: object, context: Mapping[str, object]) -> object:
             return str(resolved)
 
         if "${" in value:
-            import re
-
             return re.sub(r"\$\{([^}]+)\}", replace, value)
     if isinstance(value, list):
         return [_resolve_template(item, context) for item in value]
@@ -288,6 +294,10 @@ class RecipeRunner:
         self.executor_factory = executor_factory or (lambda: GatewayToolExecutor(settings))
         self.audit_path = audit_path or settings.state_path / "audit" / "recipes.log"
 
+    def make_executor(self) -> ToolExecutor:
+        """Instantiate a tool executor using the configured factory."""
+        return self.executor_factory()
+
     async def run(
         self,
         recipe: Recipe,
@@ -295,6 +305,7 @@ class RecipeRunner:
         variables: dict[str, object] | None = None,
         dry_run: bool = False,
     ) -> RecipeRunResult:
+        """Execute a recipe end-to-end and return the collected results."""
         variables = variables or {}
         vars_store: dict[str, object] = {**recipe.variables, **variables}
         steps_store: dict[str, object] = {}
@@ -359,7 +370,26 @@ class RecipeRunner:
                             captures_store[capture.name] = _compute_capture(result_payload, capture)
                     duration = time.time() - step_start
                     step_results.append(StepResult(step_id=step.id, status="success", duration_seconds=duration, result=result_payload))
-                except Exception as exc:  # pragma: no cover - failure path
+                except RecipeExecutionError as exc:  # pragma: no cover - failure path
+                    duration = time.time() - step_start
+                    logger.error("[recipe] step %s failed: %s", step.id, exc)
+                    step_results.append(
+                        StepResult(
+                            step_id=step.id,
+                            status="error",
+                            duration_seconds=duration,
+                            message=str(exc),
+                        )
+                    )
+                    success = False
+                    break
+                except (
+                    GatewayRequestError,
+                    ValueError,
+                    KeyError,
+                    RuntimeError,
+                    asyncio.TimeoutError,
+                ) as exc:  # pragma: no cover - failure path
                     duration = time.time() - step_start
                     logger.error("[recipe] step %s failed: %s", step.id, exc)
                     step_results.append(
@@ -404,6 +434,7 @@ class RecipeRunner:
         context: dict[str, object],
         wait: WaitConfig,
     ) -> object:
+        """Repeatedly invoke a wait tool until the condition passes or times out."""
         deadline = time.time() + wait.timeout_seconds
         attempt = 0
         params_obj = _resolve_template(wait.params, context)
@@ -421,6 +452,7 @@ class RecipeRunner:
                 await asyncio.sleep(wait.interval_seconds)
 
     def _append_audit(self, result: RecipeRunResult, context: dict[str, object]) -> None:
+        """Append the recipe outcome to the on-disk audit log."""
         try:
             self.audit_path.parent.mkdir(parents=True, exist_ok=True)
             record = {
@@ -441,18 +473,20 @@ class RecipeRunner:
             }
             with self.audit_path.open("a", encoding="utf-8") as fp:
                 fp.write(json.dumps(record) + "\n")
-        except Exception as exc:  # pragma: no cover - best effort logging
+        except (OSError, RuntimeError, TypeError, ValueError) as exc:  # pragma: no cover - best effort logging
             logger.warning("Failed to append recipe audit log: %s", exc)
 
 
 @asynccontextmanager
 async def _executor_cm(factory: Callable[[], ToolExecutor]) -> AsyncIterator[ToolExecutor]:
+    """Context manager that yields a tool executor from the provided factory."""
     executor = factory()
     async with executor as exec_instance:
         yield exec_instance
 
 
 def load_recipe(path: Path) -> Recipe:
+    """Load a recipe file from disk and validate the schema."""
     with path.open("r", encoding="utf-8") as fp:
         data = yaml.safe_load(fp)
     if not isinstance(data, dict):
@@ -461,12 +495,14 @@ def load_recipe(path: Path) -> Recipe:
 
 
 def _ensure_object_map(value: object, label: str) -> dict[str, object]:
+    """Ensure template resolution returned a mapping, raising otherwise."""
     if isinstance(value, dict):
         return {str(key): val for key, val in value.items()}
     raise RecipeExecutionError(f"Resolved parameters for '{label}' must be a mapping; got {type(value).__name__}")
 
 
 def _require_str(params: Mapping[str, object], key: str) -> str:
+    """Fetch a required string parameter from a mapping of arguments."""
     candidate = params.get(key)
     result = _coerce_optional_str(candidate)
     if result is None or not result:
@@ -475,6 +511,7 @@ def _require_str(params: Mapping[str, object], key: str) -> str:
 
 
 def _coerce_optional_str(value: object | None) -> str | None:
+    """Convert optional string-like values to trimmed strings."""
     if isinstance(value, str):
         text = value.strip()
         return text if text else None
@@ -482,6 +519,7 @@ def _coerce_optional_str(value: object | None) -> str | None:
 
 
 def _coerce_positive_int(value: object | None, *, default: int) -> int:
+    """Convert inputs to a positive integer, falling back to the default."""
     numeric = _coerce_int(value)
     if numeric is None:
         return max(1, default)
@@ -489,6 +527,7 @@ def _coerce_positive_int(value: object | None, *, default: int) -> int:
 
 
 def _coerce_int(value: object | None) -> int | None:
+    """Coerce common primitive values to an integer when possible."""
     if isinstance(value, bool):
         return int(value)
     if isinstance(value, int):
@@ -507,6 +546,7 @@ def _coerce_int(value: object | None) -> int | None:
 
 
 def _coerce_bool(value: object | None, *, default: bool | None = None) -> bool | None:
+    """Interpret truthy/falsey string values and return a boolean."""
     if isinstance(value, bool):
         return value
     if isinstance(value, str):
@@ -519,6 +559,7 @@ def _coerce_bool(value: object | None, *, default: bool | None = None) -> bool |
 
 
 def list_recipes(recipes_dir: Path) -> list[Path]:
+    """Return all recipe definition files within the directory."""
     return sorted(recipes_dir.glob("*.yml")) + sorted(recipes_dir.glob("*.yaml"))
 
 

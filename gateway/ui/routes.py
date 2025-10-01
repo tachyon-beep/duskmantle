@@ -102,6 +102,7 @@ async def ui_lifecycle(request: Request) -> HTMLResponse:
 async def ui_lifecycle_report(request: Request) -> JSONResponse:
     """Serve the lifecycle report JSON while recording UI metrics."""
 
+    del request
     UI_EVENTS_TOTAL.labels(event="lifecycle_download").inc()
     settings = get_settings()
     if not settings.lifecycle_report_enabled:

@@ -1,3 +1,5 @@
+"""Helpers for writing chunk embeddings into Qdrant collections."""
+
 from __future__ import annotations
 
 import logging
@@ -13,16 +15,17 @@ logger = logging.getLogger(__name__)
 
 
 class QdrantWriter:
+    """Lightweight adapter around the Qdrant client."""
+
     def __init__(self, client: QdrantClient, collection_name: str) -> None:
         self.client = client
         self.collection_name = collection_name
 
     def ensure_collection(self, vector_size: int) -> None:
-        try:
-            self.client.get_collection(self.collection_name)
+        """Ensure the collection exists with the desired vector dimensionality."""
+        if self.client.collection_exists(self.collection_name):
             return
-        except Exception:  # pragma: no cover - network call
-            logger.info("Creating Qdrant collection %s", self.collection_name)
+        logger.info("Creating Qdrant collection %s", self.collection_name)
         vectors_config = qmodels.VectorParams(size=vector_size, distance=qmodels.Distance.COSINE)
         self.client.recreate_collection(
             collection_name=self.collection_name,
@@ -31,6 +34,7 @@ class QdrantWriter:
         )
 
     def upsert_chunks(self, chunks: Iterable[ChunkEmbedding]) -> None:
+        """Upsert chunk embeddings into the configured collection."""
         points = []
         for item in chunks:
             payload = {**item.chunk.metadata, "chunk_id": item.chunk.chunk_id, "text": item.chunk.text}
@@ -48,6 +52,7 @@ class QdrantWriter:
         logger.info("Upserted %d chunk(s) into Qdrant", len(points))
 
     def delete_artifact(self, artifact_path: str) -> None:
+        """Delete all points belonging to an artifact path."""
         filter_ = qmodels.Filter(
             must=[
                 qmodels.FieldCondition(

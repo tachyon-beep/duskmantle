@@ -1,3 +1,5 @@
+"""SQLite-backed audit log utilities for ingestion runs."""
+
 from __future__ import annotations
 
 import sqlite3
@@ -44,13 +46,17 @@ INSERT INTO ingestion_runs (
 
 
 class AuditLogger:
+    """Persist and retrieve ingestion run metadata in SQLite."""
+
     def __init__(self, db_path: Path) -> None:
+        """Initialise the audit database and ensure the schema exists."""
         self.db_path = db_path
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(_SCHEMA)
 
     def record(self, result: IngestionResult) -> None:
+        """Insert a new ingestion run entry."""
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
                 _INSERT_RUN,
@@ -69,6 +75,7 @@ class AuditLogger:
             conn.commit()
 
     def recent(self, limit: int = 20) -> list[dict[str, Any]]:
+        """Return the most recent ingestion runs up to ``limit`` entries."""
         with sqlite3.connect(self.db_path) as conn:
             rows = conn.execute(_SELECT_RECENT, (limit,)).fetchall()
         columns = [

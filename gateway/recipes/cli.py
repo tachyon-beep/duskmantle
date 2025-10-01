@@ -1,3 +1,5 @@
+"""Command-line utilities for inspecting and running MCP recipes."""
+
 from __future__ import annotations
 
 import argparse
@@ -11,6 +13,8 @@ from typing import Any
 from rich.console import Console
 from rich.table import Table
 
+from pydantic import ValidationError
+
 from gateway.mcp.config import MCPSettings
 
 from .executor import GatewayToolExecutor, RecipeExecutionError, RecipeRunner, list_recipes, load_recipe
@@ -23,6 +27,7 @@ DEFAULT_RECIPES_DIR = Path(__file__).resolve().parents[2] / "recipes"
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Construct the top-level argument parser for the CLI."""
     parser = argparse.ArgumentParser(description="Run knowledge recipes via MCP tools")
     parser.add_argument(
         "--recipes-dir",
@@ -69,6 +74,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def load_recipe_by_name(recipes_dir: Path, name: str) -> Recipe:
+    """Load a recipe by stem name from the given directory."""
     for candidate in list_recipes(recipes_dir):
         if candidate.stem == name:
             return load_recipe(candidate)
@@ -76,6 +82,7 @@ def load_recipe_by_name(recipes_dir: Path, name: str) -> Recipe:
 
 
 def parse_variables(pairs: list[str]) -> dict[str, str]:
+    """Parse ``key=value`` overrides supplied on the command line."""
     variables: dict[str, str] = {}
     for item in pairs:
         if "=" not in item:
@@ -86,6 +93,7 @@ def parse_variables(pairs: list[str]) -> dict[str, str]:
 
 
 def command_list(args: argparse.Namespace) -> None:
+    """List recipes available in the configured directory."""
     recipes = list_recipes(args.recipes_dir)
     if args.json:
         console.print_json(data=[path.stem for path in recipes])
@@ -99,6 +107,7 @@ def command_list(args: argparse.Namespace) -> None:
 
 
 def command_show(args: argparse.Namespace) -> None:
+    """Print a single recipe definition in JSON form."""
     recipe = load_recipe_by_name(args.recipes_dir, args.name)
     if args.json:
         console.print_json(data=recipe.model_dump())
@@ -107,6 +116,7 @@ def command_show(args: argparse.Namespace) -> None:
 
 
 def command_validate(args: argparse.Namespace) -> None:
+    """Validate one or all recipes and report the outcome."""
     paths = list_recipes(args.recipes_dir)
     if args.name:
         paths = [p for p in paths if p.stem == args.name]
@@ -117,7 +127,7 @@ def command_validate(args: argparse.Namespace) -> None:
         try:
             load_recipe(path)
             results.append({"name": path.stem, "status": "ok"})
-        except Exception as exc:  # pragma: no cover - error path
+        except (ValueError, FileNotFoundError, ValidationError) as exc:  # pragma: no cover - error path
             results.append({"name": path.stem, "status": "error", "message": str(exc)})
     if args.json:
         console.print_json(data=results)
@@ -132,13 +142,15 @@ def command_validate(args: argparse.Namespace) -> None:
 
 
 def recipe_executor_factory(settings: MCPSettings) -> Callable[[], GatewayToolExecutor]:
+    """Create a factory that instantiates a gateway-backed tool executor."""
     return lambda: GatewayToolExecutor(settings)
 
 
 def command_run(args: argparse.Namespace, settings: MCPSettings) -> None:
+    """Execute a recipe and render the results."""
     recipe = load_recipe_by_name(args.recipes_dir, args.name)
     variables_raw = parse_variables(args.var)
-    variables: dict[str, object] = {key: value for key, value in variables_raw.items()}
+    variables: dict[str, object] = dict(variables_raw)
     runner = RecipeRunner(
         settings,
         executor_factory=recipe_executor_factory(settings),
@@ -164,6 +176,7 @@ def command_run(args: argparse.Namespace, settings: MCPSettings) -> None:
 
 
 def _render_run_result(result: dict[str, Any]) -> None:
+    """Pretty-print a recipe execution result in tabular form."""
     console.print(f"[bold]Recipe:[/bold] {result['recipe']}")
     console.print(f"[bold]Status:[/bold] {'success' if result['success'] else 'failure'}")
     steps_table = Table(title="Steps", show_lines=False)
@@ -183,6 +196,7 @@ def _render_run_result(result: dict[str, Any]) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
+    """Entry point for the recipes CLI."""
     parser = build_parser()
     args = parser.parse_args(argv)
 

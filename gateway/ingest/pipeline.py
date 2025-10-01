@@ -1,3 +1,5 @@
+"""Pipeline orchestrations for ingestion, chunking, and persistence."""
+
 from __future__ import annotations
 
 import hashlib
@@ -36,6 +38,8 @@ logger = logging.getLogger(__name__)
 
 @dataclass(slots=True)
 class IngestionConfig:
+    """Configuration options controlling ingestion behaviour."""
+
     repo_root: Path
     dry_run: bool = False
     chunk_window: int = 1000
@@ -60,6 +64,8 @@ class IngestionConfig:
 
 @dataclass(slots=True)
 class IngestionResult:
+    """Summary of outputs emitted by an ingestion run."""
+
     run_id: str
     profile: str
     started_at: float
@@ -73,6 +79,8 @@ class IngestionResult:
 
 
 class IngestionPipeline:
+    """Execute the ingestion workflow end-to-end."""
+
     def __init__(
         self,
         qdrant_writer: QdrantWriter | None,

@@ -1,3 +1,5 @@
+"""Utilities for writing ingestion coverage reports."""
+
 from __future__ import annotations
 
 import json
@@ -23,6 +25,7 @@ def write_coverage_report(
     output_path: Path,
     history_limit: int | None = None,
 ) -> None:
+    """Persist coverage metrics derived from an ingestion result."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
     missing = [detail for detail in result.artifacts if detail.get("chunk_count", 0) == 0]
     removed = list(result.removed_artifacts)
@@ -62,6 +65,7 @@ def write_coverage_report(
 
 
 def _write_history_snapshot(payload: dict[str, object], reports_dir: Path, history_limit: int) -> list[Path]:
+    """Write coverage history snapshots and prune old entries."""
     history_dir = reports_dir / "history"
     history_dir.mkdir(parents=True, exist_ok=True)
 

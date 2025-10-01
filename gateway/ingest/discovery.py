@@ -242,7 +242,7 @@ def _collect_pyproject_prefixes(root: Path, prefixes: set[tuple[str, ...]]) -> N
 def _load_pyproject(path: Path) -> Mapping[str, Any] | dict[str, Any]:
     try:
         return tomllib.loads(path.read_text(encoding="utf-8"))
-    except Exception as exc:  # pragma: no cover - defensive
+    except (OSError, tomllib.TOMLDecodeError) as exc:  # pragma: no cover - defensive
         logger.debug("Failed to parse pyproject.toml: %s", exc)
         return {}
 

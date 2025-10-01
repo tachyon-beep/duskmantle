@@ -10,6 +10,7 @@ from contextlib import suppress
 from pathlib import Path
 
 from apscheduler.schedulers.background import BackgroundScheduler  # type: ignore[import-untyped]
+from apscheduler.schedulers.base import SchedulerNotRunningError  # type: ignore[import-untyped]
 from apscheduler.triggers.cron import CronTrigger  # type: ignore[import-untyped]
 from apscheduler.triggers.interval import IntervalTrigger  # type: ignore[import-untyped]
 from filelock import FileLock, Timeout
@@ -62,7 +63,7 @@ class IngestionScheduler:
     def shutdown(self) -> None:
         """Stop the scheduler and release APScheduler resources."""
         if self._started:
-            with suppress(Exception):
+            with suppress(SchedulerNotRunningError):
                 self.scheduler.shutdown(wait=False)
             self._started = False
 
@@ -112,11 +113,11 @@ class IngestionScheduler:
                 SCHEDULER_LAST_SUCCESS_TIMESTAMP.set(time.time())
             else:
                 SCHEDULER_RUNS_TOTAL.labels(result="failure").inc()
-        except Exception as exc:  # pragma: no cover - defensive
+        except (RuntimeError, subprocess.SubprocessError, OSError, ValueError) as exc:  # pragma: no cover - defensive
             logger.exception("Scheduled ingestion failed", extra={"error": str(exc)})
             SCHEDULER_RUNS_TOTAL.labels(result="failure").inc()
         finally:
-            with suppress(Exception):
+            with suppress(RuntimeError):
                 lock.release()
 
     def _read_last_head(self) -> str | None:
@@ -141,7 +142,7 @@ def _current_repo_head(repo_root: Path) -> str | None:
             ).strip()
             or None
         )
-    except Exception:
+    except (subprocess.CalledProcessError, OSError):
         return None
 
 

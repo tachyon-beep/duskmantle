@@ -1,3 +1,5 @@
+"""Write ingestion artifacts and chunks into Neo4j."""
+
 from __future__ import annotations
 
 import logging
@@ -11,11 +13,15 @@ logger = logging.getLogger(__name__)
 
 
 class Neo4jWriter:
+    """Persist artifacts and derived data into a Neo4j database."""
+
     def __init__(self, driver: Driver, database: str = "knowledge") -> None:
+        """Initialise the writer with a driver and target database."""
         self.driver = driver
         self.database = database
 
     def ensure_constraints(self) -> None:
+        """Create required uniqueness constraints if they do not exist."""
         cypher_statements = [
             "CREATE CONSTRAINT IF NOT EXISTS FOR (s:Subsystem) REQUIRE s.name IS UNIQUE",
             "CREATE CONSTRAINT IF NOT EXISTS FOR (f:SourceFile) REQUIRE f.path IS UNIQUE",
@@ -31,6 +37,7 @@ class Neo4jWriter:
                 session.run(stmt)
 
     def sync_artifact(self, artifact: Artifact) -> None:
+        """Upsert the artifact node and related subsystem relationships."""
         label = _artifact_label(artifact)
         metadata = artifact.extra_metadata or {}
         subsystem_meta = metadata.get("subsystem_metadata")
@@ -116,6 +123,7 @@ class Neo4jWriter:
                 )
 
     def sync_chunks(self, chunk_embeddings: Iterable[ChunkEmbedding]) -> None:
+        """Upsert chunk nodes and connect them to their owning artifacts."""
         with self.driver.session(database=self.database) as session:
             for item in chunk_embeddings:
                 artifact_type = item.chunk.metadata.get("artifact_type", "code")
@@ -150,6 +158,7 @@ class Neo4jWriter:
 
 
 def _artifact_label(artifact: Artifact) -> str:
+    """Map artifact types to Neo4j labels."""
     mapping = {
         "doc": "DesignDoc",
         "code": "SourceFile",
@@ -161,6 +170,7 @@ def _artifact_label(artifact: Artifact) -> str:
 
 
 def _label_for_type(artifact_type: str) -> str:
+    """Return the default label for the given artifact type."""
     return {
         "doc": "DesignDoc",
         "code": "SourceFile",
@@ -171,6 +181,7 @@ def _label_for_type(artifact_type: str) -> str:
 
 
 def _relationship_for_label(label: str) -> str | None:
+    """Return the relationship used to link artifacts to subsystems."""
     return {
         "SourceFile": "BELONGS_TO",
         "DesignDoc": "DESCRIBES",

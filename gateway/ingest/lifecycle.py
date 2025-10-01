@@ -1,3 +1,5 @@
+"""Lifecycle reporting helpers for ingestion outputs."""
+
 from __future__ import annotations
 
 import json
@@ -29,6 +31,8 @@ SECONDS_PER_DAY = 60 * 60 * 24
 
 @dataclass(slots=True)
 class LifecycleConfig:
+    """Configuration values that influence lifecycle report generation."""
+
     output_path: Path
     stale_days: int
     graph_enabled: bool
@@ -101,10 +105,12 @@ def write_lifecycle_report(
 
 
 def build_graph_service(*, driver: Driver, database: str, cache_ttl: float) -> GraphService:
+    """Construct a graph service with sensible defaults for lifecycle usage."""
     return get_graph_service(driver, database, cache_ttl=cache_ttl, cache_max_entries=256)
 
 
 def summarize_lifecycle(payload: dict[str, Any]) -> dict[str, Any]:
+    """Produce a summarized view of lifecycle data for reporting."""
     counts = _lifecycle_counts(
         isolated=payload.get("isolated") or {},
         stale_docs=payload.get("stale_docs") or [],
@@ -121,6 +127,7 @@ def summarize_lifecycle(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _fetch_isolated_nodes(graph_service: GraphService | None) -> dict[str, list[dict[str, Any]]]:
+    """Collect isolated graph nodes grouped by label."""
     if graph_service is None:
         return {}
 
@@ -149,6 +156,7 @@ def _fetch_isolated_nodes(graph_service: GraphService | None) -> dict[str, list[
 
 
 def _find_stale_docs(artifacts: Iterable[dict[str, Any]], stale_days: int, now: float) -> list[dict[str, Any]]:
+    """Identify design documents that are older than the stale threshold."""
     cutoff = now - max(0, stale_days) * SECONDS_PER_DAY
     stale: list[dict[str, Any]] = []
     for artifact in artifacts:
@@ -157,7 +165,7 @@ def _find_stale_docs(artifacts: Iterable[dict[str, Any]], stale_days: int, now: 
         ts = _coerce_float(artifact.get("git_timestamp"))
         if ts is None:
             continue
-        if ts > 0 and ts < cutoff:
+        if 0 < ts < cutoff:
             stale.append(
                 {
                     "path": artifact.get("path"),
@@ -169,6 +177,7 @@ def _find_stale_docs(artifacts: Iterable[dict[str, Any]], stale_days: int, now: 
 
 
 def _find_missing_tests(artifacts: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Determine subsystems lacking corresponding tests."""
     per_subsystem: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     for artifact in artifacts:
         subsystem = artifact.get("subsystem") or "unknown"
@@ -191,6 +200,7 @@ def _find_missing_tests(artifacts: Iterable[dict[str, Any]]) -> list[dict[str, A
 
 
 def _write_history_snapshot(payload: dict[str, Any], reports_dir: Path, history_limit: int) -> list[Path]:
+    """Write lifecycle history to disk while enforcing retention."""
     history_dir = reports_dir / "lifecycle_history"
     history_dir.mkdir(parents=True, exist_ok=True)
 
@@ -209,6 +219,7 @@ def _write_history_snapshot(payload: dict[str, Any], reports_dir: Path, history_
 
 
 def _coerce_float(value: object) -> float | None:
+    """Coerce numeric-like values to float when possible."""
     try:
         return float(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):
@@ -222,6 +233,7 @@ def _lifecycle_counts(
     missing_tests: list[dict[str, Any]],
     removed: list[dict[str, Any]],
 ) -> dict[str, int]:
+    """Aggregate lifecycle metrics into counters."""
     isolated_count = sum(len(entries) for entries in isolated.values())
     return {
         "stale_docs": len(stale_docs),

@@ -1,3 +1,5 @@
+"""Pydantic models describing MCP recipe configuration."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -46,6 +48,7 @@ class RecipeStep(BaseModel):
 
     @model_validator(mode="after")
     def validate_mode(self) -> RecipeStep:
+        """Ensure mutually exclusive tool/wait configuration is respected."""
         if self.tool is None and self.wait is None:
             raise ValueError("Step must define either 'tool' or 'wait'")
         if self.tool is not None and self.wait is not None:
@@ -65,6 +68,7 @@ class Recipe(BaseModel):
 
     @model_validator(mode="after")
     def ensure_unique_step_ids(self) -> Recipe:
+        """Verify step identifiers are unique within the recipe."""
         seen: set[str] = set()
         for step in self.steps:
             if step.id in seen:

@@ -1,3 +1,5 @@
+"""Command-line helpers for triggering and inspecting ingestion runs."""
+
 from __future__ import annotations
 
 import argparse
@@ -19,6 +21,7 @@ console = Console()
 
 
 def _ensure_maintainer_scope(settings: AppSettings) -> None:
+    """Abort execution if maintainer credentials are missing during auth."""
     if settings.auth_enabled and not settings.maintainer_token:
         raise SystemExit("Maintainer token (KM_ADMIN_TOKEN) required when auth is enabled")
 
@@ -128,8 +131,8 @@ def audit_history(
         settings = get_settings()
     _ensure_maintainer_scope(settings)
     audit_path = settings.state_path / "audit" / "audit.db"
-    logger = AuditLogger(audit_path)
-    entries = logger.recent(limit=limit)
+    audit_logger = AuditLogger(audit_path)
+    entries = audit_logger.recent(limit=limit)
 
     if output_json:
         console.print_json(data=entries)
@@ -143,6 +146,7 @@ def audit_history(
 
 
 def _render_audit_table(entries: Iterable[dict[str, object]]) -> Table:
+    """Render recent audit entries as a Rich table."""
     table = Table(title="Ingestion Audit History", show_lines=False)
     table.add_column("Run ID", overflow="fold")
     table.add_column("Profile")
@@ -174,6 +178,7 @@ def _render_audit_table(entries: Iterable[dict[str, object]]) -> Table:
 
 
 def _format_timestamp(raw: object) -> str:
+    """Format timestamps from the audit ledger for display."""
     numeric = _coerce_float(raw)
     if numeric is None:
         return "-"
@@ -181,6 +186,7 @@ def _format_timestamp(raw: object) -> str:
 
 
 def _coerce_int(value: object) -> int | None:
+    """Attempt to interpret the value as an integer."""
     if isinstance(value, (int, float)):
         return int(value)
     if isinstance(value, str):
@@ -192,6 +198,7 @@ def _coerce_int(value: object) -> int | None:
 
 
 def _coerce_float(value: object) -> float | None:
+    """Attempt to interpret the value as a floating point number."""
     if isinstance(value, (int, float)):
         return float(value)
     if isinstance(value, str):
