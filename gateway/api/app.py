@@ -1,3 +1,5 @@
+"""Primary FastAPI application wiring for the knowledge gateway."""
+
 from __future__ import annotations
 
 import json

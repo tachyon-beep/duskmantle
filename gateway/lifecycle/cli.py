@@ -1,3 +1,5 @@
+"""Command-line utilities for inspecting lifecycle health reports."""
+
 from __future__ import annotations
 
 import argparse
@@ -16,6 +18,7 @@ console = Console()
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Create the CLI argument parser shared across entrypoints."""
     parser = argparse.ArgumentParser(description="Lifecycle health reporting")
     parser.add_argument(
         "--json",
@@ -31,6 +34,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def render_table(payload: dict[str, object]) -> None:
+    """Pretty-print the lifecycle report payload using Rich tables."""
     generated = payload.get("generated_at_iso", "-")
     header = f"Lifecycle Report ({generated})"
     console.print(f"[bold]{header}[/bold]")
@@ -41,6 +45,7 @@ def render_table(payload: dict[str, object]) -> None:
 
 
 def _render_isolated_nodes(value: object) -> None:
+    """Render the isolated node section when data is present."""
     isolated = value if isinstance(value, Mapping) else {}
     if not isolated:
         console.print("No isolated nodes detected.", style="green")
@@ -56,6 +61,7 @@ def _render_isolated_nodes(value: object) -> None:
 
 
 def _render_stale_docs(value: object) -> None:
+    """Render the stale documentation summary rows."""
     docs = value if isinstance(value, list) else []
     rows = [entry for entry in docs if isinstance(entry, Mapping)]
     if not rows:
@@ -76,6 +82,7 @@ def _render_stale_docs(value: object) -> None:
 
 
 def _render_missing_tests(value: object) -> None:
+    """Render subsystems missing tests in a tabular format."""
     candidates = value if isinstance(value, list) else []
     rows = [entry for entry in candidates if isinstance(entry, Mapping)]
     if not rows:
@@ -96,12 +103,14 @@ def _render_missing_tests(value: object) -> None:
 
 
 def _format_timestamp(value: object) -> str:
+    """Convert a timestamp-like input into an ISO formatted string."""
     if isinstance(value, (int, float)) and value > 0:
         return datetime.fromtimestamp(value).isoformat(sep=" ", timespec="seconds")
     return "-"
 
 
 def main(argv: list[str] | None = None) -> None:
+    """CLI entry point for lifecycle reporting."""
     configure_logging()
     settings = get_settings()
     configure_tracing(None, settings)

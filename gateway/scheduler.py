@@ -1,3 +1,5 @@
+"""Background scheduler that drives periodic ingestion runs."""
+
 from __future__ import annotations
 
 import logging
@@ -20,7 +22,10 @@ logger = logging.getLogger(__name__)
 
 
 class IngestionScheduler:
+    """APScheduler wrapper that coordinates repo-aware ingestion jobs."""
+
     def __init__(self, settings: AppSettings) -> None:
+        """Initialise scheduler state and ensure the scratch directory exists."""
         self.settings = settings
         self.scheduler = BackgroundScheduler(timezone="UTC")
         self._started = False
@@ -30,6 +35,7 @@ class IngestionScheduler:
         self._last_head_path = self._state_dir / "last_repo_head.txt"
 
     def start(self) -> None:
+        """Register the ingestion job and begin scheduling if enabled."""
         if self._started or not self.settings.scheduler_enabled:
             return
         if self.settings.auth_enabled and not self.settings.maintainer_token:
@@ -54,12 +60,14 @@ class IngestionScheduler:
         logger.info("Scheduler started", extra={"trigger": trigger_summary})
 
     def shutdown(self) -> None:
+        """Stop the scheduler and release APScheduler resources."""
         if self._started:
             with suppress(Exception):
                 self.scheduler.shutdown(wait=False)
             self._started = False
 
     def _run_ingestion(self) -> None:
+        """Execute a single ingestion cycle, guarding with a file lock."""
         lock = FileLock(str(self._lock_path))
         try:
             try:
@@ -122,6 +130,7 @@ class IngestionScheduler:
 
 
 def _current_repo_head(repo_root: Path) -> str | None:
+    """Return the git HEAD sha for the repo, or ``None`` when unavailable."""
     try:
         return (
             subprocess.check_output(
@@ -137,6 +146,7 @@ def _current_repo_head(repo_root: Path) -> str | None:
 
 
 def _build_trigger(config: Mapping[str, object]) -> CronTrigger | IntervalTrigger:
+    """Construct the APScheduler trigger based on user configuration."""
     trigger_type = config.get("type")
     if trigger_type == "cron":
         expression = str(config.get("expression", "")).strip()
@@ -151,6 +161,7 @@ def _build_trigger(config: Mapping[str, object]) -> CronTrigger | IntervalTrigge
 
 
 def _describe_trigger(config: Mapping[str, object]) -> str:
+    """Provide a human readable summary of the configured trigger."""
     if config.get("type") == "cron":
         return f"cron:{config.get('expression')}"
     if config.get("type") == "interval":
@@ -159,6 +170,7 @@ def _describe_trigger(config: Mapping[str, object]) -> str:
 
 
 def _coerce_positive_int(value: object, *, default: int) -> int:
+    """Best-effort conversion to a positive integer with sane defaults."""
     numeric: int
     if isinstance(value, bool):
         numeric = int(value)

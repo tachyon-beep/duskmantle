@@ -1,3 +1,5 @@
+"""Recipe execution layer for automating MCP-driven workflows."""
+
 from __future__ import annotations
 
 import asyncio
@@ -29,6 +31,8 @@ class RecipeExecutionError(RuntimeError):
 
 @dataclass
 class StepResult:
+    """Lightweight representation of a single recipe step outcome."""
+
     step_id: str
     status: str
     duration_seconds: float
@@ -38,6 +42,8 @@ class StepResult:
 
 @dataclass
 class RecipeRunResult:
+    """Aggregate outcome for a recipe execution, including captured outputs."""
+
     recipe: Recipe
     started_at: float
     finished_at: float

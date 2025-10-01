@@ -1,3 +1,5 @@
+"""UI router exposing static assets and HTML entry points."""
+
 from __future__ import annotations
 
 import json
