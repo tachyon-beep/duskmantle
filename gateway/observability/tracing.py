@@ -1,3 +1,5 @@
+"""Tracing helpers for wiring OpenTelemetry exporters."""
+
 from __future__ import annotations
 
 from fastapi import FastAPI
@@ -45,6 +47,7 @@ def configure_tracing(app: FastAPI | None, settings: AppSettings) -> None:
 
 
 def _select_exporter(settings: AppSettings) -> SpanExporter:
+    """Choose the span exporter based on settings."""
     headers = _parse_headers(settings.tracing_headers)
     if settings.tracing_endpoint:
         return OTLPSpanExporter(endpoint=settings.tracing_endpoint, headers=headers)
@@ -55,6 +58,7 @@ def _select_exporter(settings: AppSettings) -> SpanExporter:
 
 
 def _parse_headers(header_string: str | None) -> dict[str, str] | None:
+    """Parse comma-separated OTLP header strings into a dict."""
     if not header_string:
         return None
 

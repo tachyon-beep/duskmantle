@@ -1,3 +1,5 @@
+"""Pydantic-based configuration for the knowledge gateway."""
+
 from __future__ import annotations
 
 from functools import lru_cache

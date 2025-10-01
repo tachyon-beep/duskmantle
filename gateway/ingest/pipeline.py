@@ -92,6 +92,7 @@ class IngestionPipeline:
         self.config = config
 
     def run(self) -> IngestionResult:
+        """Execute discovery, chunking, embedding, and persistence for a repo."""
         run_id = uuid.uuid4().hex
         profile = self.config.environment
         started = time.time()

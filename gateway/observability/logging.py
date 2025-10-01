@@ -1,3 +1,5 @@
+"""Structured logging configuration for the gateway."""
+
 from __future__ import annotations
 
 import logging
@@ -25,6 +27,7 @@ class IngestAwareFormatter(json.JsonFormatter):
 
 
 def configure_logging() -> None:
+    """Configure root logging with a JSON formatter once per process."""
     global _LOG_CONFIGURED
     if _LOG_CONFIGURED:
         return
