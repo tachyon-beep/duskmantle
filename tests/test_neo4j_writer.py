@@ -1,13 +1,20 @@
 from __future__ import annotations
 
+"""Unit tests for the lightweight Neo4j writer integration layer."""
+
 from pathlib import Path
 from types import SimpleNamespace, TracebackType
+from typing import Any, cast
+
+from neo4j import Driver
 
 from gateway.ingest.artifacts import Artifact, Chunk, ChunkEmbedding
 from gateway.ingest.neo4j_writer import Neo4jWriter
 
 
 class RecordingSession:
+    """Stubbed session that records Cypher queries for assertions."""
+
     def __init__(self) -> None:
         self.queries: list[tuple[str, dict[str, object]]] = []
 
@@ -28,21 +35,28 @@ class RecordingSession:
 
 
 class RecordingDriver:
+    """Stubbed driver that yields recording sessions."""
+
     def __init__(self) -> None:
         self.sessions: list[RecordingSession] = []
 
-    def session(self, database: str) -> RecordingSession:  # noqa: ARG002 - database unused
+    def session(self, *, database: str | None = None) -> RecordingSession:
+        """Return a new recording session; database name is ignored."""
+        _ = database  # pragma: no cover - value unused in stub
         session = RecordingSession()
         self.sessions.append(session)
         return session
 
 
 def _make_writer() -> tuple[Neo4jWriter, RecordingDriver]:
+    """Create a writer bound to a recording driver for inspection."""
+
     driver = RecordingDriver()
-    return Neo4jWriter(driver=driver, database="knowledge"), driver
+    return Neo4jWriter(driver=cast(Driver, driver), database="knowledge"), driver
 
 
 def test_sync_artifact_creates_domain_relationships() -> None:
+    """Artifacts trigger the expected Cypher commands and relationships."""
     writer, driver = _make_writer()
     artifact = Artifact(
         path=Path("src/project/nissa/handler.py"),
@@ -74,7 +88,11 @@ def test_sync_artifact_creates_domain_relationships() -> None:
 
     # Subsystem metadata applied
     subsystem_updates = [params for query, params in queries if "SET s += $properties" in query]
-    assert subsystem_updates and subsystem_updates[0]["properties"]["description"] == "Runtime orchestrator"
+    assert subsystem_updates
+    properties = subsystem_updates[0].get("properties")
+    assert isinstance(properties, dict)
+    description = cast(Any, properties.get("description"))
+    assert description == "Runtime orchestrator"
 
     # Dependency edge
     assert any("DEPENDS_ON" in query for query, _ in queries)
@@ -88,6 +106,7 @@ def test_sync_artifact_creates_domain_relationships() -> None:
 
 
 def test_sync_artifact_merges_subsystem_edge_once() -> None:
+    """Syncing an artifact does not duplicate the subsystem relationship."""
     writer, driver = _make_writer()
     artifact = Artifact(
         path=Path("src/project/nissa/handler.py"),
@@ -108,6 +127,7 @@ def test_sync_artifact_merges_subsystem_edge_once() -> None:
 
 
 def test_sync_chunks_links_chunk_to_artifact() -> None:
+    """Chunk synchronization creates chunk nodes and linking edges."""
     writer, driver = _make_writer()
     artifact = Artifact(
         path=Path("src/project/nissa/handler.py"),

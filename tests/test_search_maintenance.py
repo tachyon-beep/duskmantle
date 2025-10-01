@@ -10,12 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from gateway.search.maintenance import (
-    PruneOptions,
-    RedactOptions,
-    prune_feedback_log,
-    redact_dataset,
-)
+from gateway.search.maintenance import PruneOptions, RedactOptions, prune_feedback_log, redact_dataset
 
 
 def _write_events(path: Path, requests: list[tuple[str, datetime, list[dict[str, object]]]]) -> None:

@@ -42,6 +42,7 @@ _TELEMETRY_PATTERN = re.compile(r"Telemetry\w+")
 @dataclass(slots=True)
 class DiscoveryConfig:
     """Runtime knobs influencing which artifacts are discovered."""
+
     repo_root: Path
     include_patterns: tuple[str, ...] = (
         "docs",
