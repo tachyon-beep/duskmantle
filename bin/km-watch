@@ -57,12 +57,17 @@ def diff_fingerprints(old: dict[str, str], new: dict[str, str]) -> bool:
     return False
 
 
-def trigger_command(command: list[str], shell: bool = False) -> int:
-    printable = " ".join(command)
+def trigger_command(command: list[str] | str) -> int:
+    parts = _normalize_command(command)
+    printable = " ".join(parts)
     print("[km-watch] Change detected. Running:", printable)
-    if shell:
-        return subprocess.call(" ".join(command), shell=True)
-    return subprocess.call(command, shell=False)
+    return subprocess.call(parts, shell=False)
+
+
+def _normalize_command(command: list[str] | str) -> list[str]:
+    if isinstance(command, str):
+        return shlex.split(command)
+    return list(command)
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -103,7 +108,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--shell",
         action="store_true",
-        help="Execute the provided command via the shell",
+        help="Deprecated: commands are always run without a shell",
     )
     parser.add_argument(
         "--metrics-port",
@@ -143,9 +148,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command:
         if args.shell:
-            command = [args.command]
-        else:
-            command = shlex.split(args.command)
+            print("[km-watch] --shell is deprecated; running command without shell", file=sys.stderr)
+        command = shlex.split(args.command)
     else:
         cmd = [
             "docker",
@@ -159,12 +163,11 @@ def main(argv: list[str] | None = None) -> int:
         if not args.no_dummy:
             cmd.append("--dummy-embeddings")
         command = cmd
-        args.shell = False
 
     while True:
         current = compute_fingerprints(root)
         if diff_fingerprints(previous, current):
-            rc = trigger_command(command, shell=args.shell)
+            rc = trigger_command(command)
             if rc != 0:
                 print(
                     f"[km-watch] Ingest command exited with {rc}; retaining previous fingerprints",

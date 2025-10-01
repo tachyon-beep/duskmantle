@@ -302,6 +302,18 @@
       .catch((error) => onFailure(error));
   }
 
+  function downloadJsonPayload(payload, filename) {
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  }
+
   async function performSearch(formData) {
     const query = (formData.get('query') || '').toString().trim();
     const limit = Number(formData.get('limit') || 5);
@@ -856,8 +868,15 @@
 
   function renderLifecycleTables(payload) {
     const generatedAt = typeof payload?.generated_at === 'number' ? payload.generated_at : null;
-    const staleDocs = Array.isArray(payload?.stale_docs) ? payload.stale_docs : [];
-    renderListTable(elements.lifecycleStale, staleDocs, (row, doc) => {
+    renderStaleDocsTable(payload, generatedAt);
+    renderIsolatedNodesTable(payload);
+    renderMissingTestsTable(payload);
+    renderRemovedArtifactsTable(payload);
+  }
+
+  function renderStaleDocsTable(payload, generatedAt) {
+    const rows = Array.isArray(payload?.stale_docs) ? payload.stale_docs : [];
+    renderListTable(elements.lifecycleStale, rows, (row, doc) => {
       const path = doc?.path || doc?.properties?.path || doc?.id || 'Unknown';
       const subsystem = doc?.subsystem || doc?.metadata?.subsystem || doc?.properties?.subsystem || '—';
       let age = '—';
@@ -867,9 +886,11 @@
       }
       row.innerHTML = `<td>${path}</td><td>${subsystem}</td><td>${age}</td>`;
     }, 3);
+  }
 
-    const isolatedEntries = buildIsolatedEntries(payload?.isolated || {});
-    renderListTable(elements.lifecycleIsolated, isolatedEntries, (row, entry) => {
+  function renderIsolatedNodesTable(payload) {
+    const entries = buildIsolatedEntries(payload?.isolated || {});
+    renderListTable(elements.lifecycleIsolated, entries, (row, entry) => {
       const props = entry?.node?.properties || {};
       const label = props.name || props.title || entry?.node?.id || 'Node';
       const labels = Array.isArray(entry?.node?.labels) && entry.node.labels.length
@@ -877,9 +898,11 @@
         : entry?.label || '—';
       row.innerHTML = `<td>${label}</td><td>${labels}</td>`;
     }, 2);
+  }
 
-    const missingTests = Array.isArray(payload?.missing_tests) ? payload.missing_tests : [];
-    renderListTable(elements.lifecycleMissing, missingTests, (row, item) => {
+  function renderMissingTestsTable(payload) {
+    const rows = Array.isArray(payload?.missing_tests) ? payload.missing_tests : [];
+    renderListTable(elements.lifecycleMissing, rows, (row, item) => {
       if (typeof item === 'string') {
         row.innerHTML = `<td>${item}</td><td>—</td>`;
         return;
@@ -888,9 +911,11 @@
       const note = item?.note || item?.reason || 'Needs test coverage';
       row.innerHTML = `<td>${name}</td><td>${note}</td>`;
     }, 2);
+  }
 
-    const removedArtifacts = Array.isArray(payload?.removed_artifacts) ? payload.removed_artifacts : [];
-    renderListTable(elements.lifecycleRemoved, removedArtifacts, (row, item) => {
+  function renderRemovedArtifactsTable(payload) {
+    const rows = Array.isArray(payload?.removed_artifacts) ? payload.removed_artifacts : [];
+    renderListTable(elements.lifecycleRemoved, rows, (row, item) => {
       if (typeof item === 'string') {
         row.innerHTML = `<td>${item}</td><td>—</td>`;
         return;
@@ -1016,6 +1041,16 @@
   }
 
   function attachEventHandlers() {
+    attachModalHandlers();
+    attachTokenHandlers();
+    attachSearchHandlers();
+    attachSubsystemHandlers();
+    attachLifecycleHandlers();
+    attachRecipeHandlers();
+    attachPreferenceHandlers();
+  }
+
+  function attachModalHandlers() {
     elements.openTokens.forEach((button) => button.addEventListener('click', openModal));
     elements.closeTokens.forEach((button) => button.addEventListener('click', closeModal));
     scope.addEventListener('keydown', (event) => {
@@ -1023,7 +1058,9 @@
         closeModal();
       }
     });
+  }
 
+  function attachTokenHandlers() {
     if (elements.saveTokens) {
       elements.saveTokens.addEventListener('click', () => {
         state.readerToken = (elements.readerInput?.value || '').trim();
@@ -1047,13 +1084,14 @@
         updateStatus(t('tokens_cleared'));
       });
     }
+  }
 
+  function attachSearchHandlers() {
     const searchForm = document.getElementById('dm-search-form');
     if (searchForm) {
       searchForm.addEventListener('submit', (event) => {
         event.preventDefault();
-        const formData = new FormData(searchForm);
-        performSearch(formData);
+        performSearch(new FormData(searchForm));
       });
     }
 
@@ -1074,9 +1112,7 @@
         copyToClipboard(command, () => {
           updateStatus(t('search_copy_success'));
           recordUiEvent('search_copy_command');
-        }, () => {
-          updateStatus(t('search_copy_failure'));
-        });
+        }, () => updateStatus(t('search_copy_failure')));
       });
     }
 
@@ -1086,26 +1122,19 @@
           updateStatus(t('search_before_download'));
           return;
         }
-        const blob = new Blob([JSON.stringify(lastSearchPayload, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const anchor = document.createElement('a');
-        anchor.href = url;
-        anchor.download = `search-${Date.now()}.json`;
-        document.body.appendChild(anchor);
-        anchor.click();
-        anchor.remove();
-        URL.revokeObjectURL(url);
+        downloadJsonPayload(lastSearchPayload, `search-${Date.now()}.json`);
         updateStatus(t('search_download_success'));
         recordUiEvent('search_download');
       });
     }
+  }
 
+  function attachSubsystemHandlers() {
     const subsystemForm = document.getElementById('dm-subsystem-form');
     if (subsystemForm) {
       subsystemForm.addEventListener('submit', (event) => {
         event.preventDefault();
-        const formData = new FormData(subsystemForm);
-        loadSubsystem(formData);
+        loadSubsystem(new FormData(subsystemForm));
       });
     }
 
@@ -1127,9 +1156,7 @@
         copyToClipboard(command, () => {
           updateSubsystemStatus(t('subsystem_copy_success'));
           recordUiEvent('subsystem_copy_command');
-        }, () => {
-          updateSubsystemStatus(t('subsystem_copy_failure'));
-        });
+        }, () => updateSubsystemStatus(t('subsystem_copy_failure')));
       });
     }
 
@@ -1139,20 +1166,15 @@
           updateSubsystemStatus(t('subsystem_before_download'));
           return;
         }
-        const blob = new Blob([JSON.stringify(lastSubsystemPayload, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const anchor = document.createElement('a');
-        anchor.href = url;
-        anchor.download = `subsystem-${(lastSubsystemParams?.name || 'subsystem')}-${Date.now()}.json`;
-        document.body.appendChild(anchor);
-        anchor.click();
-        anchor.remove();
-        URL.revokeObjectURL(url);
+        const label = lastSubsystemParams?.name || 'subsystem';
+        downloadJsonPayload(lastSubsystemPayload, `subsystem-${label}-${Date.now()}.json`);
         updateSubsystemStatus(t('subsystem_download_success'));
         recordUiEvent('subsystem_download');
       });
     }
+  }
 
+  function attachLifecycleHandlers() {
     if (elements.lifecycleRefresh) {
       elements.lifecycleRefresh.addEventListener('click', () => {
         loadLifecycle();
@@ -1181,15 +1203,7 @@
             return;
           }
           const data = await response.json();
-          const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-          const url = URL.createObjectURL(blob);
-          const anchor = document.createElement('a');
-          anchor.href = url;
-          anchor.download = `lifecycle-${new Date().toISOString()}.json`;
-          document.body.appendChild(anchor);
-          anchor.click();
-          anchor.remove();
-          URL.revokeObjectURL(url);
+          downloadJsonPayload(data, `lifecycle-${new Date().toISOString()}.json`);
           updateLifecycleStatus(t('lifecycle_download_success'));
           await recordUiEvent('lifecycle_download');
         } catch (error) {
@@ -1199,16 +1213,16 @@
         }
       });
     }
+  }
 
+  function attachRecipeHandlers() {
     if (elements.recipeRelease) {
       elements.recipeRelease.addEventListener('click', () => {
         const command = 'km-recipe-run release-prep --var profile=release';
         copyToClipboard(command, () => {
           updateLifecycleStatus(t('lifecycle_recipe_release'));
           recordUiEvent('recipe_copy_release');
-        }, () => {
-          updateLifecycleStatus(t('search_copy_failure'));
-        });
+        }, () => updateLifecycleStatus(t('search_copy_failure')));
       });
     }
 
@@ -1218,12 +1232,12 @@
         copyToClipboard(command, () => {
           updateLifecycleStatus(t('lifecycle_recipe_stale'));
           recordUiEvent('recipe_copy_stale_audit');
-        }, () => {
-          updateLifecycleStatus(t('search_copy_failure'));
-        });
+        }, () => updateLifecycleStatus(t('search_copy_failure')));
       });
     }
+  }
 
+  function attachPreferenceHandlers() {
     if (elements.contrastToggle) {
       elements.contrastToggle.addEventListener('click', () => {
         preferences.contrast = !preferences.contrast;
