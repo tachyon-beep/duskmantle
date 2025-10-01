@@ -1,21 +1,36 @@
 from __future__ import annotations
 
+"""Unit tests for lifecycle report generation and graph enrichment."""
+
 import json
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, Iterable, cast
 
 import pytest
 from prometheus_client import REGISTRY
 
+from gateway.graph import GraphService
 from gateway.ingest.lifecycle import LifecycleConfig, write_lifecycle_report
 from gateway.ingest.pipeline import IngestionResult
 
 
 class DummyGraphService:
+    """Test double that returns pre-seeded orphan graph nodes."""
+
     def __init__(self, pages: dict[str, list[list[dict[str, object]]]]) -> None:
         self._pages = pages
 
-    def list_orphan_nodes(self, *, label: str | None, cursor: str | None, limit: int) -> dict[str, object]:
+    def list_orphan_nodes(
+        self,
+        *,
+        label: str | None,
+        cursor: str | None,
+        limit: int,
+    ) -> dict[str, object]:
+        """Yield nodes in pages for the requested label."""
+
+        _ = limit  # pragma: no cover - limit unused in stub
         label = label or "unknown"
         batches = self._pages.get(label, [])
         if not batches:
@@ -24,11 +39,16 @@ class DummyGraphService:
         if index >= len(batches):
             return {"nodes": [], "cursor": None}
         next_index = index + 1 if index + 1 < len(batches) else None
-        return {"nodes": batches[index], "cursor": str(next_index) if next_index is not None else None}
+        return {
+            "nodes": batches[index],
+            "cursor": str(next_index) if next_index is not None else None,
+        }
 
 
-@pytest.fixture()
-def ingestion_result() -> IngestionResult:
+@pytest.fixture(name="ingestion_result")
+def _ingestion_result() -> IngestionResult:
+    """Build a representative ingestion result for lifecycle reporting tests."""
+
     now = datetime.now(tz=UTC).timestamp()
     old = now - 60 * 60 * 24 * 40
     artifacts = [
@@ -76,6 +96,7 @@ def ingestion_result() -> IngestionResult:
 
 
 def test_write_lifecycle_report_without_graph(tmp_path: Path, ingestion_result: IngestionResult) -> None:
+    """Reports render correctly when graph enrichment is disabled."""
     output_path = tmp_path / "reports" / "lifecycle_report.json"
     config = LifecycleConfig(
         output_path=output_path,
@@ -94,23 +115,24 @@ def test_write_lifecycle_report_without_graph(tmp_path: Path, ingestion_result: 
     assert payload["isolated"] == {}
     assert payload["removed_artifacts"][0]["path"] == "docs/removed.md"
     summary = payload["summary"]
-    assert summary["stale_docs"] == 1
-    assert summary["removed_artifacts"] == 1
+    assert summary["stale_docs"] == pytest.approx(1)
+    assert summary["removed_artifacts"] == pytest.approx(1)
 
     history_dir = output_path.parent / "lifecycle_history"
     snapshots = list(history_dir.glob("lifecycle_*.json"))
     assert len(snapshots) == 1
 
     profile_labels = {"profile": "local"}
-    assert REGISTRY.get_sample_value("km_lifecycle_last_run_status", profile_labels) == 1.0
-    assert REGISTRY.get_sample_value("km_lifecycle_stale_docs_total", profile_labels) == 1.0
-    assert REGISTRY.get_sample_value("km_lifecycle_removed_artifacts_total", profile_labels) == 1.0
-    assert REGISTRY.get_sample_value("km_lifecycle_history_snapshots", profile_labels) == 1.0
+    assert REGISTRY.get_sample_value("km_lifecycle_last_run_status", profile_labels) == pytest.approx(1.0)
+    assert REGISTRY.get_sample_value("km_lifecycle_stale_docs_total", profile_labels) == pytest.approx(1.0)
+    assert REGISTRY.get_sample_value("km_lifecycle_removed_artifacts_total", profile_labels) == pytest.approx(1.0)
+    assert REGISTRY.get_sample_value("km_lifecycle_history_snapshots", profile_labels) == pytest.approx(1.0)
 
 
 def test_write_lifecycle_report_with_graph(tmp_path: Path, ingestion_result: IngestionResult) -> None:
+    """Graph enrichment populates isolated node information in the payload."""
     output_path = tmp_path / "reports" / "lifecycle_report.json"
-    graph_nodes = {
+    graph_nodes: dict[str, list[list[dict[str, object]]]] = {
         "DesignDoc": [[{"id": "DesignDoc:docs/orphan.md", "properties": {"path": "docs/orphan.md"}}]],
         "SourceFile": [],
     }
@@ -120,7 +142,7 @@ def test_write_lifecycle_report_with_graph(tmp_path: Path, ingestion_result: Ing
         graph_enabled=True,
         history_limit=2,
     )
-    graph_service = DummyGraphService(graph_nodes)
+    graph_service = cast(GraphService, DummyGraphService(graph_nodes))
 
     write_lifecycle_report(ingestion_result, config=config, graph_service=graph_service)
 
@@ -128,4 +150,4 @@ def test_write_lifecycle_report_with_graph(tmp_path: Path, ingestion_result: Ing
     assert "DesignDoc" in payload["isolated"]
     assert payload["isolated"]["DesignDoc"][0]["path"] == "docs/orphan.md"
     summary = payload["summary"]
-    assert summary["isolated_nodes"] == 1
+    assert summary["isolated_nodes"] == pytest.approx(1)
