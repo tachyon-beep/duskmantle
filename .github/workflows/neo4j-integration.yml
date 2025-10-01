@@ -73,6 +73,9 @@ jobs:
           . .venv/bin/activate
           pytest -m mcp_smoke --maxfail=1 --disable-warnings
 
+      - name: Run TypeScript lint
+        run: npm run lint:ts
+
       - name: Run Playwright UI smoke tests
         run: |
           . .venv/bin/activate

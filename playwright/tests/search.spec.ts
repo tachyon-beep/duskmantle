@@ -106,8 +106,13 @@ test.describe('Search console', () => {
     expect(download.suggestedFilename()).toMatch(/^search-\d+\.json$/);
     const downloadPath = await download.path();
     expect(downloadPath).not.toBeNull();
-    const raw = downloadPath ? await fs.readFile(downloadPath, 'utf-8') : '{}';
-    expect(JSON.parse(raw || '{}')).toEqual(responsePayload);
+    if (!downloadPath) {
+      throw new Error('Download path unavailable for search payload');
+    }
+
+    const raw = await fs.readFile(downloadPath, 'utf-8');
+    const parsed = JSON.parse(raw) as typeof responsePayload;
+    expect(parsed).toEqual(responsePayload);
 
     await expect(page.locator('[data-dm-request-id]')).toHaveText('search-001');
   });

@@ -74,10 +74,21 @@ test.describe('Lifecycle dashboard', () => {
 
     const filePath = await download.path();
     expect(filePath).not.toBeNull();
-    const contents = filePath ? await fs.readFile(filePath, 'utf-8') : '{}';
-    const parsed = JSON.parse(contents || '{}');
-    expect(parsed?.summary?.stale_docs).toBe(2);
-    expect(parsed?.summary?.isolated_nodes).toBe(1);
-    expect(parsed?.summary?.removed_artifacts).toBe(1);
+    if (!filePath) {
+      throw new Error('Download path unavailable for lifecycle report');
+    }
+
+    const contents = await fs.readFile(filePath, 'utf-8');
+    type LifecycleSummary = {
+      summary?: {
+        stale_docs?: number;
+        isolated_nodes?: number;
+        removed_artifacts?: number;
+      };
+    };
+    const parsed = JSON.parse(contents) as LifecycleSummary;
+    expect(parsed.summary?.stale_docs).toBe(2);
+    expect(parsed.summary?.isolated_nodes).toBe(1);
+    expect(parsed.summary?.removed_artifacts).toBe(1);
   });
 });

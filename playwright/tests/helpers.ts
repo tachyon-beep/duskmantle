@@ -2,6 +2,10 @@ import type { Page } from '@playwright/test';
 
 const CLIPBOARD_PROP = '__playwrightClipboardText';
 
+type BrowserGlobals = typeof globalThis & {
+  sessionStorage: Storage;
+} & Record<string, unknown>;
+
 type TokenOptions = {
   readerToken?: string | null;
   maintainerToken?: string | null;
@@ -11,8 +15,16 @@ export async function bootstrapSession(page: Page, options: TokenOptions = {}): 
   const { readerToken = null, maintainerToken = null } = options;
 
   await page.addInitScript(
-    ({ readerToken: reader, maintainerToken: maintainer, CLIPBOARD_PROP: prop }) => {
-      const globals = globalThis as typeof globalThis & { [key: string]: unknown };
+    ({
+      readerToken: reader,
+      maintainerToken: maintainer,
+      CLIPBOARD_PROP: prop,
+    }: {
+      readerToken: string | null;
+      maintainerToken: string | null;
+      CLIPBOARD_PROP: string;
+    }) => {
+      const globals = globalThis as BrowserGlobals;
 
       if (reader) {
         globals.sessionStorage.setItem('dm.readerToken', reader);
@@ -36,12 +48,13 @@ export async function bootstrapSession(page: Page, options: TokenOptions = {}): 
       };
 
       const shim: ClipboardShim = {
-        writeText: async (text: string) => {
+        writeText: (text: string) => {
           globals[prop] = text;
+          return Promise.resolve();
         },
-        readText: async () => {
-          const value = globals[prop];
-          return typeof value === 'string' ? value : '';
+        readText: () => {
+          const entry = globals[prop];
+          return Promise.resolve(typeof entry === 'string' ? entry : '');
         },
       };
 
@@ -69,8 +82,8 @@ export async function bootstrapSession(page: Page, options: TokenOptions = {}): 
 export async function setSessionTokens(page: Page, options: TokenOptions): Promise<void> {
   const { readerToken = null, maintainerToken = null } = options;
   await page.evaluate(
-    ({ readerToken: reader, maintainerToken: maintainer }) => {
-      const globals = globalThis as typeof globalThis & { sessionStorage: Storage };
+    ({ readerToken: reader, maintainerToken: maintainer }: { readerToken: string | null; maintainerToken: string | null }) => {
+      const globals = globalThis as BrowserGlobals;
 
       if (reader) {
         globals.sessionStorage.setItem('dm.readerToken', reader);
@@ -88,8 +101,9 @@ export async function setSessionTokens(page: Page, options: TokenOptions): Promi
 }
 
 export async function readClipboard(page: Page): Promise<string> {
-  return page.evaluate<string>((prop) => {
-    const value = (globalThis as typeof globalThis & { [key: string]: unknown })[prop];
-    return typeof value === 'string' ? value : '';
+  return page.evaluate<string, string>((prop) => {
+    const globals = globalThis as BrowserGlobals;
+    const entry = globals[prop];
+    return typeof entry === 'string' ? entry : '';
   }, CLIPBOARD_PROP);
 }

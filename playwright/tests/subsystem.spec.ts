@@ -88,8 +88,22 @@ test.describe('Subsystem explorer', () => {
 
     const downloadPath = await download.path();
     expect(downloadPath).not.toBeNull();
-    const raw = downloadPath ? await fs.readFile(downloadPath, 'utf-8') : '{}';
-    const parsed = JSON.parse(raw || '{}');
+    if (!downloadPath) {
+      throw new Error('Download path unavailable for subsystem payload');
+    }
+
+    const raw = await fs.readFile(downloadPath, 'utf-8');
+    type SubsystemPayload = {
+      subsystem?: {
+        properties?: {
+          name?: string;
+        };
+      };
+      related?: {
+        total?: number;
+      };
+    };
+    const parsed = JSON.parse(raw) as SubsystemPayload;
     expect(parsed.related?.total).toBe(1);
     expect(parsed.subsystem?.properties?.name).toBe('ReleaseTooling');
   });
