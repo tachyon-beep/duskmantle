@@ -8,8 +8,16 @@ import pytest
 RECIPES = Path("docs/MCP_RECIPES.md").read_text().splitlines()
 
 
+def _recipe_params() -> list[pytest.ParameterSet]:
+    params: list[pytest.ParameterSet] = []
+    for idx, recipe_line in enumerate(RECIPES):
+        if recipe_line.strip().startswith("km-"):
+            params.append(pytest.param(recipe_line, id=f"recipe-{idx}"))
+    return params
+
+
 @pytest.mark.mcp_smoke
-@pytest.mark.parametrize("line", [recipe_line for recipe_line in RECIPES if recipe_line.strip().startswith("km-")])
+@pytest.mark.parametrize("line", _recipe_params())
 def test_recipe_lines_are_valid_json(line: str) -> None:
     stripped = line.strip()
     if "{" not in stripped:
