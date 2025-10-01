@@ -1,3 +1,5 @@
+/* eslint-env browser */
+
 (function () {
   const scope = document.querySelector('[data-dm-scope="layout"]');
   if (!scope) {
@@ -248,6 +250,12 @@
       return;
     }
     elements.lifecycleStatus.textContent = t('lifecycle_need_token');
+  }
+
+  function refreshTokenPrompts() {
+    updateStatus();
+    updateSubsystemStatus();
+    updateLifecycleStatus();
   }
 
   function hasReader() {
@@ -614,18 +622,17 @@
       const row = document.createElement('tr');
       const target = entry?.target || {};
       const tprops = target.properties || {};
-      row.appendChild(createTableCell(tprops.name || tprops.title || target.id));
-      row.appendChild(createTableCell(entry?.relationship || '—'));
-      row.appendChild(createTableCell(entry?.direction || 'OUT'));
-      row.appendChild(createTableCell(String(entry?.hops ?? '—')));
+      appendCells(row, [tprops.name || tprops.title || target.id, entry?.relationship || '—', entry?.direction || 'OUT', String(entry?.hops ?? '—')]);
       elements.subsystemTable.appendChild(row);
     });
   }
 
-  function createTableCell(value) {
-    const cell = document.createElement('td');
-    cell.textContent = value;
-    return cell;
+  function appendCells(row, values) {
+    values.forEach((value) => {
+      const cell = document.createElement('td');
+      cell.textContent = value;
+      row.appendChild(cell);
+    });
   }
 
   function resetSubsystemError() {
@@ -884,7 +891,7 @@
       if (typeof gitTimestamp === 'number' && generatedAt) {
         age = Math.max(0, (generatedAt - gitTimestamp) / 86400).toFixed(1);
       }
-      row.innerHTML = `<td>${path}</td><td>${subsystem}</td><td>${age}</td>`;
+      appendCells(row, [path, subsystem, age]);
     }, 3);
   }
 
@@ -896,7 +903,7 @@
       const labels = Array.isArray(entry?.node?.labels) && entry.node.labels.length
         ? entry.node.labels.join(', ')
         : entry?.label || '—';
-      row.innerHTML = `<td>${label}</td><td>${labels}</td>`;
+      appendCells(row, [label, labels]);
     }, 2);
   }
 
@@ -904,12 +911,12 @@
     const rows = Array.isArray(payload?.missing_tests) ? payload.missing_tests : [];
     renderListTable(elements.lifecycleMissing, rows, (row, item) => {
       if (typeof item === 'string') {
-        row.innerHTML = `<td>${item}</td><td>—</td>`;
+        appendCells(row, [item, '—']);
         return;
       }
       const name = item?.name || item?.subsystem || item?.id || 'Subsystem';
       const note = item?.note || item?.reason || 'Needs test coverage';
-      row.innerHTML = `<td>${name}</td><td>${note}</td>`;
+      appendCells(row, [name, note]);
     }, 2);
   }
 
@@ -917,12 +924,12 @@
     const rows = Array.isArray(payload?.removed_artifacts) ? payload.removed_artifacts : [];
     renderListTable(elements.lifecycleRemoved, rows, (row, item) => {
       if (typeof item === 'string') {
-        row.innerHTML = `<td>${item}</td><td>—</td>`;
+        appendCells(row, [item, '—']);
         return;
       }
       const pathVal = item?.path || item?.id || item?.properties?.path || 'Artifact';
       const removedAt = formatTimestamp(item?.removed_at || item?.timestamp || item?.recorded_at);
-      row.innerHTML = `<td>${pathVal}</td><td>${removedAt || '—'}</td>`;
+      appendCells(row, [pathVal, removedAt || '—']);
     }, 2);
   }
 

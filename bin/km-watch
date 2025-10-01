@@ -61,13 +61,20 @@ def trigger_command(command: list[str] | str) -> int:
     parts = _normalize_command(command)
     printable = " ".join(parts)
     print("[km-watch] Change detected. Running:", printable)
-    return subprocess.call(parts, shell=False)
+    return subprocess.run(parts, check=False).returncode
 
 
 def _normalize_command(command: list[str] | str) -> list[str]:
     if isinstance(command, str):
-        return shlex.split(command)
-    return list(command)
+        parts = shlex.split(command)
+    else:
+        parts = list(command)
+    for part in parts:
+        if not part:
+            raise ValueError("Command components must be non-empty")
+        if any(char in part for char in (';', '|', '&', '\n')):
+            raise ValueError(f"Unsupported shell control character in command part: {part!r}")
+    return parts
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
