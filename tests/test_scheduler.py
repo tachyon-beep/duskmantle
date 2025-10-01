@@ -1,5 +1,10 @@
+"""Unit tests exercising the ingestion scheduler behaviour and metrics."""
+
+# pylint: disable=protected-access,redefined-outer-name
+
 from __future__ import annotations
 
+from collections.abc import Generator
 from pathlib import Path
 from unittest import mock
 
@@ -9,15 +14,14 @@ from apscheduler.triggers.interval import IntervalTrigger
 from filelock import Timeout
 from prometheus_client import REGISTRY
 
-from gateway.config.settings import AppSettings
+from gateway.config.settings import AppSettings, get_settings
 from gateway.ingest.pipeline import IngestionResult
 from gateway.scheduler import IngestionScheduler
 
 
 @pytest.fixture(autouse=True)
-def reset_cache() -> None:
-    from gateway.config.settings import get_settings
-
+def reset_cache() -> Generator[None, None, None]:
+    """Clear cached settings before and after each test."""
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
@@ -25,6 +29,7 @@ def reset_cache() -> None:
 
 @pytest.fixture()
 def scheduler_settings(tmp_path: Path) -> AppSettings:
+    """Provide scheduler settings pointing at a temporary repo."""
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     base = AppSettings()
@@ -39,17 +44,20 @@ def scheduler_settings(tmp_path: Path) -> AppSettings:
 
 
 def make_scheduler(settings: AppSettings) -> IngestionScheduler:
+    """Instantiate a scheduler with its APScheduler stubbed out."""
     scheduler = IngestionScheduler(settings)
     scheduler.scheduler = mock.Mock()
     return scheduler
 
 
 def _metric_value(name: str, labels: dict[str, str] | None = None) -> float:
+    """Fetch a Prometheus sample value with defaults for missing metrics."""
     value = REGISTRY.get_sample_value(name, labels or {})
     return float(value) if value is not None else 0.0
 
 
 def make_result(head: str) -> IngestionResult:
+    """Construct a minimal ingestion result for scheduler tests."""
     return IngestionResult(
         run_id="r",
         profile="scheduled",
@@ -63,6 +71,7 @@ def make_result(head: str) -> IngestionResult:
 
 
 def test_scheduler_skips_when_repo_head_unchanged(scheduler_settings: AppSettings) -> None:
+    """Scheduler skips when repository head hash matches the cached value."""
     scheduler = IngestionScheduler(scheduler_settings)
 
     first_result = make_result("abc")
@@ -74,7 +83,7 @@ def test_scheduler_skips_when_repo_head_unchanged(scheduler_settings: AppSetting
         scheduler._run_ingestion()
         execute.assert_called_once()
     after = _metric_value("km_scheduler_runs_total", {"result": "success"})
-    assert after == before + 1
+    assert after == pytest.approx(before + 1)
 
     skipped_head_before = _metric_value("km_scheduler_runs_total", {"result": "skipped_head"})
     ingest_skip_before = _metric_value("km_ingest_skips_total", {"reason": "head"})
@@ -86,11 +95,12 @@ def test_scheduler_skips_when_repo_head_unchanged(scheduler_settings: AppSetting
         execute_again.assert_not_called()
     skipped_head_after = _metric_value("km_scheduler_runs_total", {"result": "skipped_head"})
     ingest_skip_after = _metric_value("km_ingest_skips_total", {"reason": "head"})
-    assert skipped_head_after == skipped_head_before + 1
-    assert ingest_skip_after == ingest_skip_before + 1
+    assert skipped_head_after == pytest.approx(skipped_head_before + 1)
+    assert ingest_skip_after == pytest.approx(ingest_skip_before + 1)
 
 
 def test_scheduler_runs_when_repo_head_changes(scheduler_settings: AppSettings) -> None:
+    """Scheduler triggers ingestion when the repository head changes."""
     scheduler = IngestionScheduler(scheduler_settings)
     scheduler._write_last_head("abc")
 
@@ -103,10 +113,11 @@ def test_scheduler_runs_when_repo_head_changes(scheduler_settings: AppSettings) 
         execute.assert_called_once()
         assert scheduler._read_last_head() == "def"
     after_success = _metric_value("km_scheduler_runs_total", {"result": "success"})
-    assert after_success == before_success + 1
+    assert after_success == pytest.approx(before_success + 1)
 
 
 def test_scheduler_start_uses_interval_trigger(scheduler_settings: AppSettings) -> None:
+    """Schedulers without cron use the configured interval trigger."""
     scheduler = make_scheduler(scheduler_settings)
     scheduler.start()
     scheduler.scheduler.add_job.assert_called_once()
@@ -116,6 +127,7 @@ def test_scheduler_start_uses_interval_trigger(scheduler_settings: AppSettings) 
 
 
 def test_scheduler_start_uses_cron_trigger(tmp_path: Path) -> None:
+    """Cron expressions configure a cron trigger instead of interval."""
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     settings = AppSettings().model_copy(
@@ -134,6 +146,7 @@ def test_scheduler_start_uses_cron_trigger(tmp_path: Path) -> None:
 
 
 def test_scheduler_skips_when_lock_contended(scheduler_settings: AppSettings) -> None:
+    """Lock contention causes the scheduler to skip runs and record metrics."""
     scheduler = IngestionScheduler(scheduler_settings)
     skipped_before = _metric_value("km_scheduler_runs_total", {"result": "skipped_lock"})
     ingest_skip_before = _metric_value("km_ingest_skips_total", {"reason": "lock"})
@@ -146,11 +159,12 @@ def test_scheduler_skips_when_lock_contended(scheduler_settings: AppSettings) ->
             execute.assert_not_called()
     skipped_after = _metric_value("km_scheduler_runs_total", {"result": "skipped_lock"})
     ingest_skip_after = _metric_value("km_ingest_skips_total", {"reason": "lock"})
-    assert skipped_after == skipped_before + 1
-    assert ingest_skip_after == ingest_skip_before + 1
+    assert skipped_after == pytest.approx(skipped_before + 1)
+    assert ingest_skip_after == pytest.approx(ingest_skip_before + 1)
 
 
 def test_scheduler_requires_maintainer_token(tmp_path: Path) -> None:
+    """Schedulers skip setup when auth is enabled without a maintainer token."""
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     settings = AppSettings().model_copy(
@@ -169,4 +183,4 @@ def test_scheduler_requires_maintainer_token(tmp_path: Path) -> None:
     skipped_auth = _metric_value("km_scheduler_runs_total", {"result": "skipped_auth"})
     ingest_skip_after = _metric_value("km_ingest_skips_total", {"reason": "auth"})
     assert skipped_auth >= 1
-    assert ingest_skip_after == before_ingest_skip + 1
+    assert ingest_skip_after == pytest.approx(before_ingest_skip + 1)
