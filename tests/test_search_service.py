@@ -162,7 +162,9 @@ def test_search_service_handles_missing_graph(sample_points: list[FakePoint]) ->
     assert response.results[0].graph_context is None
     assert response.metadata["graph_context_included"] is False
     scoring = response.results[0].scoring
-    base_component = scoring.get("weighted_vector_score", scoring.get("vector_score", 0.0)) + scoring.get("weighted_lexical_score", 0.0)
+    weighted_vector_score = scoring.get("weighted_vector_score", scoring.get("vector_score", 0.0))
+    weighted_lexical_score = scoring.get("weighted_lexical_score", 0.0)
+    base_component = weighted_vector_score + weighted_lexical_score
     assert scoring["adjusted_score"] == pytest.approx(base_component)
     assert response.metadata["scoring_mode"] == "heuristic"
     assert response.metadata["weight_profile"] == "custom"
