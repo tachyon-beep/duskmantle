@@ -1,3 +1,5 @@
+"""Read-only graph service utilities backed by Neo4j."""
+
 from __future__ import annotations
 
 import base64
@@ -26,6 +28,8 @@ class GraphQueryError(GraphServiceError):
 
 @dataclass(slots=True)
 class SubsystemGraphSnapshot:
+    """Snapshot of a subsystem node and its related graph context."""
+
     subsystem: dict[str, Any]
     related: list[dict[str, Any]]
     nodes: list[dict[str, Any]]
@@ -46,12 +50,14 @@ class SubsystemGraphCache:
     """Simple TTL cache for subsystem graph snapshots."""
 
     def __init__(self, ttl_seconds: float, max_entries: int) -> None:
+        """Create a cache with an expiry window and bounded size."""
         self._ttl = max(0.0, ttl_seconds)
         self._max_entries = max(1, max_entries)
         self._entries: OrderedDict[tuple[str, int], tuple[float, SubsystemGraphSnapshot]] = OrderedDict()
         self._lock = Lock()
 
     def get(self, key: tuple[str, int]) -> SubsystemGraphSnapshot | None:
+        """Return a cached snapshot if it exists and has not expired."""
         if self._ttl <= 0:
             return None
         now = monotonic()
@@ -67,6 +73,7 @@ class SubsystemGraphCache:
             return snapshot
 
     def set(self, key: tuple[str, int], snapshot: SubsystemGraphSnapshot) -> None:
+        """Cache a snapshot for the given key, evicting oldest entries if needed."""
         if self._ttl <= 0:
             return
         expires_at = monotonic() + self._ttl
@@ -77,6 +84,7 @@ class SubsystemGraphCache:
                 self._entries.popitem(last=False)
 
     def clear(self) -> None:
+        """Remove all cached subsystem snapshots."""
         with self._lock:
             self._entries.clear()
 
@@ -98,6 +106,7 @@ class GraphService:
         cursor: str | None,
         include_artifacts: bool,
     ) -> dict[str, Any]:
+        """Return a windowed view of related nodes for the requested subsystem."""
         offset = max(0, _decode_cursor(cursor))
         limit = max(1, limit)
         snapshot = self._load_subsystem_snapshot(name, depth)
@@ -122,6 +131,7 @@ class GraphService:
         }
 
     def get_subsystem_graph(self, name: str, *, depth: int) -> dict[str, Any]:
+        """Return the full node/edge snapshot for a subsystem."""
         snapshot = self._load_subsystem_snapshot(name, depth)
         return {
             "subsystem": snapshot.subsystem,
@@ -137,6 +147,7 @@ class GraphService:
         cursor: str | None,
         limit: int,
     ) -> dict[str, Any]:
+        """List nodes that have no relationships of the allowed labels."""
         if label and label not in ORPHAN_DEFAULT_LABELS:
             raise GraphQueryError(f"Unsupported orphan label '{label}'")
         offset = max(0, _decode_cursor(cursor))
@@ -155,6 +166,7 @@ class GraphService:
         return {"nodes": nodes, "cursor": next_cursor}
 
     def clear_cache(self) -> None:
+        """Wipe the subsystem snapshot cache if caching is enabled."""
         if self.subsystem_cache is not None:
             self.subsystem_cache.clear()
 
@@ -216,6 +228,7 @@ class GraphService:
         )
 
     def get_node(self, node_id: str, *, relationships: str, limit: int) -> dict[str, Any]:
+        """Return a node and a limited set of relationships using Cypher lookups."""
         label, key, value = _parse_node_id(node_id)
         with self.driver.session(database=self.database) as session:
             node = session.execute_read(_fetch_node_by_id, label, key, value)
@@ -241,6 +254,7 @@ class GraphService:
         }
 
     def search(self, term: str, *, limit: int) -> dict[str, Any]:
+        """Search the graph for nodes matching the provided term."""
         if not term.strip():
             return {"results": []}
         lower_term = term.lower()
@@ -294,8 +308,9 @@ class GraphService:
     def run_cypher(
         self,
         query: str,
-        parameters: dict[str, Any] | None,
+        parameters: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
+        """Execute an arbitrary Cypher query and serialize the response."""
         _validate_cypher(query)
         params = parameters or {}
         try:
@@ -341,6 +356,7 @@ def get_graph_service(
     cache_ttl: float | None = None,
     cache_max_entries: int = 128,
 ) -> GraphService:
+    """Factory helper that constructs a `GraphService` with optional caching."""
     cache = None
     if cache_ttl is not None and cache_ttl > 0:
         cache = SubsystemGraphCache(cache_ttl, cache_max_entries)

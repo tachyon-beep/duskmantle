@@ -15,6 +15,7 @@ class Embedder:
     """Wrapper around sentence-transformers for configurable embeddings."""
 
     def __init__(self, model_name: str) -> None:
+        """Load the requested sentence-transformer model."""
         self.model_name = model_name
         self._model = self._load_model(model_name)
         logger.info("Embedding model %s loaded", model_name)
@@ -43,6 +44,7 @@ class DummyEmbedder(Embedder):
     """Deterministic embedder for dry-runs and tests."""
 
     def __init__(self) -> None:  # pylint: disable=super-init-not-called
+        """Initialise the deterministic embedder for testing."""
         self.model_name = "dummy"
 
     @property

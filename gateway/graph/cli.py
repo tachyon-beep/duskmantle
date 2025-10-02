@@ -1,3 +1,5 @@
+"""Command-line utilities for managing the Neo4j graph schema."""
+
 from __future__ import annotations
 
 import argparse
@@ -12,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Return the CLI argument parser for graph administration commands."""
     parser = argparse.ArgumentParser(description="Graph administration commands")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -26,6 +29,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def run_migrations(*, dry_run: bool = False) -> None:
+    """Execute graph schema migrations, optionally printing the pending set."""
     settings = get_settings()
     driver = GraphDatabase.driver(
         settings.neo4j_uri,
@@ -48,6 +52,7 @@ def run_migrations(*, dry_run: bool = False) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
+    """Entrypoint for the `gateway-graph` command-line interface."""
     logging.basicConfig(level=logging.INFO)
     parser = build_parser()
     args = parser.parse_args(argv)

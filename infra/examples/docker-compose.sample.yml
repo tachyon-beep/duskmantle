@@ -12,9 +12,7 @@ services:
     # env_file:
     #   - ./gateway.env
     environment:
-      KM_AUTH_ENABLED: "false"            # set true and supply reader/maintainer tokens for secured deployments
-      KM_NEO4J_PASSWORD: "ChangeMe123!"    # rotate immediately (see bin/km-rotate-neo4j-password)
-      KM_NEO4J_AUTH_ENABLED: "true"
+      KM_ALLOW_INSECURE_BOOT: "false"     # auto-generates secrets on first launch when false
       KM_SEED_SAMPLE_REPO: "false"         # leave false once you mount real documentation
       KM_WATCH_ENABLED: "false"            # flip to true to enable automatic ingest on repo changes
     volumes:

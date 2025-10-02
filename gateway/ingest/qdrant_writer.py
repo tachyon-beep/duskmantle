@@ -19,6 +19,7 @@ class QdrantWriter:
     """Lightweight adapter around the Qdrant client."""
 
     def __init__(self, client: QdrantClient, collection_name: str) -> None:
+        """Initialise the writer with a target collection."""
         self.client = client
         self.collection_name = collection_name
 

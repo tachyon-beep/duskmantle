@@ -162,10 +162,10 @@ Restart the container to pick up restored state.
 
 ## 8. Environment & Authentication
 
-- Set `KM_AUTH_ENABLED=true`, `KM_READER_TOKEN`, and `KM_ADMIN_TOKEN` to secure APIs and CLIs. The gateway now fails fast on startup if
-`KM_ADMIN_TOKEN` is missing or `KM_NEO4J_PASSWORD` is left at a default value—generate fresh secrets via `bin/km-bootstrap` or rotate them
-manually before enabling auth. Maintainer tokens satisfy reader endpoints; reader tokens cannot invoke admin operations. MCP write helpers
-(`km-upload`, `km-storetext`) append JSON lines to `KM_STATE_PATH/audit/mcp_actions.log`, so include that file in your log rotation strategy.
+- Authentication is enabled by default. On first boot the container writes random tokens and a Neo4j password to `.duskmantle/config/secrets.env`
+  (inside the container this is `${KM_VAR}/secrets.env`). Override any value by exporting your own before launch, or run `bin/km-bootstrap`
+  to regenerate everything. Maintainer tokens satisfy reader endpoints; reader tokens cannot invoke admin operations. MCP write helpers
+  (`km-upload`, `km-storetext`) append JSON lines to `KM_STATE_PATH/audit/mcp_actions.log`, so include that file in your log rotation strategy.
 - Neo4j authentication is enabled by default. Use the generated `KM_NEO4J_PASSWORD` for `cypher-shell`/backups and only set
   `KM_NEO4J_AUTH_ENABLED=false` for isolated development environments—the gateway logs a warning when you do.
 - Rotate credentials later with `bin/km-rotate-neo4j-password`; it stops the container, updates `.duskmantle/secrets.env`, and relaunches

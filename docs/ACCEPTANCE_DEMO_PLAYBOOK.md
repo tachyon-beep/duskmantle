@@ -89,8 +89,9 @@ curl -s "http://localhost:8000/graph/nodes/DesignDoc%3Adocs%2FWORK_PACKAGES.md"
 Expect 200 responses with node payloads. If nodes are missing, confirm ingestion populated Neo4j by running:
 
 ```bash
+PASSWORD=$(grep '^KM_NEO4J_PASSWORD=' .duskmantle/config/secrets.env | cut -d '=' -f2)
 docker exec duskmantle /opt/knowledge/bin/neo4j-distribution/bin/cypher-shell \
-  -a bolt://localhost:7687 -u neo4j -p neo4jadmin \
+  -a bolt://localhost:7687 -u neo4j -p "$PASSWORD" \
   "MATCH (d:DesignDoc) RETURN d.path LIMIT 5"
 ```
 

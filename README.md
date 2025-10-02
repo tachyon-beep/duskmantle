@@ -55,26 +55,20 @@ Summary (or simply run `bin/km-bootstrap` to let the repo pull the latest image,
 
 ### Security Defaults
 
-The appliance ships with permissive defaults so local demos start without extra configuration (Neo4j user/password `neo4j` / `neo4jadmin`, API auth disabled, no maintainer tokens). Before handling anything beyond disposable test data, rotate those credentials—set `KM_NEO4J_PASSWORD` to a non-default value, enable `KM_AUTH_ENABLED=true`, and supply reader/maintainer tokens ahead of launch. The gateway now exits on startup if auth is enabled without a maintainer token or a custom Neo4j password.
+The container now boots in **secure mode** by default. On first launch the entrypoint:
 
-**Quick hardening checklist**
+- Generates random reader and maintainer tokens plus a 48-character Neo4j password.
+- Persists them to `${KM_VAR}/secrets.env` (mounted as `.duskmantle/config/secrets.env` when you use `bin/km-run` or `bin/km-bootstrap`).
+- Enables API and Neo4j authentication automatically.
 
-1. Generate fresh tokens (`./bin/km-make-tokens` prints ready-to-paste export lines) and pick a new Neo4j password. For example:
+Restarting the container reuses the stored credentials so long-lived deployments stay consistent. To run without managed secrets—for example during a disposable demo—set `KM_ALLOW_INSECURE_BOOT=true`. Doing so disables API and Neo4j auth and prints a prominent warning; avoid that mode for anything beyond throwaway experimentation.
 
-   ```bash
-   ./bin/km-make-tokens
-   export KM_NEO4J_PASSWORD='s3cure-pass'
-   export KM_AUTH_ENABLED='true'
-   # Paste the reader/admin exports emitted above, for example:
-   export KM_READER_TOKEN='5f9f3c8f-0c1e-4e7f-9dd0-6a6c2fef71fb'
-   export KM_ADMIN_TOKEN='de0b36ba-27b2-4b0d-a01f-5bb00e2fd940'
-   ```
+**Credential management tips**
 
-   The entrypoint automatically configures Neo4j with the values from `KM_NEO4J_USER`/`KM_NEO4J_PASSWORD`, so no manual `cypher-shell` work is required.
-
-2. If a container is already running with the defaults, stop it, remove the old state (Neo4j stores the password hash on disk), re-export the environment variables above, and restart with `bin/km-run`. The new password will be applied as Neo4j initialises on boot.
-
-3. Update any CLI or MCP clients to pass the new maintainer token when invoking admin endpoints (`KM_AUTH_ENABLED=true` enforces bearer tokens for `/graph/cypher`, `/metrics`, `/coverage`, ingest/backup triggers, etc.).
+1. The generated secrets live in `.duskmantle/config/secrets.env`. Treat this file as sensitive: restrict access to operators and back it up alongside other state.
+2. Override tokens or the Neo4j password whenever needed by exporting new values (or using `bin/km-make-tokens`) *before* starting the container. The entrypoint respects user-provided values and will not overwrite them.
+3. If you rotate the Neo4j password on a running system, stop the container, remove the old `neo4j` auth cache under `.duskmantle/config/neo4j`, set the new `KM_NEO4J_PASSWORD`, and start the container so the driver can apply the change during boot.
+4. Update MCP clients, automation scripts, or CI pipelines to supply the maintainer token whenever they call privileged endpoints (`/graph/cypher`, `/metrics`, `/coverage`, ingest/backup triggers, etc.).
 
 ## Repository Layout
 

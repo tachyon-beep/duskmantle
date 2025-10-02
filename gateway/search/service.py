@@ -100,6 +100,7 @@ class SearchService:
         weights: SearchWeights | None = None,
         model_artifact: ModelArtifact | None = None,
     ) -> None:
+        """Initialise the search service with vector and scoring options."""
         self.qdrant_client = qdrant_client
         self.collection_name = collection_name
         self.embedder = embedder

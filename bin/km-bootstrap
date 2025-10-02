@@ -9,8 +9,8 @@ usage() {
   cat <<'USAGE'
 Usage: km-bootstrap [--image IMAGE] [--force]
 
-Pull the Duskmantle gateway image, generate secure defaults, and launch it with
-`.duskmantle/config` mapped to state and `.duskmantle/data` mapped to the
+Pull the Duskmantle gateway image, ensure fresh credentials exist, and launch it
+with `.duskmantle/config` mapped to state and `.duskmantle/data` mapped to the
 repository workload.
 
 Options:
@@ -113,6 +113,7 @@ RUN_ENV_ARGS=(
   "-e" "KM_CONTENT_DOCS_SUBDIR=docs"
   "-e" "KM_UPLOAD_DEFAULT_OVERWRITE=false"
   "-e" "KM_UPLOAD_DEFAULT_INGEST=false"
+  "-e" "KM_ALLOW_INSECURE_BOOT=false"
 )
 if [[ -n ${KM_DOCKER_RUN_ARGS:-} ]]; then
   RUN_ENV_ARGS+=( ${KM_DOCKER_RUN_ARGS} )
@@ -125,3 +126,4 @@ KM_IMAGE="$KM_IMAGE" bin/km-run --detach
 echo "Gateway launched. Secrets stored in $ENV_FILE"
 echo "Repository content: $DATA_DIR"
 echo "State directory:    $CONFIG_DIR"
+echo "Next steps: record the tokens/password from secrets.env or rotate via bin/km-rotate-neo4j-password"

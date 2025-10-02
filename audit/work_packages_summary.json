@@ -1,0 +1,82 @@
+[
+  {
+    "id": "WP-001",
+    "title": "Enforce Secure Authentication Defaults",
+    "priority": "CRITICAL",
+    "effort": "S",
+    "risk_level": "Critical",
+    "impact": "Critical"
+  },
+  {
+    "id": "WP-002",
+    "title": "Protect Qdrant Collections From Accidental Recreate",
+    "priority": "CRITICAL",
+    "effort": "S",
+    "risk_level": "Critical",
+    "impact": "Critical"
+  },
+  {
+    "id": "WP-003",
+    "title": "Harden Maintainer Cypher Endpoint",
+    "priority": "HIGH",
+    "effort": "M",
+    "risk_level": "High",
+    "impact": "High"
+  },
+  {
+    "id": "WP-004",
+    "title": "Add Dependency Health Checks and Auto-Reconnect",
+    "priority": "HIGH",
+    "effort": "M",
+    "risk_level": "High",
+    "impact": "High"
+  },
+  {
+    "id": "WP-005",
+    "title": "Automate State Backups and Recovery Playbooks",
+    "priority": "HIGH",
+    "effort": "M",
+    "risk_level": "High",
+    "impact": "High"
+  },
+  {
+    "id": "WP-006",
+    "title": "Harden Container Runtime and Service Isolation",
+    "priority": "HIGH",
+    "effort": "M",
+    "risk_level": "Medium",
+    "impact": "High"
+  },
+  {
+    "id": "WP-007",
+    "title": "Optimize Graph Enrichment Latency for Search",
+    "priority": "MEDIUM",
+    "effort": "M",
+    "risk_level": "Medium",
+    "impact": "Medium"
+  },
+  {
+    "id": "WP-008",
+    "title": "Bound Search Feedback Store Growth",
+    "priority": "MEDIUM",
+    "effort": "S",
+    "risk_level": "Medium",
+    "impact": "Medium"
+  },
+  {
+    "id": "WP-009",
+    "title": "Stabilise Incremental Ledger Handling",
+    "priority": "MEDIUM",
+    "effort": "S",
+    "risk_level": "Medium",
+    "impact": "Medium"
+  },
+  {
+    "id": "WP-010",
+    "title": "Clarify API Versioning and Contract Guarantees",
+    "priority": "MEDIUM",
+    "effort": "S",
+    "risk_level": "Low",
+    "impact": "Medium"
+  }
+]

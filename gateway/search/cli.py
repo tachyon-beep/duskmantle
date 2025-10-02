@@ -1,3 +1,5 @@
+"""Command-line helpers for search training, exports, and maintenance."""
+
 from __future__ import annotations
 
 import argparse
@@ -19,6 +21,7 @@ console = Console()
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Return an argument parser covering all search CLI commands."""
     parser = argparse.ArgumentParser(description="Search tooling commands")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -144,6 +147,7 @@ def export_training_data(
     limit: int | None,
     settings: AppSettings | None = None,
 ) -> None:
+    """Materialise feedback events into a training dataset file."""
     if settings is None:
         settings = get_settings()
     feedback_dir = settings.state_path / "feedback"
@@ -187,6 +191,7 @@ def train_model(
     output: Path | None,
     settings: AppSettings,
 ) -> None:
+    """Train a ranking model from a prepared dataset and save the artifact."""
     feedback_dir = settings.state_path / "feedback"
     models_dir = feedback_dir / "models"
 
@@ -215,6 +220,7 @@ def train_model(
 
 
 def show_weights(*, settings: AppSettings) -> None:
+    """Print the active search weight profile to the console."""
     profile, weights = settings.resolved_search_weights()
     console.print(f"Active profile: [bold]{profile}[/bold]")
     console.print(f"Slow graph warn threshold: {settings.search_warn_slow_graph_ms} ms")
@@ -231,6 +237,7 @@ def show_weights(*, settings: AppSettings) -> None:
 
 
 def prune_feedback(*, settings: AppSettings, max_age_days: int | None, max_requests: int | None, output: Path | None) -> None:
+    """Trim feedback logs by age/request count and optionally archive removals."""
     feedback_dir = settings.state_path / "feedback"
     events_log = feedback_dir / "events.log"
     if not events_log.exists():
@@ -266,6 +273,7 @@ def redact_training_dataset(
     drop_context: bool,
     drop_note: bool,
 ) -> None:
+    """Strip sensitive fields and emit a sanitized dataset."""
     options = RedactOptions(output_path=output, drop_query=drop_query, drop_context=drop_context, drop_note=drop_note)
     try:
         stats = redact_dataset(dataset, options=options)
@@ -287,6 +295,7 @@ def redact_training_dataset(
 
 
 def evaluate_trained_model(*, dataset: Path, model: Path) -> None:
+    """Run offline evaluation of a trained model against a labelled dataset."""
     try:
         metrics = evaluate_model(dataset, model)
     except (DatasetLoadError, ValueError) as exc:
@@ -315,6 +324,7 @@ def evaluate_trained_model(*, dataset: Path, model: Path) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
+    """Entry point for the `gateway-search` command-line interface."""
     configure_logging()
     settings = get_settings()
     configure_tracing(None, settings)

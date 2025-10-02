@@ -87,6 +87,7 @@ class IngestionPipeline:
         neo4j_writer: Neo4jWriter | None,
         config: IngestionConfig,
     ) -> None:
+        """Initialise the pipeline with writer backends and configuration."""
         self.qdrant_writer = qdrant_writer
         self.neo4j_writer = neo4j_writer
         self.config = config

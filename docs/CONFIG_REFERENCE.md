@@ -23,7 +23,8 @@ The knowledge gateway reads its runtime configuration from environment variables
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `KM_AUTH_ENABLED` | `false` | Require bearer tokens on HTTP and CLI entry points. When `true`, the gateway refuses to start unless `KM_ADMIN_TOKEN` is set and the Neo4j password is non-default. |
+| `KM_AUTH_ENABLED` | `false` | Require bearer tokens on HTTP and CLI entry points. The container entrypoint enables this unless `KM_ALLOW_INSECURE_BOOT=true`. |
+| `KM_ALLOW_INSECURE_BOOT` | `false` | Set to `true` for short-lived demos to disable auth and skip secret generation (prints a warning). Avoid in production. |
 | `KM_READER_TOKEN` | _unset_ | Token granting read-only operations (search/graph). Optional—maintainer credentials satisfy reader endpoints when omitted. |
 | `KM_ADMIN_TOKEN` | _unset_ | Token granting maintainer operations (ingest, coverage, backups). Mandatory when `KM_AUTH_ENABLED=true`. |
 | `KM_RATE_LIMIT_REQUESTS` / `KM_RATE_LIMIT_WINDOW` | `120` / `60` | Requests allowed per window (seconds). |
@@ -64,7 +65,7 @@ Watcher tips: the watcher monitors `KM_WATCH_ROOT` (default `/workspace/repo`). 
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `KM_NEO4J_URI` | `bolt://localhost:7687` | Bolt endpoint for Neo4j. |
-| `KM_NEO4J_USER` / `KM_NEO4J_PASSWORD` | `neo4j` / `neo4jadmin` | Credentials for Neo4j. Secure mode (`KM_AUTH_ENABLED=true`) requires overriding the default password. |
+| `KM_NEO4J_USER` / `KM_NEO4J_PASSWORD` | `neo4j` / `neo4jadmin` | Credentials for Neo4j. The entrypoint replaces the default password with a random value on first boot and persists it to `${KM_VAR}/secrets.env`. |
 | `KM_NEO4J_DATABASE` | `knowledge` | Neo4j database name queried by the gateway (startup fails if it is missing). |
 | `KM_NEO4J_AUTH_ENABLED` | `true` | Toggle authentication for Neo4j access (leave enabled outside isolated dev). |
 | `KM_GRAPH_AUTO_MIGRATE` | `false` | Auto-run graph migrations at API startup (container default `true`). |

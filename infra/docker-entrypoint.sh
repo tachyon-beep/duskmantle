@@ -8,6 +8,7 @@ KM_ETC=${KM_ETC:-/opt/knowledge/etc}
 KM_REPO_PATH=${KM_REPO_PATH:-/workspace/repo}
 KM_SAMPLE_CONTENT_DIR=${KM_SAMPLE_CONTENT_DIR:-/opt/knowledge/infra/examples/sample-repo}
 KM_SEED_SAMPLE_REPO=${KM_SEED_SAMPLE_REPO:-true}
+KM_ALLOW_INSECURE_BOOT=${KM_ALLOW_INSECURE_BOOT:-false}
 LOG_DIR="${KM_VAR}/logs"
 RUN_DIR="${KM_VAR}/run"
 QDRANT_STORAGE="${KM_VAR}/qdrant"
@@ -55,6 +56,103 @@ if [[ ! -w "$KM_VAR" ]]; then
   echo "[entrypoint] ERROR: Persistence directory $KM_VAR is not writable. Mount a host volume." >&2
   exit 1
 fi
+
+SECRETS_FILE="${KM_VAR}/secrets.env"
+allow_insecure=${KM_ALLOW_INSECURE_BOOT,,}
+
+# Load previously generated secrets if available.
+if [[ -f "$SECRETS_FILE" ]]; then
+  echo "[entrypoint] Loading persisted credentials from $SECRETS_FILE"
+  set -a
+  source "$SECRETS_FILE"
+  set +a
+fi
+
+missing_reader=false
+missing_admin=false
+missing_password=false
+
+if [[ -z "${KM_READER_TOKEN:-}" ]]; then
+  missing_reader=true
+fi
+if [[ -z "${KM_ADMIN_TOKEN:-}" ]]; then
+  missing_admin=true
+fi
+if [[ -z "${KM_NEO4J_PASSWORD:-}" || "${KM_NEO4J_PASSWORD}" == "neo4jadmin" ]]; then
+  missing_password=true
+fi
+
+if [[ "$missing_reader" == true || "$missing_admin" == true || "$missing_password" == true ]]; then
+  if [[ "$allow_insecure" == "true" ]]; then
+    echo "[entrypoint] WARNING: Booting without managed credentials (KM_ALLOW_INSECURE_BOOT=true)." >&2
+  else
+    echo "[entrypoint] Generating secure credentials" >&2
+    mapfile -t generated < <(python <<'PY'
+import secrets
+import string
+import uuid
+
+alphabet = string.ascii_letters + string.digits
+
+def random_password(length: int = 48) -> str:
+    return ''.join(secrets.choice(alphabet) for _ in range(length))
+
+reader = str(uuid.uuid4())
+admin = str(uuid.uuid4())
+password = random_password()
+print(reader)
+print(admin)
+print(password)
+PY
+    )
+    if [[ "$missing_reader" == true ]]; then
+      KM_READER_TOKEN="${generated[0]}"
+    fi
+    if [[ "$missing_admin" == true ]]; then
+      KM_ADMIN_TOKEN="${generated[1]}"
+    fi
+    if [[ "$missing_password" == true ]]; then
+      KM_NEO4J_PASSWORD="${generated[2]}"
+    fi
+    umask 077
+    cat >"$SECRETS_FILE" <<EOF
+KM_READER_TOKEN=${KM_READER_TOKEN}
+KM_ADMIN_TOKEN=${KM_ADMIN_TOKEN}
+KM_NEO4J_PASSWORD=${KM_NEO4J_PASSWORD}
+EOF
+    echo "[entrypoint] Stored generated credentials in $SECRETS_FILE" >&2
+  fi
+fi
+
+# Abort if credentials are still missing when insecure boot is not allowed.
+if [[ "$allow_insecure" != "true" ]]; then
+  if [[ -z "${KM_READER_TOKEN:-}" || -z "${KM_ADMIN_TOKEN:-}" || -z "${KM_NEO4J_PASSWORD:-}" ]]; then
+    echo "[entrypoint] ERROR: Required credentials are missing and KM_ALLOW_INSECURE_BOOT is not enabled." >&2
+    exit 1
+  fi
+fi
+
+# Ensure credentials are exported for downstream consumers.
+export KM_READER_TOKEN KM_ADMIN_TOKEN KM_NEO4J_PASSWORD
+
+# Default to secure API authentication unless explicitly disabled.
+if [[ -z "${KM_AUTH_ENABLED:-}" ]]; then
+  if [[ "$allow_insecure" == "true" ]]; then
+    KM_AUTH_ENABLED=false
+  else
+    KM_AUTH_ENABLED=true
+  fi
+fi
+export KM_AUTH_ENABLED
+
+if [[ -z "${KM_NEO4J_AUTH_ENABLED:-}" ]]; then
+  if [[ "$allow_insecure" == "true" ]]; then
+    KM_NEO4J_AUTH_ENABLED=false
+  else
+    KM_NEO4J_AUTH_ENABLED=true
+  fi
+fi
+export KM_NEO4J_AUTH_ENABLED
 
 if [[ -n "${KM_EXPECTED_UID:-}" && "$(id -u)" != "$KM_EXPECTED_UID" ]]; then
   echo "[entrypoint] WARNING: Container running as UID $(id -u), expected $KM_EXPECTED_UID" >&2

@@ -120,6 +120,27 @@ def test_requires_non_default_neo4j_password_when_auth_enabled(
     assert "KM_NEO4J_PASSWORD" in str(excinfo.value)
 
 
+def test_requires_non_empty_neo4j_password_when_auth_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("KM_STATE_PATH", str(tmp_path / "state"))
+    monkeypatch.setenv("KM_AUTH_ENABLED", "true")
+    monkeypatch.setenv("KM_ADMIN_TOKEN", "maintainer-token")
+    monkeypatch.setenv("KM_NEO4J_PASSWORD", "")
+    monkeypatch.delenv("KM_NEO4J_AUTH_ENABLED", raising=False)
+
+    fake_driver = mock.Mock()
+    monkeypatch.setattr("gateway.api.app.GraphDatabase", mock.Mock(driver=mock.Mock(return_value=fake_driver)))
+    monkeypatch.setattr("gateway.api.app.QdrantClient", mock.Mock(return_value=mock.Mock()))
+    monkeypatch.setattr("gateway.api.app._verify_graph_database", mock.Mock(return_value=True))
+
+    with pytest.raises(RuntimeError) as excinfo:
+        create_app()
+
+    assert "KM_NEO4J_PASSWORD" in str(excinfo.value)
+
+
 def test_logs_warning_when_neo4j_auth_disabled(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

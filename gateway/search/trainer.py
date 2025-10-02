@@ -1,3 +1,5 @@
+"""Training utilities for search ranking models."""
+
 from __future__ import annotations
 
 import json
@@ -25,6 +27,8 @@ FEATURE_FIELDS: Sequence[str] = (
 
 @dataclass(slots=True)
 class TrainingResult:
+    """Capture optimiser output for debug or inspection."""
+
     weights: list[float]
     intercept: float
     mse: float
@@ -34,6 +38,8 @@ class TrainingResult:
 
 @dataclass(slots=True)
 class ModelArtifact:
+    """Persisted search model metadata and coefficients."""
+
     model_type: str
     created_at: str
     feature_names: list[str]
@@ -44,6 +50,7 @@ class ModelArtifact:
 
 
 def train_from_dataset(path: Path) -> ModelArtifact:
+    """Train a logistic regression model from the labelled dataset."""
     records = load_dataset_records(path)
     if not records:
         raise DatasetLoadError("Dataset is empty or lacks valid votes")
@@ -66,6 +73,7 @@ def train_from_dataset(path: Path) -> ModelArtifact:
 
 
 def save_artifact(artifact: ModelArtifact, path: Path) -> None:
+    """Write the model artifact to disk as JSON."""
     payload = {
         "model_type": artifact.model_type,
         "created_at": artifact.created_at,
@@ -80,6 +88,7 @@ def save_artifact(artifact: ModelArtifact, path: Path) -> None:
 
 
 def load_artifact(path: Path) -> ModelArtifact:
+    """Load a saved model artifact from disk."""
     data = json.loads(path.read_text(encoding="utf-8"))
     return ModelArtifact(
         model_type=data.get("model_type", "linear_regression"),

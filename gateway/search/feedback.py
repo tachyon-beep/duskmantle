@@ -1,3 +1,5 @@
+"""Persistent storage helpers for search feedback events."""
+
 from __future__ import annotations
 
 import json
@@ -14,6 +16,7 @@ class SearchFeedbackStore:
     """Append-only store for search telemetry and feedback."""
 
     def __init__(self, root: Path) -> None:
+        """Initialise the feedback store beneath the given directory."""
         self.base_dir = root
         self.base_dir.mkdir(parents=True, exist_ok=True)
         self.events_path = self.base_dir / "events.log"
@@ -27,6 +30,7 @@ class SearchFeedbackStore:
         context: object = None,
         request_id: str | None = None,
     ) -> None:
+        """Persist a feedback event for the supplied search response."""
         if not response.results:
             return
 

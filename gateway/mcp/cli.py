@@ -16,6 +16,7 @@ _TRANSPORT_CHOICES = ["stdio", "http", "sse", "streamable-http"]
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Return the CLI parser for launching the MCP server."""
     parser = argparse.ArgumentParser(description="Run the Duskmantle MCP server")
     parser.add_argument(
         "--transport",
@@ -52,6 +53,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Entry point for the MCP server management CLI."""
     parser = build_parser()
     args = parser.parse_args(argv)
 
