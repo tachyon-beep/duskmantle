@@ -50,6 +50,12 @@ The knowledge gateway reads its runtime configuration from environment variables
 | `KM_SCHEDULER_ENABLED` | `false` | Enable scheduled ingestion via APScheduler. |
 | `KM_SCHEDULER_INTERVAL_MINUTES` | `30` | Interval-based schedule when cron is not specified. |
 | `KM_SCHEDULER_CRON` | _unset_ | Cron expression (UTC) for scheduled ingestion. |
+| `KM_BACKUP_ENABLED` | `false` | Enable scheduled backups of `KM_STATE_PATH`. |
+| `KM_BACKUP_INTERVAL_MINUTES` | `720` | Interval (minutes) between backups when cron is not set. |
+| `KM_BACKUP_CRON` | _unset_ | Cron expression (UTC) for backup runs. Takes precedence over the interval. |
+| `KM_BACKUP_RETENTION_LIMIT` | `7` | Number of recent backup archives to retain (older archives are removed). |
+| `KM_BACKUP_DEST_PATH` | `${KM_STATE_PATH}/backups` | Directory where backup archives are stored. |
+| `KM_BACKUP_SCRIPT` | `<repo>/bin/km-backup` | Optional override for the backup helper script executed by the scheduler/MCP tool. |
 | `KM_WATCH_ENABLED` | `false` | When `true`, the container runs `bin/km-watch` internally. |
 | `KM_WATCH_INTERVAL` | `60` | Polling interval (seconds) for the internal watcher. |
 | `KM_WATCH_PROFILE` | `local` | Ingestion profile invoked by the watcher. |

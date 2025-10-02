@@ -4,6 +4,22 @@ from __future__ import annotations
 
 from prometheus_client import Counter, Gauge, Histogram
 
+BACKUP_RUNS_TOTAL = Counter(
+    "km_backup_runs_total",
+    "Backup job outcomes partitioned by result",
+    labelnames=["result"],
+)
+
+BACKUP_LAST_STATUS = Gauge(
+    "km_backup_last_status",
+    "Last backup status (1=success,0=failure)",
+)
+
+BACKUP_LAST_SUCCESS_TIMESTAMP = Gauge(
+    "km_backup_last_success_timestamp",
+    "Unix timestamp of the last successful backup run",
+)
+
 GRAPH_DEPENDENCY_STATUS = Gauge(
     "km_graph_dependency_status",
     "Neo4j connectivity status (1=healthy,0=unavailable)",

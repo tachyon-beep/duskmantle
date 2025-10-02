@@ -75,9 +75,11 @@ def test_health_endpoint_reports_diagnostics(tmp_path: Path, monkeypatch: pytest
     assert "audit" in payload["checks"]
     assert "graph" in payload["checks"]
     assert "qdrant" in payload["checks"]
+    assert "backup" in payload["checks"]
     graph_check = payload["checks"]["graph"]
     assert "status" in graph_check
     assert "revision" in graph_check
+    assert payload["checks"]["backup"]["status"] == "disabled"
 
 
 def test_health_endpoint_ok_when_artifacts_present(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -104,6 +106,7 @@ def test_health_endpoint_ok_when_artifacts_present(tmp_path: Path, monkeypatch: 
     assert data["status"] in {"ok", "degraded"}
     assert data["checks"]["coverage"]["status"] == "ok"
     assert data["checks"]["audit"]["status"] == "ok"
+    assert data["checks"]["backup"]["status"] == "disabled"
 
 
 def test_ready_endpoint_returns_ready() -> None:

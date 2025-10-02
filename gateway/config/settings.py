@@ -84,6 +84,12 @@ class AppSettings(BaseSettings):
     scheduler_cron: str | None = Field(None, alias="KM_SCHEDULER_CRON")
     coverage_enabled: bool = Field(True, alias="KM_COVERAGE_ENABLED")
     coverage_history_limit: int = Field(5, alias="KM_COVERAGE_HISTORY_LIMIT")
+    backup_enabled: bool = Field(False, alias="KM_BACKUP_ENABLED")
+    backup_interval_minutes: int = Field(720, alias="KM_BACKUP_INTERVAL_MINUTES")
+    backup_cron: str | None = Field(None, alias="KM_BACKUP_CRON")
+    backup_retention_limit: int = Field(7, alias="KM_BACKUP_RETENTION_LIMIT")
+    backup_destination: Path | None = Field(None, alias="KM_BACKUP_DEST_PATH")
+    backup_script_path: Path | None = Field(None, alias="KM_BACKUP_SCRIPT")
 
     lifecycle_report_enabled: bool = Field(True, alias="KM_LIFECYCLE_REPORT_ENABLED")
     lifecycle_stale_days: int = Field(30, alias="KM_LIFECYCLE_STALE_DAYS")
@@ -179,6 +185,20 @@ class AppSettings(BaseSettings):
             return 1
         return value
 
+    @field_validator("backup_interval_minutes")
+    @classmethod
+    def _sanitize_backup_interval(cls, value: int) -> int:
+        if value < 1:
+            return 1
+        return value
+
+    @field_validator("backup_retention_limit")
+    @classmethod
+    def _sanitize_backup_retention(cls, value: int) -> int:
+        if value < 0:
+            return 0
+        return value
+
     def resolved_search_weights(self) -> tuple[str, dict[str, float]]:
         """Return the active search weight profile name and resolved weights."""
 
@@ -205,6 +225,16 @@ class AppSettings(BaseSettings):
         if overrides:
             return f"{profile}+overrides", resolved
         return profile, resolved
+
+    def backup_trigger_config(self) -> dict[str, object]:
+        """Return trigger configuration for the automated backup job."""
+
+        if self.backup_cron and self.backup_cron.strip():
+            return {"type": "cron", "expression": self.backup_cron.strip()}
+        return {
+            "type": "interval",
+            "minutes": max(1, self.backup_interval_minutes),
+        }
 
     def scheduler_trigger_config(self) -> dict[str, object]:
         """Return trigger configuration for the ingestion scheduler."""

@@ -188,7 +188,7 @@ RISK-004
 Backups exist only as a manual MCP tool; there is no scheduled capture or documented restoration workflow.
 
 ### Current State
-km-backup is exposed via MCP but relies on operators remembering to run it; archives are stored locally with no retention policy.
+Automated backups run via the scheduler when `KM_BACKUP_ENABLED` is set; archives land in `${KM_STATE_PATH}/backups` with retention trimming and Prometheus metrics (`km_backup_*`). Manual MCP backups reuse the same helper. Restore instructions live in `docs/OPERATIONS.md`.
 
 ### Desired State
 Automated, scheduled backups with configurable retention and documented recovery drills.
@@ -209,9 +209,9 @@ Add scheduler hooks or external scripts to trigger backups, stream archives to d
 - WP-002
 
 ### Acceptance Criteria
-- [ ] Backup job runs on configurable cadence and surfaces metrics
-- [ ] Disaster-recovery doc demonstrates restoring a fresh environment
-- [ ] CI smoke test validates archive integrity
+- [x] Backup job runs on configurable cadence and surfaces metrics
+- [x] Disaster-recovery doc demonstrates restoring a fresh environment
+- [x] CI smoke test validates archive integrity
 
 ### Related Issues
 RISK-005

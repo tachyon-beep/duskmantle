@@ -92,6 +92,9 @@ def _log_startup_configuration(settings: AppSettings) -> None:
             "ingest_overlap": settings.ingest_overlap,
             "search_weight_profile": weight_profile_name,
             "search_weights": resolved_weights,
+            "backup_enabled": settings.backup_enabled,
+            "backup_schedule": settings.backup_trigger_config(),
+            "backup_retention_limit": settings.backup_retention_limit,
         },
     )
 

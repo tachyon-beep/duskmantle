@@ -37,6 +37,9 @@ Key time-series:
 | `km_ingest_skips_total` | Counter | `reason` | Scheduler/automation ingest skips partitioned by reason. | Alert on sustained `auth`, `lock`, or `head` growth. |
 | `km_watch_runs_total` | Counter | `result` | Watcher outcomes (`success`, `error`, `no_change`). | Alert when `error` outpaces `success` or `no_change` dominates unexpectedly. |
 | `km_coverage_history_snapshots` | Gauge | `profile` | Number of retained coverage snapshots under `reports/history/`. | Alert when value drops below configured history limit (e.g., disk cleanup failure). |
+| `km_backup_runs_total` | Counter | `result` (`success`,`failure`,`skipped_lock`) | Scheduled backup outcomes. | Alert when failures grow or locks skip repeatedly. |
+| `km_backup_last_status` | Gauge | _none_ | Last backup status (1=success, 0=failure). | Alert when zero for sustained intervals. |
+| `km_backup_last_success_timestamp` | Gauge | _none_ | Unix timestamp of the last successful backup run. | Alert when stale relative to expected cadence. |
 | `km_search_requests_total` | Counter | `status` (`success`,`failure`) | Search API requests partitioned by outcome. | Alert when failure ratio rises above baseline. |
 | `km_search_graph_cache_events_total` | Counter | `status` (`miss`,`hit`,`error`) | Tracks graph context cache utilisation. | Alert when `status="error"` climbs or hit ratio drops suddenly. |
 | `km_search_graph_lookup_seconds` | Histogram | _none_ | Latency of Neo4j lookups for search enrichment. | Alert when P95 exceeds expected threshold (e.g., >250 ms). |
@@ -101,7 +104,7 @@ scrape_configs:
 
 ### Health Endpoints
 
-- `GET /healthz` returns an overall `status` (`ok` or `degraded`) plus detailed checks for `coverage`, `audit`, `scheduler`, `graph`, and `qdrant`.
+- `GET /healthz` returns an overall `status` (`ok` or `degraded`) plus detailed checks for `coverage`, `audit`, `scheduler`, `graph`, `qdrant`, and `backup`.
   - Coverage check tracks file freshness, missing artifact count, and falls back to `stale` when older than twice the scheduler interval (or 24h without a scheduler).
   - Audit check ensures the SQLite ledger is present and readable.
   - Scheduler check reports `running`, `stopped`, or `disabled` alongside the configured interval.

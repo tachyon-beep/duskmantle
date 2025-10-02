@@ -50,12 +50,14 @@ def build_health_report(app: FastAPI, settings: AppSettings) -> dict[str, object
     coverage = _coverage_health(settings)
     audit = _audit_health(settings)
     scheduler = _scheduler_health(app, settings)
+    backup = _backup_health(app, settings)
     graph = _graph_health(app, settings)
     qdrant = _qdrant_health(app, settings)
     checks = {
         "coverage": coverage,
         "audit": audit,
         "scheduler": scheduler,
+        "backup": backup,
         "graph": graph,
         "qdrant": qdrant,
     }
@@ -193,6 +195,18 @@ def _dependency_health(
     if snapshot.last_error:
         payload["error"] = snapshot.last_error
     return payload
+
+
+def _backup_health(app: FastAPI, settings: AppSettings) -> dict[str, Any]:
+    scheduler = getattr(app.state, "scheduler", None)
+    if not settings.backup_enabled:
+        return {"status": "disabled"}
+    if scheduler is None:
+        return {"status": "stopped"}
+    health_method = getattr(scheduler, "backup_health", None)
+    if callable(health_method):
+        return health_method()
+    return {"status": "unknown"}
 
 
 __all__ = ["create_router", "build_health_report"]

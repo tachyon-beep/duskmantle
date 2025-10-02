@@ -16,9 +16,17 @@ from apscheduler.triggers.interval import IntervalTrigger  # type: ignore[import
 from filelock import FileLock, Timeout
 
 from gateway.api.connections import Neo4jConnectionManager, QdrantConnectionManager
+from gateway.backup import BackupExecutionError, run_backup
 from gateway.config.settings import AppSettings
 from gateway.ingest.service import execute_ingestion
-from gateway.observability.metrics import INGEST_SKIPS_TOTAL, SCHEDULER_LAST_SUCCESS_TIMESTAMP, SCHEDULER_RUNS_TOTAL
+from gateway.observability.metrics import (
+    BACKUP_LAST_STATUS,
+    BACKUP_LAST_SUCCESS_TIMESTAMP,
+    BACKUP_RUNS_TOTAL,
+    INGEST_SKIPS_TOTAL,
+    SCHEDULER_LAST_SUCCESS_TIMESTAMP,
+    SCHEDULER_RUNS_TOTAL,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,12 +51,21 @@ class IngestionScheduler:
         self._last_head_path = self._state_dir / "last_repo_head.txt"
         self._graph_manager = graph_manager
         self._qdrant_manager = qdrant_manager
+        self._backup_enabled = settings.backup_enabled
+        self._backup_retention_limit = max(0, settings.backup_retention_limit)
+        self._backup_destination = (settings.backup_destination or (settings.state_path / "backups")).resolve()
+        self._backup_script_path = settings.backup_script_path
+        self._backup_status: dict[str, object] = {"status": "disabled" if not self._backup_enabled else "pending"}
+        self._backup_lock_path = self._state_dir / "backup.lock"
 
     def start(self) -> None:
         """Register the ingestion job and begin scheduling if enabled."""
-        if self._started or not self.settings.scheduler_enabled:
+        ingest_enabled = self.settings.scheduler_enabled
+        backup_enabled = self._backup_enabled
+
+        if self._started or not (ingest_enabled or backup_enabled):
             return
-        if self.settings.auth_enabled and not self.settings.maintainer_token:
+        if ingest_enabled and self.settings.auth_enabled and not self.settings.maintainer_token:
             logger.error(
                 "Scheduler disabled: maintainer token required when auth is enabled",
                 extra={"setting": "KM_ADMIN_TOKEN"},
@@ -56,18 +73,33 @@ class IngestionScheduler:
             SCHEDULER_RUNS_TOTAL.labels(result="skipped_auth").inc()
             INGEST_SKIPS_TOTAL.labels(reason="auth").inc()
             return
-        trigger_config = self.settings.scheduler_trigger_config()
-        trigger = _build_trigger(trigger_config)
-        self.scheduler.add_job(
-            self._run_ingestion,
-            trigger,
-            id="ingest",
-            replace_existing=True,
-        )
-        trigger_summary = _describe_trigger(trigger_config)
+        job_summaries: list[str] = []
+        if ingest_enabled:
+            trigger_config = self.settings.scheduler_trigger_config()
+            trigger = _build_trigger(trigger_config)
+            self.scheduler.add_job(
+                self._run_ingestion,
+                trigger,
+                id="ingest",
+                replace_existing=True,
+            )
+            job_summaries.append(f"ingest:{_describe_trigger(trigger_config)}")
+
+        if backup_enabled:
+            trigger_config = self.settings.backup_trigger_config()
+            trigger = _build_trigger(trigger_config)
+            self.scheduler.add_job(
+                self._run_backup,
+                trigger,
+                id="backup",
+                replace_existing=True,
+            )
+            self._backup_status = {"status": "pending"}
+            job_summaries.append(f"backup:{_describe_trigger(trigger_config)}")
+
         self.scheduler.start()
         self._started = True
-        logger.info("Scheduler started", extra={"trigger": trigger_summary})
+        logger.info("Scheduler started", extra={"triggers": job_summaries})
 
     def shutdown(self) -> None:
         """Stop the scheduler and release APScheduler resources."""
@@ -131,6 +163,53 @@ class IngestionScheduler:
             with suppress(RuntimeError):
                 lock.release()
 
+    def _run_backup(self) -> None:
+        """Run the backup job and record metrics/retention."""
+
+        lock = FileLock(str(self._backup_lock_path))
+        try:
+            try:
+                lock.acquire(timeout=0)
+            except Timeout:
+                logger.info("Scheduled backup skipped: another run is active")
+                BACKUP_RUNS_TOTAL.labels(result="skipped_lock").inc()
+                return
+
+            script_path = self._backup_script_path or Path(__file__).resolve().parents[1] / "bin" / "km-backup"
+            try:
+                result = run_backup(
+                    state_path=self.settings.state_path,
+                    script_path=script_path,
+                    destination_path=self._backup_destination,
+                )
+            except BackupExecutionError as exc:  # pragma: no cover - defensive guard
+                logger.exception("Scheduled backup failed", extra={"error": str(exc)})
+                BACKUP_RUNS_TOTAL.labels(result="failure").inc()
+                BACKUP_LAST_STATUS.set(0)
+                now = time.time()
+                self._backup_status = {
+                    "status": "error",
+                    "last_failure": now,
+                    "error": str(exc),
+                }
+                return
+
+            archive_path = Path(result["archive"]).resolve()
+            BACKUP_RUNS_TOTAL.labels(result="success").inc()
+            BACKUP_LAST_STATUS.set(1)
+            timestamp = time.time()
+            BACKUP_LAST_SUCCESS_TIMESTAMP.set(timestamp)
+            self._backup_status = {
+                "status": "ok",
+                "last_success": timestamp,
+                "archive": str(archive_path),
+            }
+            self._prune_backups()
+            logger.info("Scheduled backup completed", extra={"archive": str(archive_path)})
+        finally:
+            with suppress(RuntimeError):
+                lock.release()
+
     def _read_last_head(self) -> str | None:
         try:
             return self._last_head_path.read_text().strip() or None
@@ -139,6 +218,28 @@ class IngestionScheduler:
 
     def _write_last_head(self, head: str) -> None:
         self._last_head_path.write_text(head)
+
+    def _prune_backups(self) -> None:
+        if self._backup_retention_limit <= 0:
+            return
+        try:
+            archives = sorted(
+                self._backup_destination.glob("*") if self._backup_destination.exists() else [],
+                key=lambda path: path.stat().st_mtime,
+                reverse=True,
+            )
+        except OSError:  # pragma: no cover - defensive guard
+            return
+        for index, archive in enumerate(archives):
+            if index < self._backup_retention_limit:
+                continue
+            with suppress(OSError):
+                archive.unlink()
+
+    def backup_health(self) -> dict[str, object]:
+        if not self._backup_enabled:
+            return {"status": "disabled"}
+        return dict(self._backup_status)
 
 
 def _current_repo_head(repo_root: Path) -> str | None:
