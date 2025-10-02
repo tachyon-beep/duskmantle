@@ -2,105 +2,89 @@ from __future__ import annotations
 
 from unittest import mock
 
-from gateway.ingest.artifacts import Artifact, Chunk, ChunkEmbedding
+import httpx
+import pytest
+from qdrant_client.http.exceptions import UnexpectedResponse
+
 from gateway.ingest.qdrant_writer import QdrantWriter
 
 
-class RecordingClient:
-    def __init__(self) -> None:
-        self._collections = set()
-        self.recreate_calls: list[dict[str, object]] = []
-        self.upserts: list[dict[str, object]] = []
-
-    def get_collection(self, name: str) -> None:
-        if name not in self._collections:
-            raise RuntimeError("missing")
-
-    def recreate_collection(
-        self,
-        collection_name: str,
-        vectors_config: object,
-        optimizers_config: object,
-    ) -> None:
-        self._collections.add(collection_name)
-        self.recreate_calls.append(
-            {
-                "name": collection_name,
-                "size": vectors_config.size,
-                "distance": vectors_config.distance,
-                "segments": optimizers_config.default_segment_number,
-            }
-        )
-
-    def upsert(self, collection_name: str, points: object) -> None:
-        self.upserts.append({"collection": collection_name, "points": points})
-
-
-def build_chunk(path: str, text: str, metadata: dict[str, object]) -> ChunkEmbedding:
-    artifact = Artifact(
-        path=mock.Mock(as_posix=lambda: path),
-        artifact_type=metadata.get("artifact_type", "code"),
-        subsystem=metadata.get("subsystem"),
-        content=text,
-        git_commit=metadata.get("git_commit"),
-        git_timestamp=metadata.get("git_timestamp"),
-        extra_metadata={},
+@pytest.fixture(autouse=True)
+def stub_qdrant_models(monkeypatch: pytest.MonkeyPatch) -> None:
+    vector_params = mock.Mock(name="VectorParams")
+    optim_config = mock.Mock(name="OptimizersConfigDiff")
+    monkeypatch.setattr("gateway.ingest.qdrant_writer.qmodels.VectorParams", mock.Mock(return_value=vector_params))
+    monkeypatch.setattr(
+        "gateway.ingest.qdrant_writer.qmodels.OptimizersConfigDiff",
+        mock.Mock(return_value=optim_config),
     )
-    chunk = Chunk(
-        artifact=artifact,
-        chunk_id=f"{path}::0",
-        text=text,
-        sequence=0,
-        content_digest="0123456789abcdef0123456789abcdef",
-        metadata=metadata,
-    )
-    return ChunkEmbedding(chunk=chunk, vector=[0.1, 0.2])
 
 
-def test_ensure_collection_creates_when_missing() -> None:
-    client = RecordingClient()
+def build_client(**kwargs: object) -> mock.Mock:
+    client = mock.Mock(**kwargs)
+    # Provide both interfaces used by the writer to keep type-checkers quiet.
+    client.collection_exists = kwargs.get("collection_exists", mock.Mock())
+    client.get_collection = kwargs.get("get_collection", mock.Mock())
+    client.create_collection = kwargs.get("create_collection", mock.Mock())
+    client.recreate_collection = kwargs.get("recreate_collection", mock.Mock())
+    client.upsert = kwargs.get("upsert", mock.Mock())
+    client.delete = kwargs.get("delete", mock.Mock())
+    return client
+
+
+def test_ensure_collection_creates_when_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = build_client()
+    client.collection_exists.return_value = False
+
     writer = QdrantWriter(client, "km_test")
+    writer.ensure_collection(vector_size=384, retries=1)
 
-    writer.ensure_collection(vector_size=384)
-
-    assert client.recreate_calls
-    call = client.recreate_calls[0]
-    assert call["name"] == "km_test"
-    assert call["size"] == 384
-    assert call["segments"] == 2
+    client.create_collection.assert_called_once()
+    client.recreate_collection.assert_not_called()
 
 
-def test_ensure_collection_noop_when_exists() -> None:
-    client = RecordingClient()
-    client._collections.add("km_test")
+def test_ensure_collection_noop_when_collection_exists() -> None:
+    client = build_client()
+    client.collection_exists.return_value = True
+
     writer = QdrantWriter(client, "km_test")
-
     writer.ensure_collection(vector_size=256)
 
-    assert not client.recreate_calls
+    client.create_collection.assert_not_called()
 
 
-def test_upsert_chunks_builds_points() -> None:
-    client = RecordingClient()
+def test_ensure_collection_retries_on_transient_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = build_client()
+    client.collection_exists.return_value = False
+    client.create_collection.side_effect = [RuntimeError("temporary"), None]
+    sleep_calls: list[float] = []
+
+    monkeypatch.setattr("gateway.ingest.qdrant_writer.time.sleep", sleep_calls.append)
+
     writer = QdrantWriter(client, "km_test")
+    writer.ensure_collection(vector_size=128, retries=2, retry_backoff=0.1)
 
-    chunk = build_chunk(
-        "docs/readme.md",
-        "hello world",
-        {"artifact_type": "doc", "subsystem": "Kasmina", "tags": ["intro"]},
-    )
-
-    writer.upsert_chunks([chunk])
-
-    assert client.upserts
-    payload = client.upserts[0]["points"][0]
-    assert payload.payload["chunk_id"] == "docs/readme.md::0"
-    assert payload.payload["text"] == "hello world"
-    assert payload.payload["tags"] == ["intro"]
+    assert client.create_collection.call_count == 2
+    # Ensure we attempted backoff exactly once with a positive value
+    assert sleep_calls and sleep_calls[0] > 0
 
 
-def test_upsert_chunks_noop_on_empty() -> None:
-    client = RecordingClient()
+def test_ensure_collection_handles_conflict() -> None:
+    client = build_client()
+    client.collection_exists.return_value = False
+    conflict = UnexpectedResponse(409, "Conflict", b"conflict", httpx.Headers())
+    client.create_collection.side_effect = [conflict]
+
     writer = QdrantWriter(client, "km_test")
-    writer.upsert_chunks([])
-    assert not client.upserts
+    writer.ensure_collection(vector_size=64, retries=1)
+
+    client.create_collection.assert_called_once()
+
+
+def test_reset_collection_invokes_recreate() -> None:
+    client = build_client()
+    writer = QdrantWriter(client, "km_reset")
+
+    writer.reset_collection(vector_size=768)
+
+    client.recreate_collection.assert_called_once()

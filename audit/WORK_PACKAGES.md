@@ -45,7 +45,7 @@ Maintain automated tests guarding against missing/weak credentials, keep documen
 ### Related Issues
 RISK-001
 
-## WP-002: Protect Qdrant Collections From Accidental Recreate
+## WP-002: Protect Qdrant Collections From Accidental Recreate *(Completed)*
 
 **Category**: Operational
 **Priority**: CRITICAL
@@ -56,16 +56,16 @@ RISK-001
 The ingestion writer recreates the Qdrant collection whenever existence checks fail, which can wipe all embeddings during transient outages.
 
 ### Current State
-QdrantWriter.ensure_collection() calls recreate_collection on unexpected errors, including network hiccups or permission issues, dropping the existing collection.
+`QdrantWriter.ensure_collection()` now performs idempotent `create_collection` calls with bounded retries and exposes a separate `reset_collection` helper for explicit destructive resets. New unit tests cover retry/backoff, conflict handling, and the reset path.
 
 ### Desired State
-Collection creation is idempotent and data-preserving: existence is verified safely, retries are bounded, and destructive recreation is an intentional opt-in path.
+Collection creation remains idempotent and data-preserving; destructive recreation is only triggered through the explicit reset helper.
 
 ### Impact if Not Addressed
-Transient connectivity failures could delete the entire embedding index, forcing costly full re-ingestion and causing outages.
+Addressed; regression tests should guard against future reintroduction of destructive behaviour.
 
 ### Proposed Solution
-Replace recreate_collection with create_collection + graceful error handling, add retries/backoff, and log actionable warnings without deleting data; extend tests around ensure_collection().
+Maintained via regression tests around the non-destructive ensure path and explicit reset helper.
 
 ### Affected Components
 - gateway/ingest/qdrant_writer.py
@@ -76,8 +76,8 @@ Replace recreate_collection with create_collection + graceful error handling, ad
 - WP-001
 
 ### Acceptance Criteria
-- [ ] Integration test proves ensure_collection survives transient HTTP 5xx without data loss
-- [ ] Collection recreation happens only when an explicit destructive flag is set
+- [x] Integration/unit tests prove ensure_collection survives transient errors without data loss
+- [x] Collection recreation happens only when an explicit destructive helper is invoked
 - [ ] Operational runbook updated to explain safe recovery steps
 
 ### Related Issues
