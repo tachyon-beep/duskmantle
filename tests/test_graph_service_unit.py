@@ -5,11 +5,25 @@ from unittest import mock
 from types import SimpleNamespace, TracebackType
 
 import pytest
+from neo4j import RoutingControl
 
 from gateway.graph import service as graph_service
 from gateway.graph.service import GraphNotFoundError, GraphQueryError, GraphService
+from gateway.observability.metrics import GRAPH_CYPHER_DENIED_TOTAL
 
 DriverFixture = tuple[GraphService, "DummySession", "DummyDriver"]
+
+
+def _reset_metric(reason: str) -> None:
+    try:
+        GRAPH_CYPHER_DENIED_TOTAL.remove(reason)
+    except KeyError:
+        pass
+
+
+def _metric_value(reason: str) -> float:
+    sample = GRAPH_CYPHER_DENIED_TOTAL._metrics.get((reason,))
+    return sample._value.get() if sample else 0.0
 
 
 class DummyNode(dict[str, object]):
@@ -62,17 +76,27 @@ class DummySession:
 class DummyDriver:
     def __init__(self, session: DummySession) -> None:
         self._session = session
-        self.last_execute_query: tuple[str, dict[str, object], str] | None = None
+        self.last_execute_query: tuple[str, dict[str, object], str, object | None] | None = None
         self.execute_query_result = SimpleNamespace(
             records=[],
-            summary=SimpleNamespace(result_available_after=None, database=None),
+            summary=SimpleNamespace(
+                result_available_after=None,
+                database=None,
+                counters=SimpleNamespace(contains_updates=False),
+            ),
         )
 
     def session(self, **kwargs: object) -> DummySession:
         return self._session
 
-    def execute_query(self, query: str, parameters: dict[str, object], database_: str) -> SimpleNamespace:
-        self.last_execute_query = (query, parameters, database_)
+    def execute_query(
+        self,
+        query: str,
+        parameters: dict[str, object],
+        database_: str,
+        routing_: object | None = None,
+    ) -> SimpleNamespace:
+        self.last_execute_query = (query, parameters, database_, routing_)
         return self.execute_query_result
 
 
@@ -86,7 +110,7 @@ def patch_graph_types(monkeypatch: pytest.MonkeyPatch) -> None:
 def dummy_driver() -> DriverFixture:
     session = DummySession()
     driver = DummyDriver(session)
-    service = GraphService(driver=driver, database="knowledge")
+    service = GraphService(driver=driver, database="knowledge", readonly_driver=driver)
     return service, session, driver
 
 
@@ -339,7 +363,11 @@ def test_run_cypher_serializes_records(monkeypatch: pytest.MonkeyPatch, dummy_dr
 
     driver.execute_query_result = SimpleNamespace(
         records=[DummyRecord([node, 42])],
-        summary=SimpleNamespace(result_available_after=12, database=SimpleNamespace(name="knowledge")),
+        summary=SimpleNamespace(
+            result_available_after=12,
+            database=SimpleNamespace(name="knowledge"),
+            counters=SimpleNamespace(contains_updates=False),
+        ),
     )
 
     payload = service.run_cypher("MATCH (n) RETURN n LIMIT 1", parameters=None)
@@ -347,10 +375,72 @@ def test_run_cypher_serializes_records(monkeypatch: pytest.MonkeyPatch, dummy_dr
     assert payload["data"][0]["row"][0]["id"] == "Subsystem:Kasmina"
     assert payload["summary"]["resultConsumedAfterMs"] == 12
     assert driver.last_execute_query[0] == "MATCH (n) RETURN n LIMIT 1"
+    assert driver.last_execute_query[3] == RoutingControl.READ
 
 
 def test_run_cypher_rejects_non_read_queries(dummy_driver: DriverFixture) -> None:
     service, _, _ = dummy_driver
 
+    _reset_metric("keyword")
+    before = _metric_value("keyword")
     with pytest.raises(GraphQueryError):
         service.run_cypher("CREATE (n:Test) RETURN n LIMIT 1", parameters=None)
+
+    after = _metric_value("keyword")
+    assert after == pytest.approx(before + 1)
+
+
+def test_run_cypher_rejects_updates_detected_in_counters(dummy_driver: DriverFixture) -> None:
+    service, _, driver = dummy_driver
+    driver.execute_query_result = SimpleNamespace(
+        records=[],
+        summary=SimpleNamespace(
+            result_available_after=None,
+            database=None,
+            counters=SimpleNamespace(contains_updates=True),
+        ),
+    )
+
+    _reset_metric("mutation")
+    before = _metric_value("mutation")
+    with pytest.raises(GraphQueryError):
+        service.run_cypher("MATCH (n) RETURN n LIMIT 1", parameters=None)
+
+    after = _metric_value("mutation")
+    assert after == pytest.approx(before + 1)
+
+
+def test_run_cypher_allows_whitelisted_procedure(dummy_driver: DriverFixture) -> None:
+    service, _, driver = dummy_driver
+    driver.execute_query_result = SimpleNamespace(
+        records=[],
+        summary=SimpleNamespace(
+            result_available_after=None,
+            database=None,
+            counters=SimpleNamespace(contains_updates=False),
+        ),
+    )
+
+    _reset_metric("procedure")
+    service.run_cypher(
+        "CALL db.schema.nodeTypeProperties() YIELD nodeType RETURN nodeType LIMIT 5",
+        parameters=None,
+    )
+
+    assert driver.last_execute_query[0].startswith("CALL db.schema")
+    assert _metric_value("procedure") == 0
+
+
+def test_run_cypher_rejects_disallowed_procedure(dummy_driver: DriverFixture) -> None:
+    service, _, _ = dummy_driver
+
+    _reset_metric("procedure")
+    before = _metric_value("procedure")
+    with pytest.raises(GraphQueryError):
+        service.run_cypher(
+            "CALL dbms.procedures() YIELD name RETURN name LIMIT 5",
+            parameters=None,
+        )
+
+    after = _metric_value("procedure")
+    assert after == pytest.approx(before + 1)

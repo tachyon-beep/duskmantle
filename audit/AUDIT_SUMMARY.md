@@ -22,21 +22,20 @@ The Duskmantle knowledge gateway delivers a cohesive hybrid search and graph exp
 - **Technical Debt:** Manual operational playbooks (backups, dependency recovery) and unbounded logs represent the bulk of outstanding debt but are addressable within upcoming sprints.
 
 ## Top 10 Priority Actions
-1. **WP-002** – Remove destructive `recreate_collection` paths to protect Qdrant data.
-2. **WP-003** – Harden the maintainer Cypher endpoint with read-only enforcement.
-3. **WP-004** – Add dependency health probes and auto-reconnect logic for Neo4j/Qdrant.
-4. **WP-005** – Automate backups and document restoration procedures.
-5. **WP-006** – Harden containers by running non-root and splitting data services.
-6. **WP-007** – Optimise graph enrichment latency and guard against slow Neo4j responses.
-7. **WP-008** – Rotate and monitor search feedback storage.
-8. **WP-009** – Make incremental ingest ledger updates atomic and validated.
-9. **WP-010** – Introduce explicit API versioning and compatibility guarantees.
-10. **WP-001** – (Completed) Monitor the new secure-boot path and document procedures for custom deployments.
+1. **WP-004** – Add dependency health probes and auto-reconnect logic for Neo4j/Qdrant.
+2. **WP-005** – Automate backups and document restoration procedures.
+3. **WP-006** – Harden containers by running non-root and splitting data services.
+4. **WP-007** – Optimise graph enrichment latency and guard against slow Neo4j responses.
+5. **WP-008** – Rotate and monitor search feedback storage.
+6. **WP-009** – Make incremental ingest ledger updates atomic and validated.
+7. **WP-010** – Introduce explicit API versioning and compatibility guarantees.
+8. **WP-001** – (Completed) Monitor the new secure-boot path and document procedures for custom deployments.
+9. **WP-002** – (Completed) Keep regression tests guarding against destructive Qdrant resets.
+10. **WP-003** – (Completed) Keep read-only Cypher safeguards documented and monitored.
 
 ## System Health Score
 - **Overall score:** 6.5/10 (Amber) – Core functionality is reliable, but security posture and operational resilience require targeted remediation before production scale-out.
 
 ## Recommended Immediate Actions
-- Continue WP-002 this sprint to eliminate the most severe data-loss vector.
 - Schedule WP-004 and WP-005 immediately after to stabilise runtime behaviour and backups.
 - Tackle Quick Wins (WP-008, WP-009, WP-010) alongside remediation for rapid, low-effort resilience gains.

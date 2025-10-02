@@ -22,23 +22,23 @@ Quarterly security review and pre-release penetration test.
 
 ## RISK-002: Qdrant collection recreated on transient errors
 
-**Likelihood**: Medium
-**Impact**: Critical
+**Likelihood**: Low
+**Impact**: High
 
 ### Description
-Recreating the collection erases embeddings; current logic does so if existence checks fail, including during minor outages.
+Legacy logic recreated the Qdrant collection whenever existence checks failed, erasing embeddings during transient outages. The writer now performs non-destructive creation with retries; risk remains only if future regressions reintroduce destructive paths.
 
 ### Mitigation Strategy
-Apply WP-002 to remove destructive recreation, add retries, and alert on connectivity faults instead.
+Maintain the WP-002 safeguards (idempotent creation, explicit reset helper, regression tests) and monitor for client changes that might bypass the guardrails.
 
 ### Risk Ownership
 Search platform
 
 ### Monitoring & Alerts
-Emit metrics/alerts for Qdrant connectivity and collection mutations; audit ingestion logs for recreate events.
+Emit metrics/alerts for Qdrant connectivity and collection mutations; audit ingestion logs for reset_collection usage.
 
 ### Review Cadence
-Review after each release involving ingest changes and during quarterly DR drills.
+Review after each release touching ingestion/Qdrant logic and during quarterly DR drills.
 
 ## RISK-003: Maintainer Cypher endpoint allows graph mutation
 
@@ -46,10 +46,10 @@ Review after each release involving ingest changes and during quarterly DR drill
 **Impact**: High
 
 ### Description
-String-based query filtering can be bypassed, enabling writes or admin operations when a maintainer token leaks.
+String-based filtering previously allowed obfuscated write queries when a maintainer token leaked. The API now enforces read-only routing, inspects summary counters for mutations, strips literals/comments, and whitelists safe procedures. Residual risk remains if operators fail to configure read-only credentials or if future changes weaken validation.
 
 ### Mitigation Strategy
-Deliver WP-003 to enforce read-only roles or AST validation and expand tests.
+Maintain the WP-003 safeguards (read-only driver credentials, strict validation, regression tests) and document the requirement to supply dedicated read-only Neo4j credentials. Monitor for repeated blocked queries as a signal of probing.
 
 ### Risk Ownership
 Graph services

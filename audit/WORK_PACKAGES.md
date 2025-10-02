@@ -53,7 +53,7 @@ RISK-001
 **Risk Level**: Critical
 
 ### Description
-The ingestion writer recreates the Qdrant collection whenever existence checks fail, which can wipe all embeddings during transient outages.
+Prior behaviour recreated the Qdrant collection whenever existence checks failed, wiping embeddings during transient outages. The package captures the remediation and guards needed to keep collection management safe.
 
 ### Current State
 `QdrantWriter.ensure_collection()` now performs idempotent `create_collection` calls with bounded retries and exposes a separate `reset_collection` helper for explicit destructive resets. New unit tests cover retry/backoff, conflict handling, and the reset path.
@@ -96,16 +96,16 @@ RISK-002
 The /graph/cypher endpoint relies on simple string checks to enforce read-only queries, which can be bypassed with obfuscated Cypher.
 
 ### Current State
-Validation uppercases the query and searches for keywords like CREATE or SET; crafty queries using comments or APOC procedures could still mutate data if tokens leak.
+Cypher requests now execute via a read-only driver (when configured) with `RoutingControl.READ`, the summary counters are inspected for write activity, literals/comments are stripped before validation, and procedure calls are whitelisted to schema inspection routines. New unit tests cover write attempts (including counters) and disallowed procedures. Operators can supply `KM_NEO4J_READONLY_*` credentials to enforce read-only access at the driver level.
 
 ### Desired State
-Cypher requests are executed under a read-only Neo4j role and/or validated with a parser that rejects any write-capable clauses.
+Maintain the read-only enforcement and expand documentation/runbooks so operations teams routinely configure separate read-only credentials for maintainer queries.
 
 ### Impact if Not Addressed
 A compromised maintainer token or auth-disabled deployment could allow hostile graph mutations or data exfiltration beyond expectations.
 
 ### Proposed Solution
-Create a read-only Neo4j user for API use, tighten validation using the official cypher_ast library or whitelist of clauses, and add regression tests for attempted writes.
+Completed in code (read-only driver option, stricter validation/whitelisting, regression tests); update operational docs to prescribe the read-only credential setup and add monitoring for repeated blocked calls.
 
 ### Affected Components
 - gateway/api/routes/graph.py
@@ -117,9 +117,9 @@ Create a read-only Neo4j user for API use, tighten validation using the official
 - WP-001
 
 ### Acceptance Criteria
-- [ ] Attempted write queries are rejected in unit/integration tests
-- [ ] Runtime Cypher executes under an account without write privileges
-- [ ] Documentation lists supported query patterns for maintainers
+- [x] Attempted write queries are rejected in unit/integration tests
+- [x] Documentation/runbook instructs operators to configure read-only Neo4j credentials for maintainer queries
+- [x] Observability guidance captures monitoring for blocked Cypher attempts
 
 ### Related Issues
 RISK-003

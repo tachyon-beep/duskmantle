@@ -46,10 +46,15 @@ def get_graph_service_dependency(
     """Return a memoised graph service bound to the current FastAPI app."""
     settings = get_app_settings(request)
     driver = getattr(request.app.state, "graph_driver", None)
+    readonly_driver = getattr(request.app.state, "graph_readonly_driver", None)
     if driver is None:
         raise HTTPException(status_code=503, detail="Graph service unavailable")
     service = getattr(request.app.state, "graph_service_instance", None)
-    if service is None or getattr(service, "driver", None) is not driver:
+    if (
+        service is None
+        or getattr(service, "driver", None) is not driver
+        or getattr(service, "readonly_driver", None) is not readonly_driver
+    ):
         cache_ttl = settings.graph_subsystem_cache_ttl_seconds
         cache_max = settings.graph_subsystem_cache_max_entries
         factory = getattr(request.app.state, "graph_service_factory", get_graph_service)
@@ -58,6 +63,7 @@ def get_graph_service_dependency(
             settings.neo4j_database,
             cache_ttl=cache_ttl,
             cache_max_entries=cache_max,
+            readonly_driver=readonly_driver,
         )
         request.app.state.graph_service_instance = service
     return service

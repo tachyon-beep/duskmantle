@@ -41,6 +41,7 @@ Key time-series:
 | `km_search_graph_cache_events_total` | Counter | `status` (`miss`,`hit`,`error`) | Tracks graph context cache utilisation. | Alert when `status="error"` climbs or hit ratio drops suddenly. |
 | `km_search_graph_lookup_seconds` | Histogram | _none_ | Latency of Neo4j lookups for search enrichment. | Alert when P95 exceeds expected threshold (e.g., >250 ms). |
 | `km_search_adjusted_minus_vector` | Histogram | _none_ | Distribution of adjusted minus vector scores per result. | Alert when distribution skews heavily positive/negative (ranking drift). |
+| `km_graph_cypher_denied_total` | Counter | `reason` (`keyword`,`procedure`,`structure`,`mutation`) | Maintainer `/graph/cypher` requests blocked by read-only safeguards. | Alert when non-zero growth occurs outside intentional testing (possible intrusion or misconfiguration). |
 | `km_ui_requests_total` | Counter | `view` | Embedded console visits by view (`landing`, `search`, `subsystems`, `lifecycle`). | Alert on prolonged spikes (possible scraping) or sudden drops during active adoption. |
 | `km_ui_events_total` | Counter | `event` | UI-triggered events (`lifecycle_download`, MCP recipe copy buttons, subsystem downloads). | Alert when error events appear or download volume surges unexpectedly. |
 | `km_lifecycle_stale_docs` | Gauge | `profile` | Latest stale document count emitted during ingest. | Alert when value exceeds the stale-days threshold for >24h. |
@@ -86,6 +87,7 @@ scrape_configs:
 - **Stale Coverage:** `time() - km_coverage_last_run_timestamp > 7200` or `km_coverage_last_run_status == 0` for two scrapes.
 - **Search Failure Ratio:** `rate(km_search_requests_total{status="failure"}[15m]) / rate(km_search_requests_total[15m]) > 0.05` sustained for 10 minutes.
 - **Graph Lookup Latency:** `histogram_quantile(0.95, rate(km_search_graph_lookup_seconds_bucket[10m])) > 0.25` indicates Neo4j responsiveness issues—investigate database health or enable caching.
+- **Cypher Denials:** Alert when `increase(km_graph_cypher_denied_total[15m]) > 0` and `reason` is not tied to load-testing. Blocked write attempts may indicate a leaked maintainer token or a broken client.
 - **Ranking Drift:** Monitor `km_search_adjusted_minus_vector` moving average; sustained positive deltas may mean graph weighting dominates vectors (or vice versa if negative). Alert when mean delta leaves the [-0.2, 0.2] band.
 - **Rate Limit Hotspot:** `rate(uvicorn_requests_total{status_code="429"}[5m]) > 5` indicates throttling pressure; investigate abusive clients or increase `KM_RATE_LIMIT_REQUESTS`.
 - **High Ingestion Latency:** `histogram_quantile(0.95, sum(rate(km_ingest_duration_seconds_bucket[15m])) by (le)) > <SLO>`.

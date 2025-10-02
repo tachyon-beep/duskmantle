@@ -108,6 +108,10 @@ def _build_lifespan(settings: AppSettings) -> Callable[[FastAPI], AbstractAsyncC
             if driver:
                 with suppress(Neo4jError, OSError):
                     driver.close()
+            readonly_driver = getattr(app.state, "graph_readonly_driver", None)
+            if readonly_driver and readonly_driver is not driver:
+                with suppress(Neo4jError, OSError):
+                    readonly_driver.close()
 
     return cast(Callable[[FastAPI], AbstractAsyncContextManager[None]], lifespan)
 
@@ -149,18 +153,24 @@ def _load_search_model(settings: AppSettings) -> ModelArtifact | None:
     return None
 
 
-def _init_graph_driver(settings: AppSettings) -> Driver | None:
-    driver = _create_graph_driver(settings)
+def _init_graph_driver(settings: AppSettings) -> tuple[Driver | None, Driver | None]:
+    driver = _create_graph_driver(
+        settings=settings,
+        uri=settings.neo4j_uri,
+        user=settings.neo4j_user,
+        password=settings.neo4j_password,
+    )
     if driver is None:
-        return None
+        return None, None
 
     if settings.graph_auto_migrate:
         _run_graph_auto_migration(driver, settings.neo4j_database)
-        return driver
+    else:
+        logger.info("Graph auto-migration disabled; run `gateway-graph migrate` during deployment")
+        _set_migration_metrics(-1, timestamp=None)
 
-    logger.info("Graph auto-migration disabled; run `gateway-graph migrate` during deployment")
-    _set_migration_metrics(-1, timestamp=None)
-    return driver
+    readonly_driver = _create_readonly_driver(settings, primary_driver=driver)
+    return driver, readonly_driver
 
 
 def _init_qdrant_client(settings: AppSettings) -> QdrantClient | None:
@@ -171,12 +181,15 @@ def _init_qdrant_client(settings: AppSettings) -> QdrantClient | None:
         return None
 
 
-def _create_graph_driver(settings: AppSettings) -> Driver | None:
+def _create_graph_driver(
+    *,
+    settings: AppSettings,
+    uri: str,
+    user: str,
+    password: str,
+) -> Driver | None:
     try:
-        driver = GraphDatabase.driver(
-            settings.neo4j_uri,
-            auth=(settings.neo4j_user, settings.neo4j_password),
-        )
+        driver = GraphDatabase.driver(uri, auth=(user, password))
     except (Neo4jError, ServiceUnavailable, OSError) as exc:  # pragma: no cover - connection may fail in dev/test
         logger.warning("Neo4j driver initialization failed: %s", exc)
         _set_migration_metrics(0, timestamp=time.time())
@@ -193,6 +206,27 @@ def _create_graph_driver(settings: AppSettings) -> Driver | None:
     logger.info("Connected to Neo4j database '%s'", settings.neo4j_database)
 
     return driver
+
+
+def _create_readonly_driver(settings: AppSettings, *, primary_driver: Driver) -> Driver | None:
+    uri = settings.neo4j_readonly_uri or settings.neo4j_uri
+    user = settings.neo4j_readonly_user or settings.neo4j_user
+    password = settings.neo4j_readonly_password or settings.neo4j_password
+
+    if (
+        uri == settings.neo4j_uri
+        and user == settings.neo4j_user
+        and password == settings.neo4j_password
+    ):
+        return primary_driver
+
+    readonly_driver = _create_graph_driver(settings=settings, uri=uri, user=user, password=password)
+    if readonly_driver is None:
+        logger.warning(
+            "Falling back to primary Neo4j driver for read-only operations; read-only credentials failed to initialise",
+        )
+        return primary_driver
+    return readonly_driver
 
 
 def _verify_graph_database(driver: Driver, database: str) -> bool:
@@ -310,7 +344,9 @@ def create_app() -> FastAPI:
 
     app.state.search_feedback_store = _init_feedback_store(settings)
     app.state.search_model_artifact = _load_search_model(settings)
-    app.state.graph_driver = _init_graph_driver(settings)
+    graph_driver, graph_readonly_driver = _init_graph_driver(settings)
+    app.state.graph_driver = graph_driver
+    app.state.graph_readonly_driver = graph_readonly_driver
     app.state.graph_service_factory = get_graph_service
     app.state.qdrant_client = _init_qdrant_client(settings)
     app.state.search_embedder = None

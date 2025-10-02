@@ -101,7 +101,7 @@ graph TD
 - **FastMCP Tools:** `km-search`, `km-graph-*`, `km-ingest-*`, `km-feedback-submit`, `km-upload`, `km-storetext`, etc. (`gateway/mcp/server.py`). They proxy to REST endpoints via `GatewayClient` with token management.
 
 ## Configuration & Deployment
-- **Runtime Settings:** Centralised in `gateway/config/settings.py` using Pydantic `AppSettings`. Environment variables prefixed with `KM_` control auth, data stores, scheduler, search weights, tracing, and ingest behaviour. Helper methods clamp values and derive scheduler triggers and weight profiles.
+- **Runtime Settings:** Centralised in `gateway/config/settings.py` using Pydantic `AppSettings`. Environment variables prefixed with `KM_` control auth, data stores, scheduler, search weights, tracing, and ingest behaviour. Optional `KM_NEO4J_READONLY_{URI,USER,PASSWORD}` credentials force `/graph/cypher` traffic through a read-only Neo4j account. Helper methods clamp values and derive scheduler triggers and weight profiles.
 - **Docker Image:** Builds a Python 3.12 environment bundling Qdrant and Neo4j binaries (`Dockerfile`, `infra/docker-entrypoint.sh`). Supervisord orchestrates all processes. Exposes ports 8000 (API), 6333/6334 (Qdrant), and 7474/7687 (Neo4j).
 - **Compose Scaffold:** `infra/examples/docker-compose.sample.yml` mounts repo content and state directories, surfaces core env vars, and demonstrates minimal configuration.
 - **State Directories:** `KM_STATE_PATH` (default `/opt/knowledge/var`) stores audit SQLite DBs, coverage/lifecycle reports, scheduler locks, backups, and search feedback logs.

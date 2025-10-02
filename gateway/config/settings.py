@@ -68,6 +68,9 @@ class AppSettings(BaseSettings):
     neo4j_password: str = Field("neo4jadmin", alias="KM_NEO4J_PASSWORD")
     neo4j_database: str = Field("knowledge", alias="KM_NEO4J_DATABASE")
     neo4j_auth_enabled: bool = Field(True, alias="KM_NEO4J_AUTH_ENABLED")
+    neo4j_readonly_uri: str | None = Field(None, alias="KM_NEO4J_READONLY_URI")
+    neo4j_readonly_user: str | None = Field(None, alias="KM_NEO4J_READONLY_USER")
+    neo4j_readonly_password: str | None = Field(None, alias="KM_NEO4J_READONLY_PASSWORD")
 
     embedding_model: str = Field("sentence-transformers/all-MiniLM-L6-v2", alias="KM_EMBEDDING_MODEL")
     ingest_window: int = Field(1000, alias="KM_INGEST_WINDOW")

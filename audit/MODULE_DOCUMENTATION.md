@@ -95,9 +95,10 @@
 - `_configure_rate_limits(app: FastAPI, settings: AppSettings) -> Limiter` — No docstring provided.
 - `_init_feedback_store(settings: AppSettings) -> SearchFeedbackStore | None` — No docstring provided.
 - `_load_search_model(settings: AppSettings) -> ModelArtifact | None` — No docstring provided.
-- `_init_graph_driver(settings: AppSettings) -> Driver | None` — No docstring provided.
+- `_init_graph_driver(settings: AppSettings) -> tuple[Driver | None, Driver | None]` — No docstring provided.
 - `_init_qdrant_client(settings: AppSettings) -> QdrantClient | None` — No docstring provided.
-- `_create_graph_driver(settings: AppSettings) -> Driver | None` — No docstring provided.
+- `_create_graph_driver(` — No docstring provided.
+- `_create_readonly_driver(settings: AppSettings, *, primary_driver: Driver) -> Driver | None` — No docstring provided.
 - `_verify_graph_database(driver: Driver, database: str) -> bool` — No docstring provided.
 - `_run_graph_auto_migration(driver: Driver, database: str) -> None` — No docstring provided.
 - `_fetch_pending_migrations(runner: MigrationRunner) -> list[str] | None` — No docstring provided.
@@ -115,10 +116,10 @@
 - Handles FastAPI request routing, dependency wiring, and HTTP responses.
 
 ### Integration Points
-- APScheduler background scheduling, FastAPI web framework, FastAPI response models, FastAPI static file serving, Neo4j GraphDatabase driver, Qdrant vector database SDK, SlowAPI rate limiting
+- APScheduler background scheduling, FastAPI web framework, Neo4j GraphDatabase driver, Qdrant vector database SDK, SlowAPI rate limiting
 
 ### Code Quality Notes
-- 16 helper function(s) missing docstrings.
+- 17 helper function(s) missing docstrings.
 
 ## gateway/api/auth.py
 
@@ -225,10 +226,10 @@
 - Handles FastAPI request routing, dependency wiring, and HTTP responses.
 
 ### Integration Points
-- FastAPI web framework, FastAPI response models, SlowAPI rate limiting
+- FastAPI web framework, SlowAPI rate limiting
 
 ### Code Quality Notes
-- Cypher guard relies on string filtering; consider stronger validation.
+- Cypher guard relies on call whitelisting and read-only driver; ensure tests cover bypass attempts.
 
 ## gateway/api/routes/health.py
 
@@ -281,7 +282,7 @@
 - Handles FastAPI request routing, dependency wiring, and HTTP responses.
 
 ### Integration Points
-- FastAPI web framework, FastAPI response models, SlowAPI rate limiting
+- FastAPI web framework, SlowAPI rate limiting
 
 ### Code Quality Notes
 - No major issues detected during static review.
@@ -309,7 +310,7 @@
 - Handles FastAPI request routing, dependency wiring, and HTTP responses.
 
 ### Integration Points
-- FastAPI web framework, FastAPI response models, Qdrant vector database SDK, SlowAPI rate limiting
+- FastAPI web framework, Qdrant vector database SDK, SlowAPI rate limiting
 
 ### Code Quality Notes
 - 2 helper function(s) missing docstrings.
@@ -349,7 +350,7 @@
 
 ### Classes
 - `AppSettings(BaseSettings)` — Runtime configuration for the knowledge gateway.
-  - Attributes: `api_host: str = Field('0.0.0.0', alias='KM_API_HOST')`; `api_port: int = Field(8000, alias='KM_API_PORT')`; `auth_mode: Literal['secure', 'insecure'] = Field('secure', alias='KM_AUTH_MODE')`; `auth_enabled: bool = Field(False, alias='KM_AUTH_ENABLED')`; `reader_token: str | None = Field(None, alias='KM_READER_TOKEN')`; `maintainer_token: str | None = Field(None, alias='KM_ADMIN_TOKEN')`; `rate_limit_requests: int = Field(120, alias='KM_RATE_LIMIT_REQUESTS')`; `rate_limit_window_seconds: int = Field(60, alias='KM_RATE_LIMIT_WINDOW')`; `repo_root: Path = Field(Path('/workspace/repo'), alias='KM_REPO_PATH')`; `state_path: Path = Field(Path('/opt/knowledge/var'), alias='KM_STATE_PATH')`; `content_root: Path = Field(Path('/workspace/repo'), alias='KM_CONTENT_ROOT')`; `content_docs_subdir: Path = Field(Path('docs'), alias='KM_CONTENT_DOCS_SUBDIR')`; `upload_default_overwrite: bool = Field(False, alias='KM_UPLOAD_DEFAULT_OVERWRITE')`; `upload_default_ingest: bool = Field(False, alias='KM_UPLOAD_DEFAULT_INGEST')`; `qdrant_url: str = Field('http://localhost:6333', alias='KM_QDRANT_URL')`; `qdrant_api_key: str | None = Field(None, alias='KM_QDRANT_API_KEY')`; `qdrant_collection: str = Field('km_knowledge_v1', alias='KM_QDRANT_COLLECTION')`; `neo4j_uri: str = Field('bolt://localhost:7687', alias='KM_NEO4J_URI')`; `neo4j_user: str = Field('neo4j', alias='KM_NEO4J_USER')`; `neo4j_password: str = Field('neo4jadmin', alias='KM_NEO4J_PASSWORD')`; `neo4j_database: str = Field('knowledge', alias='KM_NEO4J_DATABASE')`; `neo4j_auth_enabled: bool = Field(True, alias='KM_NEO4J_AUTH_ENABLED')`; `embedding_model: str = Field('sentence-transformers/all-MiniLM-L6-v2', alias='KM_EMBEDDING_MODEL')`; `ingest_window: int = Field(1000, alias='KM_INGEST_WINDOW')`; `ingest_overlap: int = Field(200, alias='KM_INGEST_OVERLAP')`; `ingest_use_dummy_embeddings: bool = Field(False, alias='KM_INGEST_USE_DUMMY')`; `ingest_incremental_enabled: bool = Field(True, alias='KM_INGEST_INCREMENTAL')`; `ingest_parallel_workers: int = Field(2, alias='KM_INGEST_PARALLEL_WORKERS')`; `ingest_max_pending_batches: int = Field(4, alias='KM_INGEST_MAX_PENDING_BATCHES')`; `scheduler_enabled: bool = Field(False, alias='KM_SCHEDULER_ENABLED')`; `scheduler_interval_minutes: int = Field(30, alias='KM_SCHEDULER_INTERVAL_MINUTES')`; `scheduler_cron: str | None = Field(None, alias='KM_SCHEDULER_CRON')`; `coverage_enabled: bool = Field(True, alias='KM_COVERAGE_ENABLED')`; `coverage_history_limit: int = Field(5, alias='KM_COVERAGE_HISTORY_LIMIT')`; `lifecycle_report_enabled: bool = Field(True, alias='KM_LIFECYCLE_REPORT_ENABLED')`; `lifecycle_stale_days: int = Field(30, alias='KM_LIFECYCLE_STALE_DAYS')`; `lifecycle_history_limit: int = Field(10, alias='KM_LIFECYCLE_HISTORY_LIMIT')`; `tracing_enabled: bool = Field(False, alias='KM_TRACING_ENABLED')`; `tracing_endpoint: str | None = Field(None, alias='KM_TRACING_ENDPOINT')`; `tracing_headers: str | None = Field(None, alias='KM_TRACING_HEADERS')`; `tracing_service_name: str = Field('duskmantle-knowledge-gateway', alias='KM_TRACING_SERVICE_NAME')`; `tracing_sample_ratio: float = Field(1.0, alias='KM_TRACING_SAMPLE_RATIO')`; `tracing_console_export: bool = Field(False, alias='KM_TRACING_CONSOLE_EXPORT')`; `graph_auto_migrate: bool = Field(False, alias='KM_GRAPH_AUTO_MIGRATE')`; `graph_subsystem_cache_ttl_seconds: int = Field(30, alias='KM_GRAPH_SUBSYSTEM_CACHE_TTL')`; `graph_subsystem_cache_max_entries: int = Field(128, alias='KM_GRAPH_SUBSYSTEM_CACHE_MAX')`; `search_weight_profile: Literal['default', 'analysis', 'operations', 'docs-heavy'] = Field('default', alias='KM_SEARCH_WEIGHT_PROFILE')`; `search_weight_subsystem: float = Field(0.28, alias='KM_SEARCH_W_SUBSYSTEM')`; `search_weight_relationship: float = Field(0.05, alias='KM_SEARCH_W_RELATIONSHIP')`; `search_weight_support: float = Field(0.09, alias='KM_SEARCH_W_SUPPORT')`; `search_weight_coverage_penalty: float = Field(0.15, alias='KM_SEARCH_W_COVERAGE_PENALTY')`; `search_weight_criticality: float = Field(0.12, alias='KM_SEARCH_W_CRITICALITY')`; `search_sort_by_vector: bool = Field(False, alias='KM_SEARCH_SORT_BY_VECTOR')`; `search_scoring_mode: Literal['heuristic', 'ml'] = Field('heuristic', alias='KM_SEARCH_SCORING_MODE')`; `search_model_path: Path | None = Field(None, alias='KM_SEARCH_MODEL_PATH')`; `search_warn_slow_graph_ms: int = Field(250, alias='KM_SEARCH_WARN_GRAPH_MS')`; `search_vector_weight: float = Field(1.0, alias='KM_SEARCH_VECTOR_WEIGHT')`; `search_lexical_weight: float = Field(0.25, alias='KM_SEARCH_LEXICAL_WEIGHT')`; `search_hnsw_ef_search: int | None = Field(128, alias='KM_SEARCH_HNSW_EF_SEARCH')`; `dry_run: bool = Field(False, alias='KM_INGEST_DRY_RUN')`; `model_config = {'env_file': '.env', 'extra': 'ignore'}`
+  - Attributes: `api_host: str = Field('0.0.0.0', alias='KM_API_HOST')`; `api_port: int = Field(8000, alias='KM_API_PORT')`; `auth_mode: Literal['secure', 'insecure'] = Field('secure', alias='KM_AUTH_MODE')`; `auth_enabled: bool = Field(False, alias='KM_AUTH_ENABLED')`; `reader_token: str | None = Field(None, alias='KM_READER_TOKEN')`; `maintainer_token: str | None = Field(None, alias='KM_ADMIN_TOKEN')`; `rate_limit_requests: int = Field(120, alias='KM_RATE_LIMIT_REQUESTS')`; `rate_limit_window_seconds: int = Field(60, alias='KM_RATE_LIMIT_WINDOW')`; `repo_root: Path = Field(Path('/workspace/repo'), alias='KM_REPO_PATH')`; `state_path: Path = Field(Path('/opt/knowledge/var'), alias='KM_STATE_PATH')`; `content_root: Path = Field(Path('/workspace/repo'), alias='KM_CONTENT_ROOT')`; `content_docs_subdir: Path = Field(Path('docs'), alias='KM_CONTENT_DOCS_SUBDIR')`; `upload_default_overwrite: bool = Field(False, alias='KM_UPLOAD_DEFAULT_OVERWRITE')`; `upload_default_ingest: bool = Field(False, alias='KM_UPLOAD_DEFAULT_INGEST')`; `qdrant_url: str = Field('http://localhost:6333', alias='KM_QDRANT_URL')`; `qdrant_api_key: str | None = Field(None, alias='KM_QDRANT_API_KEY')`; `qdrant_collection: str = Field('km_knowledge_v1', alias='KM_QDRANT_COLLECTION')`; `neo4j_uri: str = Field('bolt://localhost:7687', alias='KM_NEO4J_URI')`; `neo4j_user: str = Field('neo4j', alias='KM_NEO4J_USER')`; `neo4j_password: str = Field('neo4jadmin', alias='KM_NEO4J_PASSWORD')`; `neo4j_database: str = Field('knowledge', alias='KM_NEO4J_DATABASE')`; `neo4j_auth_enabled: bool = Field(True, alias='KM_NEO4J_AUTH_ENABLED')`; `neo4j_readonly_uri: str | None = Field(None, alias='KM_NEO4J_READONLY_URI')`; `neo4j_readonly_user: str | None = Field(None, alias='KM_NEO4J_READONLY_USER')`; `neo4j_readonly_password: str | None = Field(None, alias='KM_NEO4J_READONLY_PASSWORD')`; `embedding_model: str = Field('sentence-transformers/all-MiniLM-L6-v2', alias='KM_EMBEDDING_MODEL')`; `ingest_window: int = Field(1000, alias='KM_INGEST_WINDOW')`; `ingest_overlap: int = Field(200, alias='KM_INGEST_OVERLAP')`; `ingest_use_dummy_embeddings: bool = Field(False, alias='KM_INGEST_USE_DUMMY')`; `ingest_incremental_enabled: bool = Field(True, alias='KM_INGEST_INCREMENTAL')`; `ingest_parallel_workers: int = Field(2, alias='KM_INGEST_PARALLEL_WORKERS')`; `ingest_max_pending_batches: int = Field(4, alias='KM_INGEST_MAX_PENDING_BATCHES')`; `scheduler_enabled: bool = Field(False, alias='KM_SCHEDULER_ENABLED')`; `scheduler_interval_minutes: int = Field(30, alias='KM_SCHEDULER_INTERVAL_MINUTES')`; `scheduler_cron: str | None = Field(None, alias='KM_SCHEDULER_CRON')`; `coverage_enabled: bool = Field(True, alias='KM_COVERAGE_ENABLED')`; `coverage_history_limit: int = Field(5, alias='KM_COVERAGE_HISTORY_LIMIT')`; `lifecycle_report_enabled: bool = Field(True, alias='KM_LIFECYCLE_REPORT_ENABLED')`; `lifecycle_stale_days: int = Field(30, alias='KM_LIFECYCLE_STALE_DAYS')`; `lifecycle_history_limit: int = Field(10, alias='KM_LIFECYCLE_HISTORY_LIMIT')`; `tracing_enabled: bool = Field(False, alias='KM_TRACING_ENABLED')`; `tracing_endpoint: str | None = Field(None, alias='KM_TRACING_ENDPOINT')`; `tracing_headers: str | None = Field(None, alias='KM_TRACING_HEADERS')`; `tracing_service_name: str = Field('duskmantle-knowledge-gateway', alias='KM_TRACING_SERVICE_NAME')`; `tracing_sample_ratio: float = Field(1.0, alias='KM_TRACING_SAMPLE_RATIO')`; `tracing_console_export: bool = Field(False, alias='KM_TRACING_CONSOLE_EXPORT')`; `graph_auto_migrate: bool = Field(False, alias='KM_GRAPH_AUTO_MIGRATE')`; `graph_subsystem_cache_ttl_seconds: int = Field(30, alias='KM_GRAPH_SUBSYSTEM_CACHE_TTL')`; `graph_subsystem_cache_max_entries: int = Field(128, alias='KM_GRAPH_SUBSYSTEM_CACHE_MAX')`; `search_weight_profile: Literal['default', 'analysis', 'operations', 'docs-heavy'] = Field('default', alias='KM_SEARCH_WEIGHT_PROFILE')`; `search_weight_subsystem: float = Field(0.28, alias='KM_SEARCH_W_SUBSYSTEM')`; `search_weight_relationship: float = Field(0.05, alias='KM_SEARCH_W_RELATIONSHIP')`; `search_weight_support: float = Field(0.09, alias='KM_SEARCH_W_SUPPORT')`; `search_weight_coverage_penalty: float = Field(0.15, alias='KM_SEARCH_W_COVERAGE_PENALTY')`; `search_weight_criticality: float = Field(0.12, alias='KM_SEARCH_W_CRITICALITY')`; `search_sort_by_vector: bool = Field(False, alias='KM_SEARCH_SORT_BY_VECTOR')`; `search_scoring_mode: Literal['heuristic', 'ml'] = Field('heuristic', alias='KM_SEARCH_SCORING_MODE')`; `search_model_path: Path | None = Field(None, alias='KM_SEARCH_MODEL_PATH')`; `search_warn_slow_graph_ms: int = Field(250, alias='KM_SEARCH_WARN_GRAPH_MS')`; `search_vector_weight: float = Field(1.0, alias='KM_SEARCH_VECTOR_WEIGHT')`; `search_lexical_weight: float = Field(0.25, alias='KM_SEARCH_LEXICAL_WEIGHT')`; `search_hnsw_ef_search: int | None = Field(128, alias='KM_SEARCH_HNSW_EF_SEARCH')`; `dry_run: bool = Field(False, alias='KM_INGEST_DRY_RUN')`; `model_config = {'env_file': '.env', 'extra': 'ignore'}`
   - Methods: `_clamp_tracing_ratio(cls, value: float) -> float` — Ensure the tracing sampling ratio stays within [0, 1].; `_clamp_search_weights(cls, value: float) -> float` — Clamp search weights to [0, 1] for stability.; `_sanitize_hnsw_ef(cls, value: int | None) -> int | None` — No docstring provided.; `_sanitize_graph_cache_ttl(cls, value: int) -> int` — No docstring provided.; `_sanitize_graph_cache_max(cls, value: int) -> int` — No docstring provided.; `resolved_search_weights(self) -> tuple[str, dict[str, float]]` — Return the active search weight profile name and resolved weights.; `scheduler_trigger_config(self) -> dict[str, object]` — Return trigger configuration for the ingestion scheduler.; `_validate_history_limit(cls, value: int) -> int` — No docstring provided.; `_validate_lifecycle_stale(cls, value: int) -> int` — No docstring provided.; `_ensure_positive_parallelism(cls, value: int) -> int` — No docstring provided.
 
 ### Functions
@@ -482,8 +483,8 @@
 
 **File path**: `gateway/graph/service.py`
 **Purpose**: Read-only graph service utilities backed by Neo4j.
-**Dependencies**: External – __future__, base64, collections, collections.abc, dataclasses, neo4j, neo4j.graph, threading, time, typing; Internal – None
-**Related modules**: None
+**Dependencies**: External – __future__, base64, collections, collections.abc, dataclasses, neo4j, neo4j.graph, threading, time, typing; Internal – gateway.observability.metrics
+**Related modules**: gateway.observability.metrics
 
 ### Classes
 - `GraphServiceError(RuntimeError)` — Base class for graph-related errors.
@@ -494,7 +495,7 @@
 - `SubsystemGraphCache` — Simple TTL cache for subsystem graph snapshots.
   - Methods: `__init__(self, ttl_seconds: float, max_entries: int) -> None` — Create a cache with an expiry window and bounded size.; `get(self, key: tuple[str, int]) -> SubsystemGraphSnapshot | None` — Return a cached snapshot if it exists and has not expired.; `set(self, key: tuple[str, int], snapshot: SubsystemGraphSnapshot) -> None` — Cache a snapshot for the given key, evicting oldest entries if needed.; `clear(self) -> None` — Remove all cached subsystem snapshots.
 - `GraphService` — Service layer for read-only graph queries.
-  - Attributes: `driver: Driver`; `database: str`; `subsystem_cache: SubsystemGraphCache | None = None`
+  - Attributes: `driver: Driver`; `database: str`; `subsystem_cache: SubsystemGraphCache | None = None`; `readonly_driver: Driver | None = None`
   - Methods: `get_subsystem(` — Return a windowed view of related nodes for the requested subsystem.; `get_subsystem_graph(self, name: str, *, depth: int) -> dict[str, Any]` — Return the full node/edge snapshot for a subsystem.; `list_orphan_nodes(` — List nodes that have no relationships of the allowed labels.; `clear_cache(self) -> None` — Wipe the subsystem snapshot cache if caching is enabled.; `_load_subsystem_snapshot(self, name: str, depth: int) -> SubsystemGraphSnapshot` — No docstring provided.; `_build_subsystem_snapshot(self, name: str, depth: int) -> SubsystemGraphSnapshot` — No docstring provided.; `get_node(self, node_id: str, *, relationships: str, limit: int) -> dict[str, Any]` — Return a node and a limited set of relationships using Cypher lookups.; `search(self, term: str, *, limit: int) -> dict[str, Any]` — Search the graph for nodes matching the provided term.; `shortest_path_depth(self, node_id: str, *, max_depth: int = 4) -> int | None` — Return the length of the shortest path from the node to any subsystem.
 
 The search is bounded by ``max_depth`` hops across the knowledge graph
@@ -527,9 +528,13 @@ subsystem can be reached within the given depth limit.; `run_cypher(` — Execut
 - `_encode_cursor(offset: int) -> str` — No docstring provided.
 - `_decode_cursor(cursor: str | None) -> int` — No docstring provided.
 - `_validate_cypher(query: str) -> None` — No docstring provided.
+- `_strip_literals_and_comments(query: str) -> str` — No docstring provided.
+- `_tokenize_query(upper_query: str) -> list[str]` — No docstring provided.
+- `_extract_procedure_calls(tokens: list[str]) -> list[str]` — No docstring provided.
+- `_deny_cypher(reason: str, message: str) -> None` — No docstring provided.
 
 ### Constants and Configuration
-- Module-level constants: ORPHAN_DEFAULT_LABELS
+- Module-level constants: ORPHAN_DEFAULT_LABELS, _ALLOWED_PROCEDURE_PREFIXES
 - Environment variables: Not detected in static scan
 
 ### Data Flow
@@ -539,8 +544,9 @@ subsystem can be reached within the given depth limit.; `run_cypher(` — Execut
 - Neo4j GraphDatabase driver
 
 ### Code Quality Notes
-- 24 helper function(s) missing docstrings.
+- 28 helper function(s) missing docstrings.
 - 2 class method(s) missing docstrings.
+- Read-only enforcement uses counters/procedure whitelists; keep regression tests current with Neo4j driver changes.
 
 ## gateway/ingest/__init__.py
 
@@ -1456,7 +1462,7 @@ treated as success. Destructive resets are exposed separately via
 - None
 
 ### Constants and Configuration
-- Module-level constants: COVERAGE_HISTORY_SNAPSHOTS, COVERAGE_LAST_RUN_STATUS, COVERAGE_LAST_RUN_TIMESTAMP, COVERAGE_MISSING_ARTIFACTS, COVERAGE_STALE_ARTIFACTS, GRAPH_MIGRATION_LAST_STATUS, GRAPH_MIGRATION_LAST_TIMESTAMP, INGEST_ARTIFACTS_TOTAL, INGEST_CHUNKS_TOTAL, INGEST_DURATION_SECONDS, INGEST_LAST_RUN_STATUS, INGEST_LAST_RUN_TIMESTAMP, INGEST_SKIPS_TOTAL, INGEST_STALE_RESOLVED_TOTAL, LIFECYCLE_HISTORY_SNAPSHOTS, LIFECYCLE_ISOLATED_NODES_TOTAL, LIFECYCLE_LAST_RUN_STATUS, LIFECYCLE_LAST_RUN_TIMESTAMP, LIFECYCLE_MISSING_TEST_SUBSYSTEMS_TOTAL, LIFECYCLE_REMOVED_ARTIFACTS_TOTAL, LIFECYCLE_STALE_DOCS_TOTAL, MCP_FAILURES_TOTAL, MCP_REQUESTS_TOTAL, MCP_REQUEST_SECONDS, MCP_STORETEXT_TOTAL, MCP_UPLOAD_TOTAL, SCHEDULER_LAST_SUCCESS_TIMESTAMP, SCHEDULER_RUNS_TOTAL, SEARCH_GRAPH_CACHE_EVENTS, SEARCH_GRAPH_LOOKUP_SECONDS, SEARCH_REQUESTS_TOTAL, SEARCH_SCORE_DELTA, UI_EVENTS_TOTAL, UI_REQUESTS_TOTAL, WATCH_RUNS_TOTAL
+- Module-level constants: COVERAGE_HISTORY_SNAPSHOTS, COVERAGE_LAST_RUN_STATUS, COVERAGE_LAST_RUN_TIMESTAMP, COVERAGE_MISSING_ARTIFACTS, COVERAGE_STALE_ARTIFACTS, GRAPH_CYPHER_DENIED_TOTAL, GRAPH_MIGRATION_LAST_STATUS, GRAPH_MIGRATION_LAST_TIMESTAMP, INGEST_ARTIFACTS_TOTAL, INGEST_CHUNKS_TOTAL, INGEST_DURATION_SECONDS, INGEST_LAST_RUN_STATUS, INGEST_LAST_RUN_TIMESTAMP, INGEST_SKIPS_TOTAL, INGEST_STALE_RESOLVED_TOTAL, LIFECYCLE_HISTORY_SNAPSHOTS, LIFECYCLE_ISOLATED_NODES_TOTAL, LIFECYCLE_LAST_RUN_STATUS, LIFECYCLE_LAST_RUN_TIMESTAMP, LIFECYCLE_MISSING_TEST_SUBSYSTEMS_TOTAL, LIFECYCLE_REMOVED_ARTIFACTS_TOTAL, LIFECYCLE_STALE_DOCS_TOTAL, MCP_FAILURES_TOTAL, MCP_REQUESTS_TOTAL, MCP_REQUEST_SECONDS, MCP_STORETEXT_TOTAL, MCP_UPLOAD_TOTAL, SCHEDULER_LAST_SUCCESS_TIMESTAMP, SCHEDULER_RUNS_TOTAL, SEARCH_GRAPH_CACHE_EVENTS, SEARCH_GRAPH_LOOKUP_SECONDS, SEARCH_REQUESTS_TOTAL, SEARCH_SCORE_DELTA, UI_EVENTS_TOTAL, UI_REQUESTS_TOTAL, WATCH_RUNS_TOTAL
 - Environment variables: Not detected in static scan
 
 ### Data Flow
@@ -2079,7 +2085,7 @@ treated as success. Destructive resets are exposed separately via
 - Serves embedded UI templates/static assets and logs browser telemetry.
 
 ### Integration Points
-- FastAPI web framework, FastAPI response models
+- FastAPI web framework
 
 ### Code Quality Notes
 - No major issues detected during static review.
@@ -2578,8 +2584,8 @@ treated as success. Destructive resets are exposed separately via
 
 **File path**: `tests/test_graph_service_unit.py`
 **Purpose**: Implementation details not documented; see code for behaviour.
-**Dependencies**: External – __future__, collections.abc, pytest, types, unittest; Internal – gateway.graph, gateway.graph.service
-**Related modules**: gateway.graph, gateway.graph.service
+**Dependencies**: External – __future__, collections.abc, neo4j, pytest, types, unittest; Internal – gateway.graph, gateway.graph.service, gateway.observability.metrics
+**Related modules**: gateway.graph, gateway.graph.service, gateway.observability.metrics
 
 ### Classes
 - `DummyNode(dict[str, object])` — No docstring provided.
@@ -2589,9 +2595,11 @@ treated as success. Destructive resets are exposed separately via
 - `DummySession` — No docstring provided.
   - Methods: `__init__(self) -> None` — No docstring provided.; `__enter__(self) -> DummySession:  # pragma: no cover - trivial` — No docstring provided.; `__exit__(` — No docstring provided.; `execute_read(self, func: Callable[..., object], *args: object, **kwargs: object) -> object` — No docstring provided.; `run(self, query: str, **params: object) -> SimpleNamespace` — No docstring provided.
 - `DummyDriver` — No docstring provided.
-  - Methods: `__init__(self, session: DummySession) -> None` — No docstring provided.; `session(self, **kwargs: object) -> DummySession` — No docstring provided.; `execute_query(self, query: str, parameters: dict[str, object], database_: str) -> SimpleNamespace` — No docstring provided.
+  - Methods: `__init__(self, session: DummySession) -> None` — No docstring provided.; `session(self, **kwargs: object) -> DummySession` — No docstring provided.; `execute_query(` — No docstring provided.
 
 ### Functions
+- `_reset_metric(reason: str) -> None` — No docstring provided.
+- `_metric_value(reason: str) -> float` — No docstring provided.
 - `patch_graph_types(monkeypatch: pytest.MonkeyPatch) -> None` — No docstring provided.
 - `dummy_driver() -> DriverFixture` — No docstring provided.
 - `test_get_subsystem_paginates_and_includes_artifacts(` — No docstring provided.
@@ -2607,6 +2615,9 @@ treated as success. Destructive resets are exposed separately via
 - `test_shortest_path_depth_none(monkeypatch: pytest.MonkeyPatch, dummy_driver: DriverFixture) -> None` — No docstring provided.
 - `test_run_cypher_serializes_records(monkeypatch: pytest.MonkeyPatch, dummy_driver: DriverFixture) -> None` — No docstring provided.
 - `test_run_cypher_rejects_non_read_queries(dummy_driver: DriverFixture) -> None` — No docstring provided.
+- `test_run_cypher_rejects_updates_detected_in_counters(dummy_driver: DriverFixture) -> None` — No docstring provided.
+- `test_run_cypher_allows_whitelisted_procedure(dummy_driver: DriverFixture) -> None` — No docstring provided.
+- `test_run_cypher_rejects_disallowed_procedure(dummy_driver: DriverFixture) -> None` — No docstring provided.
 
 ### Constants and Configuration
 - Module-level constants: None
@@ -2616,7 +2627,7 @@ treated as success. Destructive resets are exposed separately via
 - Exercises public behaviours with pytest to prevent regressions.
 
 ### Integration Points
-- pytest unit testing
+- Neo4j GraphDatabase driver, pytest unit testing
 
 ### Code Quality Notes
 - Helper functions lack docstrings; rely on type hints for intent.

@@ -93,6 +93,12 @@ SEARCH_SCORE_DELTA = Histogram(
     "Distribution of adjusted minus vector scores",
 )
 
+GRAPH_CYPHER_DENIED_TOTAL = Counter(
+    "km_graph_cypher_denied_total",
+    "Maintainer Cypher requests blocked by read-only safeguards",
+    labelnames=["reason"],
+)
+
 GRAPH_MIGRATION_LAST_STATUS = Gauge(
     "km_graph_migration_last_status",
     "Graph migration result (1=success, 0=failure, -1=skipped)",

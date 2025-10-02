@@ -68,9 +68,33 @@ Watcher tips: the watcher monitors `KM_WATCH_ROOT` (default `/workspace/repo`). 
 | `KM_NEO4J_USER` / `KM_NEO4J_PASSWORD` | `neo4j` / `neo4jadmin` | Credentials for Neo4j. The entrypoint replaces the default password with a random value on first boot and persists it to `${KM_VAR}/secrets.env`. |
 | `KM_NEO4J_DATABASE` | `knowledge` | Neo4j database name queried by the gateway (startup fails if it is missing). |
 | `KM_NEO4J_AUTH_ENABLED` | `true` | Toggle authentication for Neo4j access (leave enabled outside isolated dev). |
+| `KM_NEO4J_READONLY_URI` | _unset_ | Optional Bolt URI for a read-only Neo4j endpoint used by `/graph/cypher`. Defaults to `KM_NEO4J_URI`. |
+| `KM_NEO4J_READONLY_USER` / `KM_NEO4J_READONLY_PASSWORD` | _unset_ | Credentials for the read-only Neo4j account. When omitted, maintainer queries use the primary credentials. |
 | `KM_GRAPH_AUTO_MIGRATE` | `false` | Auto-run graph migrations at API startup (container default `true`). |
 | `KM_QDRANT_URL` | `http://localhost:6333` | Qdrant API base URL. |
 | `KM_QDRANT_COLLECTION` | `km_knowledge_v1` | Collection name used by ingestion. |
+
+### Configuring a read-only Neo4j account
+
+To harden maintainer access, provision a user with read-only privileges and supply the `KM_NEO4J_READONLY_*` variables. Example session in the Neo4j browser or cypher-shell:
+
+```cypher
+CREATE USER km_reader SET PASSWORD 'strong-password' CHANGE NOT REQUIRED;
+GRANT ROLE reader TO km_reader;
+// Optionally restrict to the knowledge database
+GRANT ACCESS ON DATABASE knowledge TO km_reader;
+DENY ALTER DATABASE ON DBMS TO km_reader;
+```
+
+Then set:
+
+```bash
+export KM_NEO4J_READONLY_URI="bolt://neo4j:7687"
+export KM_NEO4J_READONLY_USER="km_reader"
+export KM_NEO4J_READONLY_PASSWORD="strong-password"
+```
+
+If the read-only credentials are unavailable at startup the API automatically falls back to the primary driver, but `/graph/cypher` requests will then rely solely on the in-process safeguards (keyword/procedure whitelists and write-counter checks).
 
 ## Observability & Tracing
 

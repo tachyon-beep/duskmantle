@@ -10,8 +10,10 @@ from threading import Lock
 from time import monotonic
 from typing import Any
 
-from neo4j import Driver, ManagedTransaction
+from neo4j import Driver, ManagedTransaction, RoutingControl
 from neo4j.graph import Node, Relationship
+
+from gateway.observability.metrics import GRAPH_CYPHER_DENIED_TOTAL
 
 
 class GraphServiceError(RuntimeError):
@@ -96,6 +98,7 @@ class GraphService:
     driver: Driver
     database: str
     subsystem_cache: SubsystemGraphCache | None = None
+    readonly_driver: Driver | None = None
 
     def get_subsystem(
         self,
@@ -313,14 +316,43 @@ class GraphService:
         """Execute an arbitrary Cypher query and serialize the response."""
         _validate_cypher(query)
         params = parameters or {}
+        driver = self.readonly_driver or self.driver
         try:
-            result = self.driver.execute_query(
+            result = driver.execute_query(
                 query,
                 parameters=params,
                 database_=self.database,
+                routing_=RoutingControl.READ,
             )
         except Exception as exc:  # pragma: no cover - driver errors wrapped for clients
             raise GraphQueryError(str(exc)) from exc
+
+        summary = result.summary
+        if summary is not None:
+            counters = getattr(summary, "counters", None)
+            if counters:
+                contains_updates = getattr(counters, "contains_updates", None)
+                if callable(contains_updates):
+                    has_updates = bool(contains_updates())
+                elif isinstance(contains_updates, bool):
+                    has_updates = contains_updates
+                else:  # pragma: no cover - fallback for older driver variants
+                    update_fields = [
+                        "nodes_created",
+                        "nodes_deleted",
+                        "relationships_created",
+                        "relationships_deleted",
+                        "properties_set",
+                        "labels_added",
+                        "labels_removed",
+                        "indexes_added",
+                        "indexes_removed",
+                        "constraints_added",
+                        "constraints_removed",
+                    ]
+                    has_updates = any(getattr(counters, field, 0) for field in update_fields)
+                if has_updates:
+                    _deny_cypher("mutation", "Only read-only Cypher queries are permitted")
 
         data = [
             {
@@ -328,7 +360,6 @@ class GraphService:
             }
             for record in result.records
         ]
-        summary = result.summary
         consumed_ms = None
         if summary and summary.result_available_after is not None:
             consumed_ms = summary.result_available_after
@@ -355,12 +386,18 @@ def get_graph_service(
     *,
     cache_ttl: float | None = None,
     cache_max_entries: int = 128,
+    readonly_driver: Driver | None = None,
 ) -> GraphService:
     """Factory helper that constructs a `GraphService` with optional caching."""
     cache = None
     if cache_ttl is not None and cache_ttl > 0:
         cache = SubsystemGraphCache(cache_ttl, cache_max_entries)
-    return GraphService(driver=driver, database=database, subsystem_cache=cache)
+    return GraphService(
+        driver=driver,
+        database=database,
+        subsystem_cache=cache,
+        readonly_driver=readonly_driver,
+    )
 
 
 def _extract_path_components(
@@ -720,11 +757,135 @@ def _decode_cursor(cursor: str | None) -> int:
 
 
 def _validate_cypher(query: str) -> None:
-    forbidden = {"CREATE", "MERGE", "DELETE", "SET", "DROP", "REMOVE"}
-    normalized = query.upper()
-    if any(keyword in normalized for keyword in forbidden):
-        raise GraphQueryError("Only read-only Cypher is permitted")
-    if "RETURN" not in normalized:
-        raise GraphQueryError("Cypher query must include RETURN")
-    if "LIMIT" not in normalized:
-        raise GraphQueryError("Cypher query must include LIMIT")
+    sanitized = _strip_literals_and_comments(query)
+    upper_query = " ".join(sanitized.upper().split())
+    tokens = _tokenize_query(upper_query)
+
+    forbidden_tokens = {
+        "CREATE",
+        "MERGE",
+        "DELETE",
+        "DETACH",
+        "SET",
+        "DROP",
+        "REMOVE",
+        "ALTER",
+        "GRANT",
+        "REVOKE",
+        "LOAD",
+        "CSV",
+    }
+    if any(token in forbidden_tokens for token in tokens):
+        _deny_cypher("keyword", "Only read-only Cypher is permitted")
+
+    for procedure in _extract_procedure_calls(tokens):
+        if not any(procedure.startswith(prefix) for prefix in _ALLOWED_PROCEDURE_PREFIXES):
+            _deny_cypher("procedure", "CALL to procedure is not permitted in this context")
+
+    normalized = f" {upper_query} "
+    if " RETURN " not in normalized:
+        _deny_cypher("structure", "Cypher query must include RETURN")
+    if " LIMIT " not in normalized:
+        _deny_cypher("structure", "Cypher query must include LIMIT")
+
+
+def _strip_literals_and_comments(query: str) -> str:
+    result: list[str] = []
+    length = len(query)
+    i = 0
+    while i < length:
+        ch = query[i]
+        if ch in {'"', "'", "`"}:
+            quote = ch
+            result.append(' ')
+            i += 1
+            while i < length:
+                current = query[i]
+                if current == "\\" and i + 1 < length:
+                    i += 2
+                    continue
+                if current == quote:
+                    i += 1
+                    break
+                i += 1
+            continue
+        if ch == '/' and i + 1 < length:
+            nxt = query[i + 1]
+            if nxt == '/':
+                result.append(' ')
+                i += 2
+                while i < length and query[i] not in {'\n', '\r'}:
+                    i += 1
+                continue
+            if nxt == '*':
+                result.append(' ')
+                i += 2
+                while i + 1 < length and not (query[i] == '*' and query[i + 1] == '/'):
+                    i += 1
+                i = min(length, i + 2)
+                continue
+        if ch == '-' and i + 1 < length and query[i + 1] == '-':
+            result.append(' ')
+            i += 2
+            while i < length and query[i] not in {'\n', '\r'}:
+                i += 1
+            continue
+        result.append(ch)
+        i += 1
+    return ''.join(result)
+
+
+def _tokenize_query(upper_query: str) -> list[str]:
+    tokens: list[str] = []
+    current: list[str] = []
+    for ch in upper_query:
+        if ch.isalpha():
+            current.append(ch)
+        else:
+            if current:
+                tokens.append(''.join(current))
+                current = []
+    if current:
+        tokens.append(''.join(current))
+    return tokens
+
+
+def _extract_procedure_calls(tokens: list[str]) -> list[str]:
+    procedures: list[str] = []
+    total = len(tokens)
+    i = 0
+    while i < total:
+        if tokens[i] == 'CALL':
+            proc_tokens: list[str] = []
+            j = i + 1
+            while j < total:
+                token = tokens[j]
+                if token in {'YIELD', 'RETURN', 'WITH', 'WHERE'}:
+                    break
+                proc_tokens.append(token)
+                j += 1
+            if not proc_tokens:
+                _deny_cypher("procedure", "Procedure name missing after CALL")
+            procedures.append('.'.join(proc_tokens))
+            i = j
+        else:
+            i += 1
+    return procedures
+
+
+_ALLOWED_PROCEDURE_PREFIXES = (
+    'DB.SCHEMA.',
+    'DB.LABELS',
+    'DB.RELATIONSHIPTYPES',
+    'DB.INDEXES',
+    'DB.CONSTRAINTS',
+    'DB.PROPERTYKEYS',
+)
+
+
+def _deny_cypher(reason: str, message: str) -> None:
+    try:
+        GRAPH_CYPHER_DENIED_TOTAL.labels(reason=reason).inc()
+    except Exception:  # pragma: no cover - metric updates should not mask errors
+        pass
+    raise GraphQueryError(message)
