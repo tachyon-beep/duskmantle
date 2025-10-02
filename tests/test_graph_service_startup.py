@@ -3,7 +3,7 @@ from __future__ import annotations
 from unittest import mock
 
 import pytest
-from fastapi import HTTPException
+from fastapi import FastAPI, HTTPException
 from starlette.requests import Request
 
 from gateway.api.app import create_app
@@ -27,7 +27,7 @@ async def _receive() -> dict[str, object]:
     return {"type": "http.request", "body": b"", "more_body": False}
 
 
-def _make_request(app) -> Request:
+def _make_request(app: FastAPI) -> Request:
     scope = {
         "type": "http",
         "app": app,

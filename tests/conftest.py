@@ -62,6 +62,9 @@ class _NullSession:
     ) -> None:  # pragma: no cover - trivial
         return None
 
+    def close(self) -> None:  # pragma: no cover - trivial
+        return None
+
     def execute_read(self, func: object, *args: object, **kwargs: object) -> NoReturn:  # pragma: no cover - defensive
         raise RuntimeError("Graph driver disabled in tests")
 
@@ -84,6 +87,7 @@ def disable_real_graph_driver(monkeypatch: pytest.MonkeyPatch, request: pytest.F
 
     def _fake_driver(*args: object, **kwargs: object) -> _NullDriver:
         return _NullDriver()
+
     monkeypatch.setattr(
         "gateway.api.app.GraphDatabase",
         SimpleNamespace(driver=_fake_driver),
@@ -113,6 +117,26 @@ def disable_real_graph_driver(monkeypatch: pytest.MonkeyPatch, request: pytest.F
         "gateway.api.app.QdrantClient",
         lambda *args, **kwargs: SimpleNamespace(health_check=lambda: None),
         raising=False,
+    )
+    if not os.getenv("KM_TEST_USE_REAL_EMBEDDER"):
+
+        class _StubEmbedder:
+            def __init__(self, model: str) -> None:
+                self.model = model
+                self._dimension = 8
+
+            def encode(self, texts: Iterable[str]) -> list[list[float]]:
+                return [[float(index % self._dimension)] * self._dimension for index, _ in enumerate(texts)]
+
+        monkeypatch.setattr(
+            "gateway.api.dependencies.Embedder",
+            _StubEmbedder,
+            raising=False,
+        )
+    warnings.filterwarnings(
+        "ignore",
+        message="Relying on Driver's destructor to close the session is deprecated",
+        category=DeprecationWarning,
     )
     monkeypatch.setattr(
         "gateway.api.app._dependency_heartbeat_loop",

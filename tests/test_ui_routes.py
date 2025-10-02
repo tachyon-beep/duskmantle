@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """Smoke tests covering the HTML console routes exposed by the gateway API."""
+
+from __future__ import annotations
 
 from pathlib import Path
 

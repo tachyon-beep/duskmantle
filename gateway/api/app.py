@@ -172,7 +172,6 @@ def _load_search_model(settings: AppSettings) -> ModelArtifact | None:
     return None
 
 
-
 def _initialise_graph_manager(manager: Neo4jConnectionManager, settings: AppSettings) -> None:
     try:
         driver = manager.get_write_driver()
@@ -324,7 +323,7 @@ def create_app() -> FastAPI:
 
     app.state.search_feedback_store = _init_feedback_store(settings)
     app.state.search_model_artifact = _load_search_model(settings)
-    connection_utils.GRAPH_DRIVER_FACTORY = getattr(GraphDatabase, "driver")
+    connection_utils.GRAPH_DRIVER_FACTORY = GraphDatabase.driver
     connection_utils.QDRANT_CLIENT_FACTORY = QdrantClient
 
     graph_manager = Neo4jConnectionManager(settings, logger)

@@ -12,7 +12,11 @@ from fastapi import APIRouter, Depends, FastAPI, Request, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from slowapi import Limiter
 
-from gateway.api.connections import DependencyStatus
+from gateway.api.connections import (
+    DependencyStatus,
+    Neo4jConnectionManager,
+    QdrantConnectionManager,
+)
 from gateway.api.dependencies import get_app_settings
 from gateway.config.settings import AppSettings
 
@@ -173,7 +177,9 @@ def _qdrant_health(app: FastAPI, settings: AppSettings) -> dict[str, Any]:
     return info
 
 
-def _dependency_health(manager: Any) -> dict[str, Any]:
+def _dependency_health(
+    manager: Neo4jConnectionManager | QdrantConnectionManager | None,
+) -> dict[str, Any]:
     if manager is None:
         return {"status": "missing"}
     snapshot: DependencyStatus = manager.describe()

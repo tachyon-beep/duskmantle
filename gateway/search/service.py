@@ -5,10 +5,10 @@ from __future__ import annotations
 import logging
 import re
 import time
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any, Callable, Literal
+from typing import Any, Literal
 
 from neo4j.exceptions import Neo4jError
 from qdrant_client import QdrantClient

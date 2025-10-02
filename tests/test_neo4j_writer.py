@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """Unit tests for the lightweight Neo4j writer integration layer."""
+
+from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace, TracebackType

@@ -1,11 +1,11 @@
-from __future__ import annotations
-
 """Unit tests for lifecycle report generation and graph enrichment."""
+
+from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterable, cast
+from typing import cast
 
 import pytest
 from prometheus_client import REGISTRY

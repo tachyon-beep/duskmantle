@@ -8,7 +8,7 @@ import threading
 import time
 from dataclasses import dataclass
 
-from neo4j import Driver, GraphDatabase, READ_ACCESS, RoutingControl
+from neo4j import READ_ACCESS, Driver, GraphDatabase, RoutingControl
 from neo4j.exceptions import Neo4jError, ServiceUnavailable
 from qdrant_client import QdrantClient
 
@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 GRAPH_DRIVER_FACTORY = GraphDatabase.driver
 QDRANT_CLIENT_FACTORY = QdrantClient
+
 
 @dataclass(slots=True)
 class DependencyStatus:

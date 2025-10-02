@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import json
-import time
 import logging
+import time
 from pathlib import Path
 from unittest import mock
 
@@ -15,7 +15,6 @@ from gateway.config.settings import get_settings
 from gateway.ingest.audit import AuditLogger
 
 
-
 @pytest.fixture(autouse=True)
 def reset_settings_cache() -> None:
     get_settings.cache_clear()
@@ -25,7 +24,7 @@ def reset_settings_cache() -> None:
 
 def _stub_connection_managers(monkeypatch: pytest.MonkeyPatch) -> None:
     class StubNeo4jManager:
-        def __init__(self, *args, **kwargs) -> None:  # noqa: D401
+        def __init__(self, *args: object, **kwargs: object) -> None:  # noqa: D401
             self.revision = 0
 
         def get_write_driver(self) -> mock.Mock:
@@ -44,7 +43,7 @@ def _stub_connection_managers(monkeypatch: pytest.MonkeyPatch) -> None:
             return DependencyStatus("ok", self.revision, None, None, None)
 
     class StubQdrantManager:
-        def __init__(self, *args, **kwargs) -> None:  # noqa: D401
+        def __init__(self, *args: object, **kwargs: object) -> None:  # noqa: D401
             self.revision = 0
 
         def get_client(self) -> mock.Mock:
@@ -196,7 +195,4 @@ def test_logs_warning_when_neo4j_auth_disabled(
     caplog.set_level(logging.WARNING, logger="gateway.api.app")
     app = create_app()
     assert app is not None
-    assert any(
-        "Neo4j authentication disabled" in record.getMessage()
-        for record in caplog.records
-    )
+    assert any("Neo4j authentication disabled" in record.getMessage() for record in caplog.records)

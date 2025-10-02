@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 import pytest
+from prometheus_client import Gauge
 
 from gateway.api.connections import Neo4jConnectionManager, QdrantConnectionManager
 from gateway.observability import (
@@ -14,7 +15,7 @@ from gateway.observability import (
 )
 
 
-def _reset_metric(metric) -> None:
+def _reset_metric(metric: Gauge) -> None:
     metric.set(0)
 
 

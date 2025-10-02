@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
-from unittest import mock
 from types import SimpleNamespace, TracebackType
+from unittest import mock
 
 import pytest
 from neo4j import RoutingControl

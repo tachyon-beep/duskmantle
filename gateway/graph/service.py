@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import base64
 from collections import OrderedDict
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from threading import Lock
 from time import monotonic
-from typing import Any, Callable, TypeVar, cast
+from typing import Any, TypeVar, cast
 
-from neo4j import Driver, ManagedTransaction, RoutingControl
+from neo4j import Driver, ManagedTransaction, RoutingControl, Session
 from neo4j.exceptions import Neo4jError, ServiceUnavailable
 from neo4j.graph import Node, Relationship
 
@@ -94,7 +94,6 @@ class SubsystemGraphCache:
             self._entries.clear()
 
 
-
 class GraphService:
     """Service layer for read-only graph queries."""
 
@@ -120,11 +119,7 @@ class GraphService:
         self._readonly_provider = readonly_provider
         self._failure_callback = failure_callback
         self.database = database
-        self.subsystem_cache = (
-            SubsystemGraphCache(cache_ttl, cache_max_entries)
-            if cache_ttl is not None and cache_ttl > 0
-            else None
-        )
+        self.subsystem_cache = SubsystemGraphCache(cache_ttl, cache_max_entries) if cache_ttl is not None and cache_ttl > 0 else None
 
     def clear_cache(self) -> None:
         """Wipe the subsystem snapshot cache if caching is enabled."""
@@ -153,10 +148,10 @@ class GraphService:
 
     def _run_with_session(
         self,
-        operation: Callable[[Any], T],
+        operation: Callable[[Session], T],
         *,
         readonly: bool = False,
-        **session_kwargs: Any,
+        **session_kwargs: object,
     ) -> T:
         def _invoke(driver: Driver) -> T:
             kwargs = {"database": self.database}
@@ -250,7 +245,7 @@ class GraphService:
         return snapshot
 
     def _build_subsystem_snapshot(self, name: str, depth: int) -> SubsystemGraphSnapshot:
-        def _op(session: Any) -> tuple[Node, Sequence[Mapping[str, Any]], Sequence[Node]]:
+        def _op(session: Session) -> tuple[Node, Sequence[Mapping[str, Any]], Sequence[Node]]:
             subsystem_node = session.execute_read(_fetch_subsystem_node, name)
             if subsystem_node is None:
                 raise GraphNotFoundError(f"Subsystem '{name}' not found")
@@ -303,7 +298,7 @@ class GraphService:
         """Return a node and a limited set of relationships using Cypher lookups."""
         label, key, value = _parse_node_id(node_id)
 
-        def _op(session: Any) -> tuple[Node, list[dict[str, Any]]]:
+        def _op(session: Session) -> tuple[Node, list[dict[str, Any]]]:
             node = session.execute_read(_fetch_node_by_id, label, key, value)
             if node is None:
                 raise GraphNotFoundError(f"Node '{node_id}' not found")
@@ -461,7 +456,6 @@ class GraphService:
                 "database": database_name,
             },
         }
-
 
 
 def get_graph_service(
@@ -893,7 +887,7 @@ def _strip_literals_and_comments(query: str) -> str:
         ch = query[i]
         if ch in {'"', "'", "`"}:
             quote = ch
-            result.append(' ')
+            result.append(" ")
             i += 1
             while i < length:
                 current = query[i]
@@ -905,30 +899,30 @@ def _strip_literals_and_comments(query: str) -> str:
                     break
                 i += 1
             continue
-        if ch == '/' and i + 1 < length:
+        if ch == "/" and i + 1 < length:
             nxt = query[i + 1]
-            if nxt == '/':
-                result.append(' ')
+            if nxt == "/":
+                result.append(" ")
                 i += 2
-                while i < length and query[i] not in {'\n', '\r'}:
+                while i < length and query[i] not in {"\n", "\r"}:
                     i += 1
                 continue
-            if nxt == '*':
-                result.append(' ')
+            if nxt == "*":
+                result.append(" ")
                 i += 2
-                while i + 1 < length and not (query[i] == '*' and query[i + 1] == '/'):
+                while i + 1 < length and not (query[i] == "*" and query[i + 1] == "/"):
                     i += 1
                 i = min(length, i + 2)
                 continue
-        if ch == '-' and i + 1 < length and query[i + 1] == '-':
-            result.append(' ')
+        if ch == "-" and i + 1 < length and query[i + 1] == "-":
+            result.append(" ")
             i += 2
-            while i < length and query[i] not in {'\n', '\r'}:
+            while i < length and query[i] not in {"\n", "\r"}:
                 i += 1
             continue
         result.append(ch)
         i += 1
-    return ''.join(result)
+    return "".join(result)
 
 
 def _tokenize_query(upper_query: str) -> list[str]:
@@ -939,10 +933,10 @@ def _tokenize_query(upper_query: str) -> list[str]:
             current.append(ch)
         else:
             if current:
-                tokens.append(''.join(current))
+                tokens.append("".join(current))
                 current = []
     if current:
-        tokens.append(''.join(current))
+        tokens.append("".join(current))
     return tokens
 
 
@@ -951,18 +945,18 @@ def _extract_procedure_calls(tokens: list[str]) -> list[str]:
     total = len(tokens)
     i = 0
     while i < total:
-        if tokens[i] == 'CALL':
+        if tokens[i] == "CALL":
             proc_tokens: list[str] = []
             j = i + 1
             while j < total:
                 token = tokens[j]
-                if token in {'YIELD', 'RETURN', 'WITH', 'WHERE'}:
+                if token in {"YIELD", "RETURN", "WITH", "WHERE"}:
                     break
                 proc_tokens.append(token)
                 j += 1
             if not proc_tokens:
                 _deny_cypher("procedure", "Procedure name missing after CALL")
-            procedures.append('.'.join(proc_tokens))
+            procedures.append(".".join(proc_tokens))
             i = j
         else:
             i += 1
@@ -970,12 +964,12 @@ def _extract_procedure_calls(tokens: list[str]) -> list[str]:
 
 
 _ALLOWED_PROCEDURE_PREFIXES = (
-    'DB.SCHEMA.',
-    'DB.LABELS',
-    'DB.RELATIONSHIPTYPES',
-    'DB.INDEXES',
-    'DB.CONSTRAINTS',
-    'DB.PROPERTYKEYS',
+    "DB.SCHEMA.",
+    "DB.LABELS",
+    "DB.RELATIONSHIPTYPES",
+    "DB.INDEXES",
+    "DB.CONSTRAINTS",
+    "DB.PROPERTYKEYS",
 )
 
 

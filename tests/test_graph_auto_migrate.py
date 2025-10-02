@@ -52,20 +52,20 @@ def _stub_managers(
     driver.session.return_value = session_cm
 
     class _StubNeo4jManager:
-        def __init__(self, settings, logger) -> None:  # noqa: D401 - signature parity for patching
+        def __init__(self, settings: object, logger: object) -> None:  # noqa: D401 - signature parity for patching
             self.revision = 0
             self._driver = driver
             self._last_success: float | None = None
             self._last_failure: float | None = None
             self._last_error: str | None = None
 
-        def get_write_driver(self):
+        def get_write_driver(self) -> mock.Mock:
             if write_driver_error is not None:
                 raise write_driver_error
             self.revision += 1
             return self._driver
 
-        def get_readonly_driver(self):
+        def get_readonly_driver(self) -> mock.Mock:
             return self._driver
 
         def mark_failure(self, exc: Exception | None = None) -> None:
@@ -87,14 +87,14 @@ def _stub_managers(
             )
 
     class _StubQdrantManager:
-        def __init__(self, settings, logger) -> None:  # noqa: D401 - signature parity for patching
+        def __init__(self, settings: object, logger: object) -> None:  # noqa: D401 - signature parity for patching
             self.revision = 0
             self._client = qdrant_client
             self._last_success: float | None = None
             self._last_failure: float | None = None
             self._last_error: str | None = None
 
-        def get_client(self):
+        def get_client(self) -> object:
             self.revision += 1
             return self._client
 
