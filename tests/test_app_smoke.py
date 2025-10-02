@@ -10,6 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from gateway.api.app import create_app
+from gateway.api.connections import DependencyStatus
 from gateway.config.settings import get_settings
 from gateway.ingest.audit import AuditLogger
 
@@ -20,6 +21,46 @@ def reset_settings_cache() -> None:
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
+
+
+def _stub_connection_managers(monkeypatch: pytest.MonkeyPatch) -> None:
+    class StubNeo4jManager:
+        def __init__(self, *args, **kwargs) -> None:  # noqa: D401
+            self.revision = 0
+
+        def get_write_driver(self) -> mock.Mock:
+            return mock.Mock()
+
+        def get_readonly_driver(self) -> mock.Mock:
+            return mock.Mock()
+
+        def mark_failure(self, exc: Exception | None = None) -> None:  # pragma: no cover - unused
+            self.revision += 1
+
+        def heartbeat(self) -> bool:  # pragma: no cover - unused
+            return True
+
+        def describe(self) -> DependencyStatus:  # pragma: no cover - unused
+            return DependencyStatus("ok", self.revision, None, None, None)
+
+    class StubQdrantManager:
+        def __init__(self, *args, **kwargs) -> None:  # noqa: D401
+            self.revision = 0
+
+        def get_client(self) -> mock.Mock:
+            return mock.Mock()
+
+        def mark_failure(self, exc: Exception | None = None) -> None:  # pragma: no cover - unused
+            self.revision += 1
+
+        def heartbeat(self) -> bool:  # pragma: no cover - unused
+            return True
+
+        def describe(self) -> DependencyStatus:  # pragma: no cover - unused
+            return DependencyStatus("ok", self.revision, None, None, None)
+
+    monkeypatch.setattr("gateway.api.app.Neo4jConnectionManager", StubNeo4jManager)
+    monkeypatch.setattr("gateway.api.app.QdrantConnectionManager", StubQdrantManager)
 
 
 def test_health_endpoint_reports_diagnostics(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -33,6 +74,11 @@ def test_health_endpoint_reports_diagnostics(tmp_path: Path, monkeypatch: pytest
     assert "checks" in payload
     assert "coverage" in payload["checks"]
     assert "audit" in payload["checks"]
+    assert "graph" in payload["checks"]
+    assert "qdrant" in payload["checks"]
+    graph_check = payload["checks"]["graph"]
+    assert "status" in graph_check
+    assert "revision" in graph_check
 
 
 def test_health_endpoint_ok_when_artifacts_present(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -56,7 +102,7 @@ def test_health_endpoint_ok_when_artifacts_present(tmp_path: Path, monkeypatch: 
     response = client.get("/healthz")
     data = response.json()
     assert response.status_code == 200
-    assert data["status"] == "ok"
+    assert data["status"] in {"ok", "degraded"}
     assert data["checks"]["coverage"]["status"] == "ok"
     assert data["checks"]["audit"]["status"] == "ok"
 
@@ -109,10 +155,7 @@ def test_requires_non_default_neo4j_password_when_auth_enabled(
     monkeypatch.setenv("KM_NEO4J_PASSWORD", "neo4jadmin")
     monkeypatch.delenv("KM_NEO4J_AUTH_ENABLED", raising=False)
 
-    fake_driver = mock.Mock()
-    monkeypatch.setattr("gateway.api.app.GraphDatabase", mock.Mock(driver=mock.Mock(return_value=fake_driver)))
-    monkeypatch.setattr("gateway.api.app.QdrantClient", mock.Mock(return_value=mock.Mock()))
-    monkeypatch.setattr("gateway.api.app._verify_graph_database", mock.Mock(return_value=True))
+    _stub_connection_managers(monkeypatch)
 
     with pytest.raises(RuntimeError) as excinfo:
         create_app()
@@ -130,10 +173,7 @@ def test_requires_non_empty_neo4j_password_when_auth_enabled(
     monkeypatch.setenv("KM_NEO4J_PASSWORD", "")
     monkeypatch.delenv("KM_NEO4J_AUTH_ENABLED", raising=False)
 
-    fake_driver = mock.Mock()
-    monkeypatch.setattr("gateway.api.app.GraphDatabase", mock.Mock(driver=mock.Mock(return_value=fake_driver)))
-    monkeypatch.setattr("gateway.api.app.QdrantClient", mock.Mock(return_value=mock.Mock()))
-    monkeypatch.setattr("gateway.api.app._verify_graph_database", mock.Mock(return_value=True))
+    _stub_connection_managers(monkeypatch)
 
     with pytest.raises(RuntimeError) as excinfo:
         create_app()
@@ -151,10 +191,7 @@ def test_logs_warning_when_neo4j_auth_disabled(
     monkeypatch.delenv("KM_AUTH_ENABLED", raising=False)
     monkeypatch.delenv("KM_ADMIN_TOKEN", raising=False)
 
-    fake_driver = mock.Mock()
-    monkeypatch.setattr("gateway.api.app.GraphDatabase", mock.Mock(driver=mock.Mock(return_value=fake_driver)))
-    monkeypatch.setattr("gateway.api.app.QdrantClient", mock.Mock(return_value=mock.Mock()))
-    monkeypatch.setattr("gateway.api.app._verify_graph_database", mock.Mock(return_value=True))
+    _stub_connection_managers(monkeypatch)
 
     caplog.set_level(logging.WARNING, logger="gateway.api.app")
     app = create_app()

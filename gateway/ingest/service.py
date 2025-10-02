@@ -6,8 +6,11 @@ import logging
 from pathlib import Path
 
 from neo4j import GraphDatabase
+from neo4j.exceptions import Neo4jError
 from qdrant_client import QdrantClient
+from qdrant_client.http.exceptions import UnexpectedResponse
 
+from gateway.api.connections import Neo4jConnectionManager, QdrantConnectionManager
 from gateway.config.settings import AppSettings
 from gateway.ingest.audit import AuditLogger
 from gateway.ingest.coverage import write_coverage_report
@@ -27,6 +30,8 @@ def execute_ingestion(
     dry_run: bool | None = None,
     use_dummy_embeddings: bool | None = None,
     incremental: bool | None = None,
+    graph_manager: Neo4jConnectionManager | None = None,
+    qdrant_manager: QdrantConnectionManager | None = None,
 ) -> IngestionResult:
     """Run ingestion using shared settings and return result."""
 
@@ -44,14 +49,26 @@ def execute_ingestion(
     state_path = settings.state_path
 
     qdrant_writer = None
+    qdrant_client: QdrantClient | None = None
     if not dry:
-        qdrant_client = QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
+        if qdrant_manager is not None:
+            qdrant_client = qdrant_manager.get_client()
+        else:
+            qdrant_client = QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
         qdrant_writer = QdrantWriter(qdrant_client, settings.qdrant_collection)
 
     neo4j_writer = None
     driver = None
+    own_driver = False
     if not dry:
-        driver = GraphDatabase.driver(settings.neo4j_uri, auth=(settings.neo4j_user, settings.neo4j_password))
+        if graph_manager is not None:
+            driver = graph_manager.get_write_driver()
+        else:
+            driver = GraphDatabase.driver(
+                settings.neo4j_uri,
+                auth=(settings.neo4j_user, settings.neo4j_password),
+            )
+            own_driver = True
         neo4j_writer = Neo4jWriter(driver, database=settings.neo4j_database)
 
     audit_logger = None
@@ -114,6 +131,14 @@ def execute_ingestion(
                 graph_service=graph_service,
             )
         return result
+    except Neo4jError as exc:
+        if graph_manager is not None:
+            graph_manager.mark_failure(exc)
+        raise
+    except UnexpectedResponse as exc:
+        if qdrant_manager is not None:
+            qdrant_manager.mark_failure(exc)
+        raise
     finally:
-        if driver is not None:
+        if driver is not None and own_driver:
             driver.close()

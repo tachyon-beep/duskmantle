@@ -110,26 +110,6 @@
         "doc": null
       },
       {
-        "name": "_init_graph_driver",
-        "signature": "_init_graph_driver(settings)",
-        "doc": null
-      },
-      {
-        "name": "_init_qdrant_client",
-        "signature": "_init_qdrant_client(settings)",
-        "doc": null
-      },
-      {
-        "name": "_create_graph_driver",
-        "signature": "_create_graph_driver(settings)",
-        "doc": null
-      },
-      {
-        "name": "_verify_graph_database",
-        "signature": "_verify_graph_database(driver, database)",
-        "doc": null
-      },
-      {
         "name": "_run_graph_auto_migration",
         "signature": "_run_graph_auto_migration(driver, database)",
         "doc": null

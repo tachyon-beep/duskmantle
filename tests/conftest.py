@@ -48,6 +48,9 @@ except Exception:  # pragma: no cover - environment-specific shim
 
 
 class _NullSession:
+    def __init__(self) -> None:
+        self._result = SimpleNamespace(consume=lambda: None, single=lambda: None)
+
     def __enter__(self) -> _NullSession:  # pragma: no cover - trivial
         return self
 
@@ -62,8 +65,8 @@ class _NullSession:
     def execute_read(self, func: object, *args: object, **kwargs: object) -> NoReturn:  # pragma: no cover - defensive
         raise RuntimeError("Graph driver disabled in tests")
 
-    def run(self, *args: object, **kwargs: object) -> NoReturn:  # pragma: no cover - defensive
-        raise RuntimeError("Graph driver disabled in tests")
+    def run(self, *args: object, **kwargs: object) -> SimpleNamespace:  # pragma: no cover - trivial
+        return self._result
 
 
 class _NullDriver:
@@ -81,15 +84,41 @@ def disable_real_graph_driver(monkeypatch: pytest.MonkeyPatch, request: pytest.F
 
     def _fake_driver(*args: object, **kwargs: object) -> _NullDriver:
         return _NullDriver()
-
-    try:
-        monkeypatch.setattr(
-            "gateway.api.app.GraphDatabase",
-            SimpleNamespace(driver=_fake_driver),
-        )
-    except ImportError:
-        # Optional dependencies (e.g., sentence-transformers) may be missing in minimal envs.
-        pass
+    monkeypatch.setattr(
+        "gateway.api.app.GraphDatabase",
+        SimpleNamespace(driver=_fake_driver),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "gateway.api.connections.GraphDatabase",
+        SimpleNamespace(driver=_fake_driver),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "gateway.api.connections.GRAPH_DRIVER_FACTORY",
+        _fake_driver,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "gateway.api.connections.QdrantClient",
+        lambda *args, **kwargs: SimpleNamespace(health_check=lambda: None),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "gateway.api.connections.QDRANT_CLIENT_FACTORY",
+        lambda *args, **kwargs: SimpleNamespace(health_check=lambda: None),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "gateway.api.app.QdrantClient",
+        lambda *args, **kwargs: SimpleNamespace(health_check=lambda: None),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "gateway.api.app._dependency_heartbeat_loop",
+        lambda app, interval: None,
+        raising=False,
+    )
 
 
 @pytest.fixture(scope="session")

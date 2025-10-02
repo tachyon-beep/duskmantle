@@ -4,6 +4,26 @@ from __future__ import annotations
 
 from prometheus_client import Counter, Gauge, Histogram
 
+GRAPH_DEPENDENCY_STATUS = Gauge(
+    "km_graph_dependency_status",
+    "Neo4j connectivity status (1=healthy,0=unavailable)",
+)
+
+GRAPH_DEPENDENCY_LAST_SUCCESS = Gauge(
+    "km_graph_dependency_last_success_timestamp",
+    "Unix timestamp of the last successful Neo4j heartbeat",
+)
+
+QDRANT_DEPENDENCY_STATUS = Gauge(
+    "km_qdrant_dependency_status",
+    "Qdrant connectivity status (1=healthy,0=unavailable)",
+)
+
+QDRANT_DEPENDENCY_LAST_SUCCESS = Gauge(
+    "km_qdrant_dependency_last_success_timestamp",
+    "Unix timestamp of the last successful Qdrant heartbeat",
+)
+
 INGEST_DURATION_SECONDS = Histogram(
     "km_ingest_duration_seconds",
     "Duration of ingestion runs",

@@ -48,8 +48,6 @@ class DummyGraphService:
 @pytest.fixture()
 def app(monkeypatch: pytest.MonkeyPatch) -> FastAPI:
     monkeypatch.setenv("KM_AUTH_ENABLED", "false")
-    monkeypatch.setattr("gateway.api.app._init_graph_driver", lambda settings: (None, None))
-    monkeypatch.setattr("gateway.api.app._init_qdrant_client", lambda settings: None)
     from gateway.config.settings import get_settings
 
     get_settings.cache_clear()

@@ -8,7 +8,7 @@ import time
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any, Literal
+from typing import Any, Callable, Literal
 
 from neo4j.exceptions import Neo4jError
 from qdrant_client import QdrantClient
@@ -99,11 +99,13 @@ class SearchService:
         options: SearchOptions | None = None,
         weights: SearchWeights | None = None,
         model_artifact: ModelArtifact | None = None,
+        failure_callback: Callable[[Exception], None] | None = None,
     ) -> None:
         """Initialise the search service with vector and scoring options."""
         self.qdrant_client = qdrant_client
         self.collection_name = collection_name
         self.embedder = embedder
+        self._failure_callback = failure_callback
         resolved_options = options or SearchOptions()
         resolved_weights = weights or SearchWeights()
 
@@ -175,6 +177,8 @@ class SearchService:
                 search_params=search_params,
             )
         except Exception as exc:  # pragma: no cover - network errors handled upstream
+            if self._failure_callback is not None:
+                self._failure_callback(exc)
             logger.error(
                 "Search query failed: %s",
                 exc,

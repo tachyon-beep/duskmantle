@@ -96,7 +96,7 @@ graph TD
 - **/search/weights** (GET): Maintainer endpoint exposing resolved weight profile and thresholds.
 - **/graph** (GET/POST): Reader endpoints for subsystems, nodes, orphans, and search; maintainer-only `/graph/cypher` for read-only Cypher queries.
 - **/coverage**, **/lifecycle**, **/lifecycle/history**, **/audit/history**: Maintainer reporting endpoints sourcing JSON assets and SQLite audit logs.
-- **/healthz**, **/readyz**, **/metrics**: Operational status, readiness, and Prometheus metrics surfaces.
+- **/healthz**, **/readyz**, **/metrics**: Operational status (including Neo4j/Qdrant dependency snapshots), readiness, and Prometheus metrics surfaces.
 - **Static UI**: Served from `gateway/ui` providing basic navigation and documentation.
 - **FastMCP Tools:** `km-search`, `km-graph-*`, `km-ingest-*`, `km-feedback-submit`, `km-upload`, `km-storetext`, etc. (`gateway/mcp/server.py`). They proxy to REST endpoints via `GatewayClient` with token management.
 

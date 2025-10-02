@@ -45,27 +45,29 @@ def get_graph_service_dependency(
 ) -> GraphService:
     """Return a memoised graph service bound to the current FastAPI app."""
     settings = get_app_settings(request)
-    driver = getattr(request.app.state, "graph_driver", None)
-    readonly_driver = getattr(request.app.state, "graph_readonly_driver", None)
-    if driver is None:
+    graph_manager = getattr(request.app.state, "graph_manager", None)
+    if graph_manager is None:
+        raise HTTPException(status_code=503, detail="Graph service unavailable")
+    status = graph_manager.describe()
+    if status.status != "ok" or status.last_success is None:
         raise HTTPException(status_code=503, detail="Graph service unavailable")
     service = getattr(request.app.state, "graph_service_instance", None)
-    if (
-        service is None
-        or getattr(service, "driver", None) is not driver
-        or getattr(service, "readonly_driver", None) is not readonly_driver
-    ):
+    cached_revision = getattr(request.app.state, "graph_service_revision", None)
+    current_revision = graph_manager.revision
+    if service is None or cached_revision != current_revision:
         cache_ttl = settings.graph_subsystem_cache_ttl_seconds
         cache_max = settings.graph_subsystem_cache_max_entries
         factory = getattr(request.app.state, "graph_service_factory", get_graph_service)
         service = factory(
-            driver,
+            graph_manager.get_write_driver,
             settings.neo4j_database,
             cache_ttl=cache_ttl,
             cache_max_entries=cache_max,
-            readonly_driver=readonly_driver,
+            readonly_driver=graph_manager.get_readonly_driver,
+            failure_callback=graph_manager.mark_failure,
         )
         request.app.state.graph_service_instance = service
+        request.app.state.graph_service_revision = current_revision
     return service
 
 
@@ -74,9 +76,18 @@ def get_search_service_dependency(
 ) -> SearchService | None:
     """Construct (and cache) the hybrid search service for the application."""
     settings = get_app_settings(request)
-    qclient = getattr(request.app.state, "qdrant_client", None)
-    if qclient is None:
+    qdrant_manager = getattr(request.app.state, "qdrant_manager", None)
+    if qdrant_manager is None:
         return None
+
+    try:
+        qclient = qdrant_manager.get_client()
+    except Exception as exc:  # pragma: no cover - defensive guard
+        qdrant_manager.mark_failure(exc)
+        logger.warning("Qdrant client unavailable: %s", exc)
+        return None
+
+    request.app.state.qdrant_revision = qdrant_manager.revision
 
     embedder = getattr(request.app.state, "search_embedder", None)
     if embedder is None:
@@ -114,6 +125,7 @@ def get_search_service_dependency(
         options=search_options,
         weights=search_weights,
         model_artifact=model_artifact,
+        failure_callback=qdrant_manager.mark_failure,
     )
 
 

@@ -95,11 +95,7 @@
 - `_configure_rate_limits(app: FastAPI, settings: AppSettings) -> Limiter` — No docstring provided.
 - `_init_feedback_store(settings: AppSettings) -> SearchFeedbackStore | None` — No docstring provided.
 - `_load_search_model(settings: AppSettings) -> ModelArtifact | None` — No docstring provided.
-- `_init_graph_driver(settings: AppSettings) -> tuple[Driver | None, Driver | None]` — No docstring provided.
-- `_init_qdrant_client(settings: AppSettings) -> QdrantClient | None` — No docstring provided.
-- `_create_graph_driver(` — No docstring provided.
 - `_create_readonly_driver(settings: AppSettings, *, primary_driver: Driver) -> Driver | None` — No docstring provided.
-- `_verify_graph_database(driver: Driver, database: str) -> bool` — No docstring provided.
 - `_run_graph_auto_migration(driver: Driver, database: str) -> None` — No docstring provided.
 - `_fetch_pending_migrations(runner: MigrationRunner) -> list[str] | None` — No docstring provided.
 - `_log_migration_plan(pending: list[str] | None) -> None` — No docstring provided.
@@ -147,6 +143,35 @@
 
 ### Code Quality Notes
 - 1 helper function(s) missing docstrings.
+
+## gateway/api/connections.py
+
+**File path**: `gateway/api/connections.py`
+**Purpose**: Connection managers for external services (Neo4j and Qdrant).
+**Dependencies**: External – __future__, neo4j, neo4j.exceptions, qdrant_client, qdrant_client.exceptions, threading, time, typing; Internal – gateway.config.settings, gateway.observability
+**Related modules**: gateway.config.settings, gateway.observability
+
+### Classes
+- `Neo4jConnectionManager` — Lazy initialisation and health tracking for Neo4j drivers.
+  - Methods: `__init__(self, settings: AppSettings, logger) -> None` — No docstring provided.; `revision(self) -> int` — No docstring provided.; `get_write_driver(self):  # type: ignore[return-any]` — No docstring provided.; `get_readonly_driver(self):  # type: ignore[return-any]` — No docstring provided.; `mark_failure(self) -> None` — No docstring provided.; `heartbeat(self) -> bool` — No docstring provided.; `_create_driver(self, *, uri: str, user: str, password: str)` — No docstring provided.
+- `QdrantConnectionManager` — Lazy initialisation and health tracking for Qdrant clients.
+  - Methods: `__init__(self, settings: AppSettings, logger) -> None` — No docstring provided.; `revision(self) -> int` — No docstring provided.; `get_client(self) -> QdrantClient` — No docstring provided.; `mark_failure(self) -> None` — No docstring provided.; `heartbeat(self) -> bool` — No docstring provided.
+
+### Functions
+- None
+
+### Constants and Configuration
+- Module-level constants: None
+- Environment variables: Not detected in static scan
+
+### Data Flow
+- Handles FastAPI request routing, dependency wiring, and HTTP responses.
+
+### Integration Points
+- Neo4j GraphDatabase driver, Qdrant vector database SDK
+
+### Code Quality Notes
+- Class methods omit docstrings; behaviour inferred from names.
 
 ## gateway/api/dependencies.py
 
@@ -495,7 +520,7 @@
 - `SubsystemGraphCache` — Simple TTL cache for subsystem graph snapshots.
   - Methods: `__init__(self, ttl_seconds: float, max_entries: int) -> None` — Create a cache with an expiry window and bounded size.; `get(self, key: tuple[str, int]) -> SubsystemGraphSnapshot | None` — Return a cached snapshot if it exists and has not expired.; `set(self, key: tuple[str, int], snapshot: SubsystemGraphSnapshot) -> None` — Cache a snapshot for the given key, evicting oldest entries if needed.; `clear(self) -> None` — Remove all cached subsystem snapshots.
 - `GraphService` — Service layer for read-only graph queries.
-  - Attributes: `driver: Driver`; `database: str`; `subsystem_cache: SubsystemGraphCache | None = None`; `readonly_driver: Driver | None = None`
+  - Attributes: `_driver_provider: Callable[[], Driver]`; `_readonly_provider: Callable[[], Driver] | None`; `_failure_callback: Callable[[Exception], None] | None`; `database: str`; `subsystem_cache: SubsystemGraphCache | None = None`
   - Methods: `get_subsystem(` — Return a windowed view of related nodes for the requested subsystem.; `get_subsystem_graph(self, name: str, *, depth: int) -> dict[str, Any]` — Return the full node/edge snapshot for a subsystem.; `list_orphan_nodes(` — List nodes that have no relationships of the allowed labels.; `clear_cache(self) -> None` — Wipe the subsystem snapshot cache if caching is enabled.; `_load_subsystem_snapshot(self, name: str, depth: int) -> SubsystemGraphSnapshot` — No docstring provided.; `_build_subsystem_snapshot(self, name: str, depth: int) -> SubsystemGraphSnapshot` — No docstring provided.; `get_node(self, node_id: str, *, relationships: str, limit: int) -> dict[str, Any]` — Return a node and a limited set of relationships using Cypher lookups.; `search(self, term: str, *, limit: int) -> dict[str, Any]` — Search the graph for nodes matching the provided term.; `shortest_path_depth(self, node_id: str, *, max_depth: int = 4) -> int | None` — Return the length of the shortest path from the node to any subsystem.
 
 The search is bounded by ``max_depth`` hops across the knowledge graph
@@ -503,7 +528,7 @@ relationship types used by ingestion. ``None`` is returned when no
 subsystem can be reached within the given depth limit.; `run_cypher(` — Execute an arbitrary Cypher query and serialize the response.
 
 ### Functions
-- `get_graph_service(` — Factory helper that constructs a `GraphService` with optional caching.
+- `get_graph_service(` — Factory helper that constructs a `GraphService` from driver provider callables with optional caching and failure callbacks.
 - `_extract_path_components(` — No docstring provided.
 - `_record_path_edges(` — No docstring provided.
 - `_ensure_serialized_node(` — No docstring provided.
@@ -943,7 +968,7 @@ treated as success. Destructive resets are exposed separately via
 - None
 
 ### Functions
-- `execute_ingestion(` — Run ingestion using shared settings and return result.
+- `execute_ingestion(` — Run ingestion using shared settings and return result; accepts optional Neo4j/Qdrant connection managers for dependency reuse.
 
 ### Constants and Configuration
 - Module-level constants: None

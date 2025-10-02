@@ -123,9 +123,12 @@ def create_router(limiter: Limiter, metrics_limit: str) -> APIRouter:
 
         graph_service: GraphService | None = None
         if include_graph:
-            driver = getattr(request.app.state, "graph_driver", None)
-            if driver is not None:
-                graph_service = get_graph_service_dependency(request, settings)
+            graph_manager = getattr(request.app.state, "graph_manager", None)
+            if graph_manager is not None:
+                try:
+                    graph_service = get_graph_service_dependency(request)
+                except HTTPException:
+                    graph_service = None
 
         request_id = getattr(request.state, "request_id", None) or str(uuid4())
 

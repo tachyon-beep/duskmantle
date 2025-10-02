@@ -110,7 +110,11 @@ def patch_graph_types(monkeypatch: pytest.MonkeyPatch) -> None:
 def dummy_driver() -> DriverFixture:
     session = DummySession()
     driver = DummyDriver(session)
-    service = GraphService(driver=driver, database="knowledge", readonly_driver=driver)
+    service = GraphService(
+        driver_provider=lambda: driver,
+        database="knowledge",
+        readonly_provider=lambda: driver,
+    )
     return service, session, driver
 
 

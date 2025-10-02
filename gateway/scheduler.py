@@ -15,6 +15,7 @@ from apscheduler.triggers.cron import CronTrigger  # type: ignore[import-untyped
 from apscheduler.triggers.interval import IntervalTrigger  # type: ignore[import-untyped]
 from filelock import FileLock, Timeout
 
+from gateway.api.connections import Neo4jConnectionManager, QdrantConnectionManager
 from gateway.config.settings import AppSettings
 from gateway.ingest.service import execute_ingestion
 from gateway.observability.metrics import INGEST_SKIPS_TOTAL, SCHEDULER_LAST_SUCCESS_TIMESTAMP, SCHEDULER_RUNS_TOTAL
@@ -25,7 +26,13 @@ logger = logging.getLogger(__name__)
 class IngestionScheduler:
     """APScheduler wrapper that coordinates repo-aware ingestion jobs."""
 
-    def __init__(self, settings: AppSettings) -> None:
+    def __init__(
+        self,
+        settings: AppSettings,
+        *,
+        graph_manager: Neo4jConnectionManager | None = None,
+        qdrant_manager: QdrantConnectionManager | None = None,
+    ) -> None:
         """Initialise scheduler state and ensure the scratch directory exists."""
         self.settings = settings
         self.scheduler = BackgroundScheduler(timezone="UTC")
@@ -34,6 +41,8 @@ class IngestionScheduler:
         self._state_dir.mkdir(parents=True, exist_ok=True)
         self._lock_path = self._state_dir / "ingest.lock"
         self._last_head_path = self._state_dir / "last_repo_head.txt"
+        self._graph_manager = graph_manager
+        self._qdrant_manager = qdrant_manager
 
     def start(self) -> None:
         """Register the ingestion job and begin scheduling if enabled."""
@@ -95,6 +104,8 @@ class IngestionScheduler:
                 profile="scheduled",
                 dry_run=self.settings.dry_run,
                 use_dummy_embeddings=self.settings.ingest_use_dummy_embeddings,
+                graph_manager=self._graph_manager,
+                qdrant_manager=self._qdrant_manager,
             )
 
             if not self.settings.dry_run and result.repo_head:

@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, FastAPI, Request, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from slowapi import Limiter
 
+from gateway.api.connections import DependencyStatus
 from gateway.api.dependencies import get_app_settings
 from gateway.config.settings import AppSettings
 
@@ -45,12 +46,17 @@ def build_health_report(app: FastAPI, settings: AppSettings) -> dict[str, object
     coverage = _coverage_health(settings)
     audit = _audit_health(settings)
     scheduler = _scheduler_health(app, settings)
+    graph = _graph_health(app, settings)
+    qdrant = _qdrant_health(app, settings)
     checks = {
         "coverage": coverage,
         "audit": audit,
         "scheduler": scheduler,
+        "graph": graph,
+        "qdrant": qdrant,
     }
     degraded_statuses = {"missing", "stale", "error", "stopped", "invalid"}
+    degraded_statuses.update({"degraded"})
     overall = "ok"
     if any(check.get("status") in degraded_statuses for check in checks.values()):
         overall = "degraded"
@@ -150,6 +156,37 @@ def _scheduler_health(app: FastAPI, settings: AppSettings) -> dict[str, Any]:
 
     info["status"] = "running"
     return info
+
+
+def _graph_health(app: FastAPI, settings: AppSettings) -> dict[str, Any]:
+    manager = getattr(app.state, "graph_manager", None)
+    info = _dependency_health(manager)
+    info["database"] = settings.neo4j_database
+    return info
+
+
+def _qdrant_health(app: FastAPI, settings: AppSettings) -> dict[str, Any]:
+    manager = getattr(app.state, "qdrant_manager", None)
+    info = _dependency_health(manager)
+    info["collection"] = settings.qdrant_collection
+    info["url"] = settings.qdrant_url
+    return info
+
+
+def _dependency_health(manager: Any) -> dict[str, Any]:
+    if manager is None:
+        return {"status": "missing"}
+    snapshot: DependencyStatus = manager.describe()
+    payload: dict[str, Any] = {
+        "status": snapshot.status,
+        "revision": snapshot.revision,
+        "last_success": snapshot.last_success,
+    }
+    if snapshot.last_failure is not None:
+        payload["last_failure"] = snapshot.last_failure
+    if snapshot.last_error:
+        payload["error"] = snapshot.last_error
+    return payload
 
 
 __all__ = ["create_router", "build_health_report"]

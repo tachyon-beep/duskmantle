@@ -8,12 +8,15 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from threading import Lock
 from time import monotonic
-from typing import Any
+from typing import Any, Callable, TypeVar, cast
 
 from neo4j import Driver, ManagedTransaction, RoutingControl
+from neo4j.exceptions import Neo4jError, ServiceUnavailable
 from neo4j.graph import Node, Relationship
 
 from gateway.observability.metrics import GRAPH_CYPHER_DENIED_TOTAL
+
+T = TypeVar("T")
 
 
 class GraphServiceError(RuntimeError):
@@ -91,14 +94,77 @@ class SubsystemGraphCache:
             self._entries.clear()
 
 
-@dataclass(slots=True)
+
 class GraphService:
     """Service layer for read-only graph queries."""
 
-    driver: Driver
-    database: str
-    subsystem_cache: SubsystemGraphCache | None = None
-    readonly_driver: Driver | None = None
+    __slots__ = (
+        "_driver_provider",
+        "_readonly_provider",
+        "_failure_callback",
+        "database",
+        "subsystem_cache",
+    )
+
+    def __init__(
+        self,
+        driver_provider: Callable[[], Driver],
+        database: str,
+        *,
+        cache_ttl: float | None = None,
+        cache_max_entries: int = 128,
+        readonly_provider: Callable[[], Driver] | None = None,
+        failure_callback: Callable[[Exception], None] | None = None,
+    ) -> None:
+        self._driver_provider = driver_provider
+        self._readonly_provider = readonly_provider
+        self._failure_callback = failure_callback
+        self.database = database
+        self.subsystem_cache = (
+            SubsystemGraphCache(cache_ttl, cache_max_entries)
+            if cache_ttl is not None and cache_ttl > 0
+            else None
+        )
+
+    def clear_cache(self) -> None:
+        """Wipe the subsystem snapshot cache if caching is enabled."""
+        if self.subsystem_cache is not None:
+            self.subsystem_cache.clear()
+
+    def _get_driver(self, *, readonly: bool = False) -> Driver:
+        if readonly and self._readonly_provider is not None:
+            return self._readonly_provider()
+        return self._driver_provider()
+
+    def _execute(self, operation: Callable[[Driver], T], *, readonly: bool = False) -> T:
+        attempts = 2 if self._failure_callback is not None else 1
+        for attempt in range(attempts):
+            driver = self._get_driver(readonly=readonly)
+            try:
+                return operation(driver)
+            except GraphServiceError:
+                raise
+            except (Neo4jError, ServiceUnavailable, OSError) as exc:
+                if self._failure_callback is not None:
+                    self._failure_callback(exc)
+                if attempt == attempts - 1:
+                    raise
+        raise RuntimeError("unreachable")
+
+    def _run_with_session(
+        self,
+        operation: Callable[[Any], T],
+        *,
+        readonly: bool = False,
+        **session_kwargs: Any,
+    ) -> T:
+        def _invoke(driver: Driver) -> T:
+            kwargs = {"database": self.database}
+            kwargs.update(session_kwargs)
+            with driver.session(**kwargs) as session:
+                return operation(session)
+
+        return self._execute(_invoke, readonly=readonly)
 
     def get_subsystem(
         self,
@@ -155,23 +221,21 @@ class GraphService:
             raise GraphQueryError(f"Unsupported orphan label '{label}'")
         offset = max(0, _decode_cursor(cursor))
         limit = max(1, limit)
-        with self.driver.session(database=self.database) as session:
-            records = session.execute_read(
+
+        records = self._run_with_session(
+            lambda session: session.execute_read(
                 _fetch_orphan_nodes,
                 label,
                 offset,
                 limit,
-            )
+            ),
+            readonly=True,
+        )
         nodes = [_serialize_node(record) for record in records]
         next_cursor = None
         if len(nodes) == limit:
             next_cursor = _encode_cursor(offset + limit)
         return {"nodes": nodes, "cursor": next_cursor}
-
-    def clear_cache(self) -> None:
-        """Wipe the subsystem snapshot cache if caching is enabled."""
-        if self.subsystem_cache is not None:
-            self.subsystem_cache.clear()
 
     def _load_subsystem_snapshot(self, name: str, depth: int) -> SubsystemGraphSnapshot:
         depth = max(1, depth)
@@ -186,18 +250,23 @@ class GraphService:
         return snapshot
 
     def _build_subsystem_snapshot(self, name: str, depth: int) -> SubsystemGraphSnapshot:
-        with self.driver.session(database=self.database) as session:
+        def _op(session: Any) -> tuple[Node, Sequence[Mapping[str, Any]], Sequence[Node]]:
             subsystem_node = session.execute_read(_fetch_subsystem_node, name)
             if subsystem_node is None:
                 raise GraphNotFoundError(f"Subsystem '{name}' not found")
-            subsystem_node = _ensure_node(subsystem_node)
-
+            resolved_node = _ensure_node(subsystem_node)
             path_records = session.execute_read(
                 _fetch_subsystem_paths,
                 name,
                 depth,
             )
             artifact_records = session.execute_read(_fetch_artifacts_for_subsystem, name)
+            return resolved_node, path_records, artifact_records
+
+        subsystem_node, path_records, artifact_records = self._run_with_session(
+            _op,
+            readonly=True,
+        )
 
         subsystem_serialized = _serialize_node(subsystem_node)
         nodes_by_id: OrderedDict[str, dict[str, Any]] = OrderedDict()
@@ -233,7 +302,8 @@ class GraphService:
     def get_node(self, node_id: str, *, relationships: str, limit: int) -> dict[str, Any]:
         """Return a node and a limited set of relationships using Cypher lookups."""
         label, key, value = _parse_node_id(node_id)
-        with self.driver.session(database=self.database) as session:
+
+        def _op(session: Any) -> tuple[Node, list[dict[str, Any]]]:
             node = session.execute_read(_fetch_node_by_id, label, key, value)
             if node is None:
                 raise GraphNotFoundError(f"Node '{node_id}' not found")
@@ -250,6 +320,9 @@ class GraphService:
                     limit,
                 )
                 rels = [_serialize_relationship(record) for record in rel_records]
+            return node, rels
+
+        node, rels = self._run_with_session(_op, readonly=True)
 
         return {
             "node": _serialize_node(node),
@@ -261,8 +334,10 @@ class GraphService:
         if not term.strip():
             return {"results": []}
         lower_term = term.lower()
-        with self.driver.session(database=self.database) as session:
-            records = session.execute_read(_search_entities, lower_term, limit)
+        records = self._run_with_session(
+            lambda session: session.execute_read(_search_entities, lower_term, limit),
+            readonly=True,
+        )
         results = [
             {
                 "id": _canonical_node_id(_ensure_node(record["node"])),
@@ -294,8 +369,12 @@ class GraphService:
         )
 
         try:
-            with self.driver.session(database=self.database) as session:
-                record = session.run(query, value=value).single()
+            record = self._run_with_session(
+                lambda session: session.run(query, value=value).single(),
+                readonly=True,
+            )
+        except (Neo4jError, ServiceUnavailable, OSError) as exc:  # pragma: no cover - driver failure
+            raise GraphServiceError(str(exc)) from exc
         except Exception as exc:  # pragma: no cover - defensive guard
             raise GraphServiceError(str(exc)) from exc
         if record is None:
@@ -316,15 +395,19 @@ class GraphService:
         """Execute an arbitrary Cypher query and serialize the response."""
         _validate_cypher(query)
         params = parameters or {}
-        driver = self.readonly_driver or self.driver
         try:
-            result = driver.execute_query(
-                query,
-                parameters=params,
-                database_=self.database,
-                routing_=RoutingControl.READ,
+            result = self._execute(
+                lambda driver: driver.execute_query(
+                    query,
+                    parameters=params,
+                    database_=self.database,
+                    routing_=RoutingControl.READ,
+                ),
+                readonly=True,
             )
-        except Exception as exc:  # pragma: no cover - driver errors wrapped for clients
+        except (Neo4jError, ServiceUnavailable, OSError) as exc:  # pragma: no cover - driver errors wrapped
+            raise GraphQueryError(str(exc)) from exc
+        except Exception as exc:  # pragma: no cover - defensive guard
             raise GraphQueryError(str(exc)) from exc
 
         summary = result.summary
@@ -380,23 +463,36 @@ class GraphService:
         }
 
 
+
 def get_graph_service(
-    driver: Driver,
+    driver: Driver | Callable[[], Driver],
     database: str,
     *,
     cache_ttl: float | None = None,
     cache_max_entries: int = 128,
-    readonly_driver: Driver | None = None,
+    readonly_driver: Driver | Callable[[], Driver] | None = None,
+    failure_callback: Callable[[Exception], None] | None = None,
 ) -> GraphService:
     """Factory helper that constructs a `GraphService` with optional caching."""
-    cache = None
-    if cache_ttl is not None and cache_ttl > 0:
-        cache = SubsystemGraphCache(cache_ttl, cache_max_entries)
+
+    def _ensure_provider(candidate: Driver | Callable[[], Driver]) -> Callable[[], Driver]:
+        if callable(candidate):
+            return cast(Callable[[], Driver], candidate)
+        driver_obj = candidate
+        return lambda: driver_obj
+
+    driver_provider = _ensure_provider(driver)
+    readonly_provider = None
+    if readonly_driver is not None:
+        readonly_provider = _ensure_provider(readonly_driver)
+
     return GraphService(
-        driver=driver,
+        driver_provider=driver_provider,
         database=database,
-        subsystem_cache=cache,
-        readonly_driver=readonly_driver,
+        cache_ttl=cache_ttl,
+        cache_max_entries=cache_max_entries,
+        readonly_provider=readonly_provider,
+        failure_callback=failure_callback,
     )
 
 

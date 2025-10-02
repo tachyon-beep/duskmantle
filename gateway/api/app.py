@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
@@ -23,6 +24,8 @@ from slowapi.middleware import SlowAPIMiddleware
 from slowapi.util import get_remote_address
 
 from gateway import get_version
+from gateway.api import connections as connection_utils
+from gateway.api.connections import Neo4jConnectionManager, QdrantConnectionManager
 from gateway.api.routes import graph as graph_routes
 from gateway.api.routes import health as health_routes
 from gateway.api.routes import reporting as reporting_routes
@@ -43,6 +46,8 @@ from gateway.ui import get_static_path
 from gateway.ui import router as ui_router
 
 logger = logging.getLogger(__name__)
+
+DEPENDENCY_HEARTBEAT_INTERVAL_SECONDS = 30.0
 
 
 def _validate_auth_settings(settings: AppSettings) -> None:
@@ -94,24 +99,38 @@ def _log_startup_configuration(settings: AppSettings) -> None:
 def _build_lifespan(settings: AppSettings) -> Callable[[FastAPI], AbstractAsyncContextManager[None]]:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        scheduler = IngestionScheduler(settings)
+        scheduler = IngestionScheduler(
+            settings,
+            graph_manager=getattr(app.state, "graph_manager", None),
+            qdrant_manager=getattr(app.state, "qdrant_manager", None),
+        )
         scheduler.start()
         app.state.scheduler = scheduler
+        heartbeat_task: asyncio.Task[None] | None = None
         try:
+            graph_manager = getattr(app.state, "graph_manager", None)
+            qdrant_manager = getattr(app.state, "qdrant_manager", None)
+            if graph_manager or qdrant_manager:
+                heartbeat_task = asyncio.create_task(
+                    _dependency_heartbeat_loop(app, DEPENDENCY_HEARTBEAT_INTERVAL_SECONDS),
+                )
+                app.state.dependency_heartbeat_task = heartbeat_task
             yield
         finally:  # pragma: no cover - exercised via integration tests
+            if heartbeat_task is not None:
+                heartbeat_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await heartbeat_task
             try:
                 scheduler.shutdown()
             except SchedulerNotRunningError:
                 pass
-            driver = getattr(app.state, "graph_driver", None)
-            if driver:
-                with suppress(Neo4jError, OSError):
-                    driver.close()
-            readonly_driver = getattr(app.state, "graph_readonly_driver", None)
-            if readonly_driver and readonly_driver is not driver:
-                with suppress(Neo4jError, OSError):
-                    readonly_driver.close()
+            for manager_name in ("graph_manager", "qdrant_manager"):
+                manager = getattr(app.state, manager_name, None)
+                if manager is None:
+                    continue
+                with suppress(Exception):
+                    manager.mark_failure(None)
 
     return cast(Callable[[FastAPI], AbstractAsyncContextManager[None]], lifespan)
 
@@ -153,15 +172,20 @@ def _load_search_model(settings: AppSettings) -> ModelArtifact | None:
     return None
 
 
-def _init_graph_driver(settings: AppSettings) -> tuple[Driver | None, Driver | None]:
-    driver = _create_graph_driver(
-        settings=settings,
-        uri=settings.neo4j_uri,
-        user=settings.neo4j_user,
-        password=settings.neo4j_password,
-    )
-    if driver is None:
-        return None, None
+
+def _initialise_graph_manager(manager: Neo4jConnectionManager, settings: AppSettings) -> None:
+    try:
+        driver = manager.get_write_driver()
+    except Exception as exc:
+        logger.warning("Neo4j unavailable during startup: %s", exc)
+        _set_migration_metrics(0, timestamp=time.time())
+        return
+
+    if not _verify_graph_database(driver, settings.neo4j_database):
+        logger.warning("Neo4j database validation failed during startup")
+        manager.mark_failure(RuntimeError("database validation failed"))
+        _set_migration_metrics(0, timestamp=time.time())
+        return
 
     if settings.graph_auto_migrate:
         _run_graph_auto_migration(driver, settings.neo4j_database)
@@ -169,64 +193,20 @@ def _init_graph_driver(settings: AppSettings) -> tuple[Driver | None, Driver | N
         logger.info("Graph auto-migration disabled; run `gateway-graph migrate` during deployment")
         _set_migration_metrics(-1, timestamp=None)
 
-    readonly_driver = _create_readonly_driver(settings, primary_driver=driver)
-    return driver, readonly_driver
+
+def _initialise_qdrant_manager(manager: QdrantConnectionManager) -> None:
+    manager.heartbeat()
 
 
-def _init_qdrant_client(settings: AppSettings) -> QdrantClient | None:
-    try:
-        return QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
-    except (ValueError, ConnectionError, RuntimeError) as exc:  # pragma: no cover - offline scenarios
-        logger.warning("Qdrant client initialization failed: %s", exc)
-        return None
-
-
-def _create_graph_driver(
-    *,
-    settings: AppSettings,
-    uri: str,
-    user: str,
-    password: str,
-) -> Driver | None:
-    try:
-        driver = GraphDatabase.driver(uri, auth=(user, password))
-    except (Neo4jError, ServiceUnavailable, OSError) as exc:  # pragma: no cover - connection may fail in dev/test
-        logger.warning("Neo4j driver initialization failed: %s", exc)
-        _set_migration_metrics(0, timestamp=time.time())
-        return None
-
-    if not _verify_graph_database(driver, settings.neo4j_database):
-        try:
-            driver.close()
-        except Neo4jError:  # pragma: no cover - defensive cleanup
-            pass
-        _set_migration_metrics(0, timestamp=time.time())
-        return None
-
-    logger.info("Connected to Neo4j database '%s'", settings.neo4j_database)
-
-    return driver
-
-
-def _create_readonly_driver(settings: AppSettings, *, primary_driver: Driver) -> Driver | None:
-    uri = settings.neo4j_readonly_uri or settings.neo4j_uri
-    user = settings.neo4j_readonly_user or settings.neo4j_user
-    password = settings.neo4j_readonly_password or settings.neo4j_password
-
-    if (
-        uri == settings.neo4j_uri
-        and user == settings.neo4j_user
-        and password == settings.neo4j_password
-    ):
-        return primary_driver
-
-    readonly_driver = _create_graph_driver(settings=settings, uri=uri, user=user, password=password)
-    if readonly_driver is None:
-        logger.warning(
-            "Falling back to primary Neo4j driver for read-only operations; read-only credentials failed to initialise",
-        )
-        return primary_driver
-    return readonly_driver
+async def _dependency_heartbeat_loop(app: FastAPI, interval: float) -> None:
+    while True:  # pragma: no branch - cancellation exits loop
+        graph_manager = getattr(app.state, "graph_manager", None)
+        if graph_manager is not None:
+            graph_manager.heartbeat()
+        qdrant_manager = getattr(app.state, "qdrant_manager", None)
+        if qdrant_manager is not None:
+            qdrant_manager.heartbeat()
+        await asyncio.sleep(interval)
 
 
 def _verify_graph_database(driver: Driver, database: str) -> bool:
@@ -246,7 +226,7 @@ def _verify_graph_database(driver: Driver, database: str) -> bool:
     except ServiceUnavailable as exc:
         logger.warning("Neo4j database '%s' unavailable during validation: %s", database, exc)
         return False
-    except Exception as exc:  # pragma: no cover - defensive
+    except Exception as exc:  # pragma: no cover - defensive guard
         logger.warning("Unexpected error validating Neo4j database '%s': %s", database, exc)
         return False
     return True
@@ -344,11 +324,23 @@ def create_app() -> FastAPI:
 
     app.state.search_feedback_store = _init_feedback_store(settings)
     app.state.search_model_artifact = _load_search_model(settings)
-    graph_driver, graph_readonly_driver = _init_graph_driver(settings)
-    app.state.graph_driver = graph_driver
-    app.state.graph_readonly_driver = graph_readonly_driver
+    connection_utils.GRAPH_DRIVER_FACTORY = getattr(GraphDatabase, "driver")
+    connection_utils.QDRANT_CLIENT_FACTORY = QdrantClient
+
+    graph_manager = Neo4jConnectionManager(settings, logger)
+    qdrant_manager = QdrantConnectionManager(settings, logger)
+    app.state.graph_manager = graph_manager
+    app.state.qdrant_manager = qdrant_manager
+    app.state.graph_service_revision = None
+    app.state.graph_service_instance = None
+    app.state.qdrant_revision = None
+    app.state.dependency_heartbeat_task = None
     app.state.graph_service_factory = get_graph_service
-    app.state.qdrant_client = _init_qdrant_client(settings)
+
+    _initialise_graph_manager(graph_manager, settings)
+    _initialise_qdrant_manager(qdrant_manager)
+    app.state.graph_service_revision = graph_manager.revision
+    app.state.qdrant_revision = qdrant_manager.revision
     app.state.search_embedder = None
     app.state.scheduler = None
 

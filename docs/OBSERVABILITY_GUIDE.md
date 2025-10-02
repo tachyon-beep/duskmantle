@@ -41,6 +41,10 @@ Key time-series:
 | `km_search_graph_cache_events_total` | Counter | `status` (`miss`,`hit`,`error`) | Tracks graph context cache utilisation. | Alert when `status="error"` climbs or hit ratio drops suddenly. |
 | `km_search_graph_lookup_seconds` | Histogram | _none_ | Latency of Neo4j lookups for search enrichment. | Alert when P95 exceeds expected threshold (e.g., >250 ms). |
 | `km_search_adjusted_minus_vector` | Histogram | _none_ | Distribution of adjusted minus vector scores per result. | Alert when distribution skews heavily positive/negative (ranking drift). |
+| `km_graph_dependency_status` | Gauge | _none_ | 1 when Neo4j dependency is healthy, 0 when connection attempts fail. | Page if value stays at 0 across scrapes (graph unavailable). |
+| `km_graph_dependency_last_success_timestamp` | Gauge | _none_ | Unix timestamp of the last successful Neo4j heartbeat. | Alert when timestamp is older than the expected heartbeat window. |
+| `km_qdrant_dependency_status` | Gauge | _none_ | 1 when Qdrant health checks succeed, 0 for failures. | Page if value stays at 0 across scrapes (vector store unavailable). |
+| `km_qdrant_dependency_last_success_timestamp` | Gauge | _none_ | Unix timestamp of the last successful Qdrant heartbeat. | Alert when timestamp is older than the expected heartbeat window. |
 | `km_graph_cypher_denied_total` | Counter | `reason` (`keyword`,`procedure`,`structure`,`mutation`) | Maintainer `/graph/cypher` requests blocked by read-only safeguards. | Alert when non-zero growth occurs outside intentional testing (possible intrusion or misconfiguration). |
 | `km_ui_requests_total` | Counter | `view` | Embedded console visits by view (`landing`, `search`, `subsystems`, `lifecycle`). | Alert on prolonged spikes (possible scraping) or sudden drops during active adoption. |
 | `km_ui_events_total` | Counter | `event` | UI-triggered events (`lifecycle_download`, MCP recipe copy buttons, subsystem downloads). | Alert when error events appear or download volume surges unexpectedly. |
@@ -97,7 +101,7 @@ scrape_configs:
 
 ### Health Endpoints
 
-- `GET /healthz` returns an overall `status` (`ok` or `degraded`) plus detailed checks for `coverage`, `audit`, and `scheduler`.
+- `GET /healthz` returns an overall `status` (`ok` or `degraded`) plus detailed checks for `coverage`, `audit`, `scheduler`, `graph`, and `qdrant`.
   - Coverage check tracks file freshness, missing artifact count, and falls back to `stale` when older than twice the scheduler interval (or 24h without a scheduler).
   - Audit check ensures the SQLite ledger is present and readable.
   - Scheduler check reports `running`, `stopped`, or `disabled` alongside the configured interval.

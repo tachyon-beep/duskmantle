@@ -124,7 +124,7 @@ Completed in code (read-only driver option, stricter validation/whitelisting, re
 ### Related Issues
 RISK-003
 
-## WP-004: Add Dependency Health Checks and Auto-Reconnect
+## WP-004: Add Dependency Health Checks and Auto-Reconnect *(Completed)*
 
 **Category**: Operational
 **Priority**: HIGH
@@ -135,7 +135,7 @@ RISK-003
 Once booted, the API keeps long-lived Neo4j and Qdrant handles without periodic validation or automatic recovery.
 
 ### Current State
-graph_driver and qdrant_client are created at startup and reused; if the backing services restart, calls return 503 or raise exceptions until a manual restart.
+Neo4j and Qdrant access now flows through `Neo4jConnectionManager` / `QdrantConnectionManager` wrappers that lazily build drivers, emit connectivity gauges, and rebuild clients after failures. A background heartbeat loop updates Prometheus metrics and `/healthz`, while Graph/Search/Ingest codepaths request fresh handles per call and invoke failure callbacks to trigger reconnects.
 
 ### Desired State
 Background probes detect unhealthy dependencies, refresh clients, and expose degraded status via /healthz and metrics.
@@ -144,23 +144,35 @@ Background probes detect unhealthy dependencies, refresh clients, and expose deg
 Service restarts or network partitions cause prolonged downtime and confusing 500s for MCP tools and API consumers.
 
 ### Proposed Solution
-Add async tasks or dependency wrappers that retry and recreate clients, extend /healthz to include connectivity, and emit Prometheus gauges for dependency status.
+Delivered: connection managers with metrics + heartbeat loop, dependency injection rewired for on-demand drivers, `/healthz` extended with dependency snapshots, docs/tests refreshed. Future work is limited to keeping documentation and gauges in sync with new integrations.
 
 ### Affected Components
 - gateway/api/app.py
+- gateway/api/connections.py
 - gateway/api/dependencies.py
 - gateway/api/routes/health.py
+- gateway/api/routes/search.py
+- gateway/graph/service.py
+- gateway/ingest/service.py
+- gateway/observability/__init__.py
 - gateway/observability/metrics.py
+- gateway/scheduler.py
+- gateway/search/service.py
+- tests/conftest.py
 - tests/test_app_smoke.py
+- tests/test_connection_managers.py
+- tests/test_graph_api.py
+- tests/test_graph_auto_migrate.py
+- tests/test_graph_service_unit.py
 
 ### Dependencies
 - WP-001
 - WP-002
 
 ### Acceptance Criteria
-- [ ] Automated test simulates Neo4j restart and verifies client recovery without full API reboot
-- [ ] /healthz surfaces dependency degradation and recovery timing
-- [ ] Runbook updated with troubleshooting guidance
+- [x] Automated test simulates Neo4j restart and verifies client recovery without full API reboot
+- [x] /healthz surfaces dependency degradation and recovery timing
+- [x] Runbook updated with troubleshooting guidance
 
 ### Related Issues
 RISK-004
