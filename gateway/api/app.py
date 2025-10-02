@@ -188,6 +188,8 @@ def _create_graph_driver(settings: AppSettings) -> Driver | None:
         _set_migration_metrics(0, timestamp=time.time())
         return None
 
+    logger.info("Connected to Neo4j database '%s'", settings.neo4j_database)
+
     return driver
 
 

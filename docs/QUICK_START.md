@@ -61,6 +61,11 @@ Defaults:
 - State directory: `.duskmantle/config` mounted to `/opt/knowledge/var`.
 - Repository mount: `.duskmantle/data` to `/workspace/repo` (read-only by default).
 
+On first boot the container seeds `/workspace/repo` with a small sample repository
+(docs plus `.metadata/subsystems.json`) so `/graph/subsystems` has data immediately.
+Replace those files with your real knowledge base before running a production
+ingest.
+
 Override with environment variables (examples):
 
 ```bash
@@ -69,6 +74,11 @@ KM_DATA_DIR=/srv/km/config \
 KM_REPO_DIR=/srv/km/content \
 bin/km-run --detach
 ```
+
+> **Networking tip:** prefer Docker's default bridge network so port publishing
+> works without requiring extra privileges. When running on systems that block
+> `iptables` (e.g. locked-down CI hosts), either enable rootless Docker or fall
+> back to `--network host` and ensure ports 8000/6333/7687 are free.
 
 Verify readiness:
 

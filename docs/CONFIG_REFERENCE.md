@@ -10,6 +10,7 @@ The knowledge gateway reads its runtime configuration from environment variables
 | `KM_CONTAINER_NAME` | `duskmantle` | Docker container name used by helper scripts. |
 | `KM_STATE_PATH` | `/opt/knowledge/var` | Gateway state root (Neo4j/Qdrant data, coverage, logs, watcher fingerprints). |
 | `KM_REPO_PATH` | `/workspace/repo` | Repository location scanned by ingestion. |
+| `KM_SAMPLE_CONTENT_DIR` | `/opt/knowledge/infra/examples/sample-repo` | Seed repository copied into `KM_REPO_PATH` when the target directory is empty (turnkey doc + subsystem metadata). |
 | `KM_DATA_DIR` | `./.duskmantle/config` (host default) | Host directory mounted to `/opt/knowledge/var` when using `bin/km-run`. |
 | `KM_REPO_DIR` | `./.duskmantle/data` (host default) | Host directory mounted to `/workspace/repo` when using `bin/km-run`. |
 | `KM_CONTENT_ROOT` | `/workspace/repo` | Base directory used by MCP upload/storetext helpers (usually matches `KM_REPO_PATH`). |
@@ -61,7 +62,7 @@ The knowledge gateway reads its runtime configuration from environment variables
 |----------|---------|---------|
 | `KM_NEO4J_URI` | `bolt://localhost:7687` | Bolt endpoint for Neo4j. |
 | `KM_NEO4J_USER` / `KM_NEO4J_PASSWORD` | `neo4j` / `neo4jadmin` | Credentials for Neo4j. Secure mode (`KM_AUTH_ENABLED=true`) requires overriding the default password. |
-| `KM_NEO4J_DATABASE` | `knowledge` | Neo4j database name queried by the gateway. |
+| `KM_NEO4J_DATABASE` | `knowledge` | Neo4j database name queried by the gateway (startup fails if it is missing). |
 | `KM_NEO4J_AUTH_ENABLED` | `false` | Toggle authentication for Neo4j access. |
 | `KM_GRAPH_AUTO_MIGRATE` | `false` | Auto-run graph migrations at API startup (container default `true`). |
 | `KM_QDRANT_URL` | `http://localhost:6333` | Qdrant API base URL. |
@@ -80,6 +81,14 @@ The knowledge gateway reads its runtime configuration from environment variables
 | `KM_TRACING_SERVICE_NAME` | `duskmantle-knowledge-gateway` | Service name for exported spans. |
 | `KM_TRACING_CONSOLE_EXPORT` | `false` | Mirror spans to stdout in addition to the OTLP exporter. |
 | `KM_STATE_PATH/audit/mcp_actions.log` | _derived_ | JSONL audit log appended by MCP write tools (see MCP playbook). |
+
+## Networking Guidance
+
+- Prefer Docker's default bridge network so port publishing (`-p 8000:8000` etc.) works without additional privileges. The gateway only
+  needs inbound TCP access on 8000 (API), 6333 (Qdrant), and 7687 (Bolt).
+- If your host blocks `iptables` (common on managed CI), either enable rootless Docker with `slirp4netns` or run the container with
+  `--network host` and ensure the required ports are unused.
+- When exposing the stack publicly, place it behind an authenticating reverse proxy and restrict direct access to the Bolt/Qdrant ports.
 
 ## CLI Helpers
 

@@ -1,0 +1,9 @@
+{
+  "Sample": {
+    "criticality": 0.3,
+    "owners": ["team-sample"],
+    "paths": [
+      "docs/getting-started.md"
+    ]
+  }
+}

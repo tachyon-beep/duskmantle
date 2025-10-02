@@ -460,8 +460,11 @@ def _fetch_subsystem_paths(
     depth: int,
 ) -> list[dict[str, Any]]:
     bounded_depth = max(1, int(depth))
+    depth_clause = f"[rel*1..{bounded_depth}]"
     query = (
-        "MATCH p=(s:Subsystem {name: $name})-[rel*1..$depth]-(n) "
+        "MATCH p=(s:Subsystem {name: $name})-"
+        f"{depth_clause}"
+        "-(n) "
         "WHERE n <> s "
         "WITH n, p "
         "ORDER BY length(p) ASC "
@@ -470,7 +473,7 @@ def _fetch_subsystem_paths(
         "RETURN n AS node, nodes(path) AS nodes, relationships(path) AS relationships "
         "ORDER BY coalesce(n.name, n.title, n.path, elementId(n))"
     )
-    result = tx.run(query, name=name, depth=bounded_depth)
+    result = tx.run(query, name=name)
     return [
         {
             "node": record["node"],

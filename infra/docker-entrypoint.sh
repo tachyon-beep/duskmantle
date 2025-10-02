@@ -4,6 +4,8 @@ set -euo pipefail
 KM_HOME=${KM_HOME:-/opt/knowledge}
 KM_BIN=${KM_BIN:-/opt/knowledge/bin}
 KM_VAR=${KM_VAR:-/opt/knowledge/var}
+KM_REPO_PATH=${KM_REPO_PATH:-/workspace/repo}
+KM_SAMPLE_CONTENT_DIR=${KM_SAMPLE_CONTENT_DIR:-/opt/knowledge/infra/examples/sample-repo}
 LOG_DIR="${KM_VAR}/logs"
 RUN_DIR="${KM_VAR}/run"
 QDRANT_STORAGE="${KM_VAR}/qdrant"
@@ -11,6 +13,24 @@ NEO4J_DATA_ROOT="${KM_VAR}/neo4j"
 
 mkdir -p "$LOG_DIR" "$RUN_DIR" "$QDRANT_STORAGE" "$QDRANT_STORAGE/snapshots" \
   "$NEO4J_DATA_ROOT/data" "$NEO4J_DATA_ROOT/logs" "$NEO4J_DATA_ROOT/plugins" "$NEO4J_DATA_ROOT/run"
+
+if [[ -d "$KM_REPO_PATH" ]]; then
+  if [[ -z "$(ls -A "$KM_REPO_PATH" 2>/dev/null)" ]]; then
+    if [[ -d "$KM_SAMPLE_CONTENT_DIR" ]]; then
+      echo "[entrypoint] Seeding repository with sample content"
+      cp -R "$KM_SAMPLE_CONTENT_DIR"/. "$KM_REPO_PATH"/
+    else
+      echo "[entrypoint] Sample content directory $KM_SAMPLE_CONTENT_DIR not found" >&2
+    fi
+  fi
+else
+  echo "[entrypoint] Creating repository directory at $KM_REPO_PATH"
+  mkdir -p "$KM_REPO_PATH"
+  if [[ -d "$KM_SAMPLE_CONTENT_DIR" ]]; then
+    echo "[entrypoint] Seeding repository with sample content"
+    cp -R "$KM_SAMPLE_CONTENT_DIR"/. "$KM_REPO_PATH"/
+  fi
+fi
 
 if [[ ! -w "$KM_VAR" ]]; then
   echo "[entrypoint] ERROR: Persistence directory $KM_VAR is not writable. Mount a host volume." >&2

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
+from unittest import mock
 from types import SimpleNamespace, TracebackType
 
 import pytest
@@ -189,6 +190,18 @@ def test_get_subsystem_graph_returns_nodes_and_edges(
     node_ids = {node["id"] for node in graph_payload["nodes"]}
     assert node_ids.issuperset({"Subsystem:Kasmina", "Subsystem:Telemetry", "IntegrationMessage:Sync"})
     assert graph_payload["artifacts"][0]["id"] == "DesignDoc:docs/telemetry.md"
+
+
+def test_fetch_subsystem_paths_inlines_depth_literal(monkeypatch: pytest.MonkeyPatch) -> None:
+    tx = mock.Mock()
+    tx.run.return_value = []
+
+    graph_service._fetch_subsystem_paths(tx, name="Kasmina", depth=3)
+
+    assert tx.run.call_count == 1
+    query, params = tx.run.call_args
+    assert "*1..3" in query[0]
+    assert params == {"name": "Kasmina"}
 
 
 def test_get_node_with_relationships(
