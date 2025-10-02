@@ -11,6 +11,7 @@ The knowledge gateway reads its runtime configuration from environment variables
 | `KM_STATE_PATH` | `/opt/knowledge/var` | Gateway state root (Neo4j/Qdrant data, coverage, logs, watcher fingerprints). |
 | `KM_REPO_PATH` | `/workspace/repo` | Repository location scanned by ingestion. |
 | `KM_SAMPLE_CONTENT_DIR` | `/opt/knowledge/infra/examples/sample-repo` | Seed repository copied into `KM_REPO_PATH` when the target directory is empty (turnkey doc + subsystem metadata). |
+| `KM_SEED_SAMPLE_REPO` | `true` | Populate `/workspace/repo` with sample content on first boot; set to `false` to skip seeding. |
 | `KM_DATA_DIR` | `./.duskmantle/config` (host default) | Host directory mounted to `/opt/knowledge/var` when using `bin/km-run`. |
 | `KM_REPO_DIR` | `./.duskmantle/data` (host default) | Host directory mounted to `/workspace/repo` when using `bin/km-run`. |
 | `KM_CONTENT_ROOT` | `/workspace/repo` | Base directory used by MCP upload/storetext helpers (usually matches `KM_REPO_PATH`). |
@@ -56,6 +57,8 @@ The knowledge gateway reads its runtime configuration from environment variables
 | `KM_WATCH_FINGERPRINTS` | `/opt/knowledge/var/watch/fingerprints.json` | Fingerprint cache path inside the container. |
 | `KM_WATCH_METRICS_PORT` | `9103` (container default) | Start an HTTP server on this port to expose watcher metrics. Set to `0` to disable. |
 
+Watcher tips: the watcher monitors `KM_WATCH_ROOT` (default `/workspace/repo`). If you keep the seeded sample repo, ingest will emit a warning—remove the `.km-sample-repo` marker or disable seeding once you mount real content.
+
 ## Neo4j & Qdrant
 
 | Variable | Default | Purpose |
@@ -63,7 +66,7 @@ The knowledge gateway reads its runtime configuration from environment variables
 | `KM_NEO4J_URI` | `bolt://localhost:7687` | Bolt endpoint for Neo4j. |
 | `KM_NEO4J_USER` / `KM_NEO4J_PASSWORD` | `neo4j` / `neo4jadmin` | Credentials for Neo4j. Secure mode (`KM_AUTH_ENABLED=true`) requires overriding the default password. |
 | `KM_NEO4J_DATABASE` | `knowledge` | Neo4j database name queried by the gateway (startup fails if it is missing). |
-| `KM_NEO4J_AUTH_ENABLED` | `false` | Toggle authentication for Neo4j access. |
+| `KM_NEO4J_AUTH_ENABLED` | `true` | Toggle authentication for Neo4j access (leave enabled outside isolated dev). |
 | `KM_GRAPH_AUTO_MIGRATE` | `false` | Auto-run graph migrations at API startup (container default `true`). |
 | `KM_QDRANT_URL` | `http://localhost:6333` | Qdrant API base URL. |
 | `KM_QDRANT_COLLECTION` | `km_knowledge_v1` | Collection name used by ingestion. |
@@ -99,6 +102,7 @@ The knowledge gateway reads its runtime configuration from environment variables
 | `bin/km-watch` | Host-side watcher that triggers `gateway-ingest` when `.duskmantle/data` changes. |
 | `bin/km-backup` | Create tarball backups of `.duskmantle/config`. |
 | `bin/km-make-tokens` | Generate UUID tokens for reader/maintainer scopes. |
+| `bin/km-rotate-neo4j-password` | Generate a new Neo4j password, update `.duskmantle/secrets.env`, and relaunch the container. |
 | `bin/km-mcp` / `bin/km-mcp-container` | Launch the MCP surface (local or in-container). |
 
 See `docs/QUICK_START.md` and `docs/UPGRADE_ROLLBACK.md` for usage patterns, and `docs/OBSERVABILITY_GUIDE.md` for monitoring details.

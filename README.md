@@ -14,7 +14,7 @@ This repository packages a turnkey knowledge management stack that bundles the K
 ## LLM Agent Workflow
 
 1. Run `bin/km-bootstrap`. It pulls the latest `ghcr.io/tachyon-beep/duskmantle-km` image, provisions `.duskmantle/{config,data,backups}`, and generates fresh credentials.
-2. Drop or symlink the repositories, docs, or transcripts you want indexed into `.duskmantle/data/`. The container mounts this directory at `/workspace/repo` and the watcher fingerprints files so edits trigger delta ingests automatically.
+2. Drop or symlink the repositories, docs, or transcripts you want indexed into `.duskmantle/data/`. That host directory is mounted to `/workspace/repo` inside the container, the path read by discovery/watcher. Remove the seeded sample files (and the `.km-sample-repo` marker) once you supply real content.
 3. Monitor ingest state. Leave `bin/km-watch` running for host-side polling, or hit `/metrics` and `/healthz` (with maintainer token if auth is enabled) to verify coverage and scheduler status.
    Visit `/ui/search` after bootstrap to issue hybrid queries through the bundled console (supply your reader token via the Tokens menu). Switch to `/ui/subsystems` to explore dependency chains and linked artifacts. The `/ui/lifecycle` tab plots spark lines once a few lifecycle snapshots exist, making stale docs and isolation trends easy to spot.
    Use the action buttons to copy ready-to-run MCP commands (`km-search`, `km-graph-subsystem`, recipes) or download JSON exports for issue triage.
@@ -42,7 +42,7 @@ Summary (or simply run `bin/km-bootstrap` to let the repo pull the latest image,
 4. Kick off an ingest inside the container: `docker exec duskmantle gateway-ingest rebuild --profile local --dummy-embeddings`.
 5. Verify `http://localhost:8000/readyz`, `/healthz`, and `/coverage`; inspect Prometheus metrics at `/metrics` (requires maintainer token if auth enabled).
 6. Use `bin/km-backup` to snapshot `.duskmantle/config` before upgrades; restore with a simple `tar -xzf` into that directory.
-7. Run `./infra/smoke-test.sh duskmantle/km:dev` to build, launch, ingest, and validate coverage end-to-end.
+7. Run `./infra/smoke-test.sh duskmantle/km:dev` (or `make smoke`) to build, launch, ingest, and validate coverage end-to-end.
 8. (Optional) Leave `bin/km-watch` running to detect file changes under `.duskmantle/data` and trigger ingestion automatically (pass `--metrics-port` to expose watcher metrics; the in-container watcher uses `KM_WATCH_METRICS_PORT`, default `9103`).
 
 > Maintainer operations (uploads, text capture, ingest and backup triggers) append audit lines to `KM_STATE_PATH/audit/mcp_actions.log`. Include the file in your log rotation policy whenever MCP workflows are part of your day-to-day usage.

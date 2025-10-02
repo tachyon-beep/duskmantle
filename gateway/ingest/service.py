@@ -31,6 +31,12 @@ def execute_ingestion(
     """Run ingestion using shared settings and return result."""
 
     repo_root = repo_override or settings.repo_root
+    sample_marker = repo_root / ".km-sample-repo"
+    if sample_marker.exists():
+        logger.warning(
+            "Repository %s still contains bundled sample content; replace it or set KM_SEED_SAMPLE_REPO=false to disable seeding.",
+            repo_root,
+        )
     dry = settings.dry_run if dry_run is None else dry_run
     use_dummy = settings.ingest_use_dummy_embeddings if use_dummy_embeddings is None else use_dummy_embeddings
     incremental_enabled = settings.ingest_incremental_enabled if incremental is None else incremental

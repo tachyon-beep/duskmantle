@@ -53,12 +53,20 @@ logger = logging.getLogger(__name__)
 
 
 def _validate_auth_settings(settings: AppSettings) -> None:
+    if not settings.neo4j_auth_enabled:
+        logger.warning(
+            "Neo4j authentication disabled via KM_NEO4J_AUTH_ENABLED=false; Bolt endpoints accept anonymous connections",
+        )
     if not settings.auth_enabled:
         return
     missing: list[str] = []
     if not settings.maintainer_token:
         missing.append("KM_ADMIN_TOKEN")
-    if settings.auth_mode == "secure" and settings.neo4j_password in {"neo4jadmin", "neo4j", "neo4jpass"}:
+    if (
+        settings.auth_mode == "secure"
+        and settings.neo4j_auth_enabled
+        and settings.neo4j_password in {"neo4jadmin", "neo4j", "neo4jpass"}
+    ):
         missing.append("KM_NEO4J_PASSWORD (non-default value)")
     if missing:
         formatted = ", ".join(missing)
@@ -79,6 +87,7 @@ def _log_startup_configuration(settings: AppSettings) -> None:
             "version": get_version(),
             "auth_enabled": settings.auth_enabled,
             "auth_mode": settings.auth_mode,
+            "neo4j_auth_enabled": settings.neo4j_auth_enabled,
             "graph_auto_migrate": settings.graph_auto_migrate,
             "embedding_model": settings.embedding_model,
             "ingest_window": settings.ingest_window,

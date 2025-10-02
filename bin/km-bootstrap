@@ -75,6 +75,7 @@ PY
     printf 'KM_READER_TOKEN=%q\n' "$READER_TOKEN"
     printf 'KM_ADMIN_TOKEN=%q\n' "$ADMIN_TOKEN"
     printf 'KM_NEO4J_PASSWORD=%q\n' "$NEO4J_PASSWORD"
+    printf 'KM_NEO4J_AUTH_ENABLED=true\n'
     printf 'KM_NEO4J_DATABASE=knowledge\n'
     printf 'KM_DATA_DIR=%q\n' "$CONFIG_DIR"
     printf 'KM_REPO_DIR=%q\n' "$DATA_DIR"
@@ -106,6 +107,7 @@ RUN_ENV_ARGS=(
   "-e" "KM_READER_TOKEN=${KM_READER_TOKEN}"
   "-e" "KM_ADMIN_TOKEN=${KM_ADMIN_TOKEN}"
   "-e" "KM_NEO4J_PASSWORD=${KM_NEO4J_PASSWORD}"
+  "-e" "KM_NEO4J_AUTH_ENABLED=${KM_NEO4J_AUTH_ENABLED:-true}"
   "-e" "KM_NEO4J_DATABASE=${KM_NEO4J_DATABASE:-knowledge}"
   "-e" "KM_CONTENT_ROOT=/workspace/repo"
   "-e" "KM_CONTENT_DOCS_SUBDIR=docs"

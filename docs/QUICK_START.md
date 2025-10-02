@@ -55,6 +55,10 @@ Use the helper script for consistent mounts and ports:
 bin/km-run
 ```
 
+Prefer Compose? Copy `infra/examples/docker-compose.sample.yml` into your project,
+adjust the volume paths/environment, and run `docker compose up -d` for the same
+layout.
+
 Defaults:
 
 - Ports: API `8000`, Qdrant `6333`, Neo4j `7687`.
@@ -63,8 +67,15 @@ Defaults:
 
 On first boot the container seeds `/workspace/repo` with a small sample repository
 (docs plus `.metadata/subsystems.json`) so `/graph/subsystems` has data immediately.
-Replace those files with your real knowledge base before running a production
-ingest.
+Set `KM_SEED_SAMPLE_REPO=false` if you prefer a pristine volume. Replace the
+seeded files with your real knowledge base before running a production ingest.
+
+**Swap in your repo**
+
+1. Set `KM_SEED_SAMPLE_REPO=false` (or delete the `.km-sample-repo` marker file inside the mounted repo directory).
+2. Remove the seeded docs under your host mount (e.g., `.duskmantle/data/docs/*`).
+3. Copy or sync your real documentation/code/test assets into the same directory.
+4. Run `gateway-ingest rebuild --profile <name>` to index the new content.
 
 Override with environment variables (examples):
 
@@ -128,6 +139,8 @@ Run the full pipeline locally before publishing:
 ./infra/smoke-test.sh duskmantle/km:dev
 ```
 
+or simply `make smoke` (uses the same script with the default image tag).
+
 The script builds the image, launches a disposable container, triggers a smoke ingest, validates `/coverage`, and tears down resources.
 Pair it with `bin/km-watch` if you want continuous ingestion whenever `.duskmantle/data` changes.
 
@@ -153,6 +166,10 @@ Restart the container to pick up restored state.
 `KM_ADMIN_TOKEN` is missing or `KM_NEO4J_PASSWORD` is left at a default value—generate fresh secrets via `bin/km-bootstrap` or rotate them
 manually before enabling auth. Maintainer tokens satisfy reader endpoints; reader tokens cannot invoke admin operations. MCP write helpers
 (`km-upload`, `km-storetext`) append JSON lines to `KM_STATE_PATH/audit/mcp_actions.log`, so include that file in your log rotation strategy.
+- Neo4j authentication is enabled by default. Use the generated `KM_NEO4J_PASSWORD` for `cypher-shell`/backups and only set
+  `KM_NEO4J_AUTH_ENABLED=false` for isolated development environments—the gateway logs a warning when you do.
+- Rotate credentials later with `bin/km-rotate-neo4j-password`; it stops the container, updates `.duskmantle/secrets.env`, and relaunches
+  the stack with the new Neo4j password.
 - Scheduler and `gateway-ingest` refuse to run without `KM_ADMIN_TOKEN` when auth is enabled.
 
 ## 9. Troubleshooting Highlights

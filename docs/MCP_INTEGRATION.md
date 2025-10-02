@@ -77,6 +77,10 @@ env = {
 
 Set `KM_MCP_CONTAINER` if your container uses a different name than `duskmantle`.
 
+> Once you mount real docs/source, update `KM_MCP_REPO_ROOT` (or remove the
+> `.km-sample-repo` marker created during seeding) so ingestion no longer warns
+> about the bundled demo files.
+
 Restart Codex CLI after editing the config. List available MCP servers with `/sys mcp list` and invoke tools via `/sys mcp run duskmantle km-search --query "ingestion pipeline"`.
 
 #### FastMCP manifest example

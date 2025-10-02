@@ -1,0 +1,29 @@
+version: "3.9"
+
+services:
+  duskmantle:
+    image: duskmantle/km:test
+    container_name: duskmantle
+    ports:
+      - "8000:8000"
+      - "6333:6333"
+      - "7687:7687"
+    # Uncomment the next line to source secrets from a file instead of inline
+    # env_file:
+    #   - ./gateway.env
+    environment:
+      KM_AUTH_ENABLED: "false"            # set true and supply reader/maintainer tokens for secured deployments
+      KM_NEO4J_PASSWORD: "ChangeMe123!"    # rotate immediately (see bin/km-rotate-neo4j-password)
+      KM_NEO4J_AUTH_ENABLED: "true"
+      KM_SEED_SAMPLE_REPO: "false"         # leave false once you mount real documentation
+      KM_WATCH_ENABLED: "false"            # flip to true to enable automatic ingest on repo changes
+    volumes:
+      - ./config:/opt/knowledge/var
+      - ./repo:/workspace/repo
+    restart: unless-stopped
+
+# Usage:
+#   mkdir -p compose/config compose/repo
+#   cp infra/examples/docker-compose.sample.yml compose/docker-compose.yml
+#   (optional) create compose/gateway.env with KM_* overrides (tokens, passwords)
+#   docker compose -f compose/docker-compose.yml up -d

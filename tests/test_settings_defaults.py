@@ -9,3 +9,9 @@ def test_neo4j_database_defaults_to_knowledge(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.delenv("KM_NEO4J_DATABASE", raising=False)
     settings = AppSettings()
     assert settings.neo4j_database == "knowledge"
+
+
+def test_neo4j_auth_enabled_defaults_true(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("KM_NEO4J_AUTH_ENABLED", raising=False)
+    settings = AppSettings()
+    assert settings.neo4j_auth_enabled is True

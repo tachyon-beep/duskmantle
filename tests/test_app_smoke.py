@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import time
+import logging
 from pathlib import Path
+from unittest import mock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -10,6 +12,7 @@ from fastapi.testclient import TestClient
 from gateway.api.app import create_app
 from gateway.config.settings import get_settings
 from gateway.ingest.audit import AuditLogger
+
 
 
 @pytest.fixture(autouse=True)
@@ -94,3 +97,48 @@ def test_lifecycle_history_endpoint(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     assert entry["counts"]["stale_docs"] == 1
     assert entry["counts"]["isolated_nodes"] == 1
     assert entry["counts"]["removed_artifacts"] == 1
+
+
+def test_requires_non_default_neo4j_password_when_auth_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("KM_STATE_PATH", str(tmp_path / "state"))
+    monkeypatch.setenv("KM_AUTH_ENABLED", "true")
+    monkeypatch.setenv("KM_ADMIN_TOKEN", "maintainer-token")
+    monkeypatch.setenv("KM_NEO4J_PASSWORD", "neo4jadmin")
+    monkeypatch.delenv("KM_NEO4J_AUTH_ENABLED", raising=False)
+
+    fake_driver = mock.Mock()
+    monkeypatch.setattr("gateway.api.app.GraphDatabase", mock.Mock(driver=mock.Mock(return_value=fake_driver)))
+    monkeypatch.setattr("gateway.api.app.QdrantClient", mock.Mock(return_value=mock.Mock()))
+    monkeypatch.setattr("gateway.api.app._verify_graph_database", mock.Mock(return_value=True))
+
+    with pytest.raises(RuntimeError) as excinfo:
+        create_app()
+
+    assert "KM_NEO4J_PASSWORD" in str(excinfo.value)
+
+
+def test_logs_warning_when_neo4j_auth_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setenv("KM_STATE_PATH", str(tmp_path / "state"))
+    monkeypatch.setenv("KM_NEO4J_AUTH_ENABLED", "false")
+    monkeypatch.delenv("KM_AUTH_ENABLED", raising=False)
+    monkeypatch.delenv("KM_ADMIN_TOKEN", raising=False)
+
+    fake_driver = mock.Mock()
+    monkeypatch.setattr("gateway.api.app.GraphDatabase", mock.Mock(driver=mock.Mock(return_value=fake_driver)))
+    monkeypatch.setattr("gateway.api.app.QdrantClient", mock.Mock(return_value=mock.Mock()))
+    monkeypatch.setattr("gateway.api.app._verify_graph_database", mock.Mock(return_value=True))
+
+    caplog.set_level(logging.WARNING, logger="gateway.api.app")
+    app = create_app()
+    assert app is not None
+    assert any(
+        "Neo4j authentication disabled" in record.getMessage()
+        for record in caplog.records
+    )
