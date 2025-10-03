@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import json
 import logging
+import re
 from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -60,9 +61,22 @@ FIELDNAMES: Sequence[str] = (
 )
 
 
+LOG_SUFFIX_PATTERN = re.compile(r"events\.log(?:\.(?P<index>\d+))?$")
+
+
 def export_training_dataset(events_path: Path, *, options: ExportOptions) -> ExportStats:
-    """Write feedback events into the requested dataset format."""
-    events = iter_feedback_events(events_path)
+    """Write feedback events from a single log into the requested dataset format."""
+    return export_feedback_logs([events_path], options=options)
+
+
+def export_feedback_logs(log_paths: Sequence[Path], *, options: ExportOptions) -> ExportStats:
+    """Write feedback events from one or more log files into the requested dataset format."""
+    resolved_paths = [path for path in log_paths if path.exists()]
+    if not resolved_paths:
+        logger.info("No feedback logs found for export (paths=%s)", log_paths)
+        return ExportStats(total_events=0, written_rows=0, skipped_without_vote=0)
+
+    events = _iter_feedback_logs(resolved_paths)
 
     if options.output_format == "csv":
         options.output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -96,6 +110,41 @@ def iter_feedback_events(path: Path) -> Iterator[dict[str, Any]]:
                     exc,
                 )
                 continue
+
+
+def discover_feedback_logs(root: Path, *, include_rotations: bool) -> list[Path]:
+    """Return feedback log files in chronological order (oldest to newest)."""
+    logs: list[tuple[int, Path]] = []
+    if include_rotations:
+        for candidate in root.glob("events.log.*"):
+            match = LOG_SUFFIX_PATTERN.match(candidate.name)
+            if not match:
+                continue
+            index_text = match.group("index")
+            if not index_text:
+                continue
+            try:
+                index = int(index_text)
+            except ValueError:
+                continue
+            logs.append((index, candidate))
+
+    base = root / "events.log"
+    if base.exists():
+        logs.append((0, base))
+
+    if not logs:
+        return []
+
+    # Higher suffix numbers represent older rotated logs; iterate oldest first
+    logs.sort(key=lambda item: item[0], reverse=True)
+    return [path for _, path in logs]
+
+
+def _iter_feedback_logs(paths: Sequence[Path]) -> Iterator[dict[str, Any]]:
+    """Yield events from a sequence of log files."""
+    for path in paths:
+        yield from iter_feedback_events(path)
 
 
 def _write_csv(events: Iterable[dict[str, Any]], options: ExportOptions) -> ExportStats:
@@ -194,5 +243,7 @@ def _flatten_event(event: dict[str, Any]) -> dict[str, Any]:
 __all__ = [
     "ExportOptions",
     "ExportStats",
+    "discover_feedback_logs",
+    "export_feedback_logs",
     "export_training_dataset",
 ]

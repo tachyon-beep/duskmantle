@@ -40,7 +40,9 @@ The knowledge gateway reads its runtime configuration from environment variables
 | `KM_SEARCH_WEIGHT_PROFILE` | `default` | Built-in weight bundle (`default`, `analysis`, `operations`, `docs-heavy`). |
 | `KM_SEARCH_VECTOR_WEIGHT` / `KM_SEARCH_LEXICAL_WEIGHT` | `1.0` / `0.25` | Hybrid weighting multipliers. |
 | `KM_SEARCH_HNSW_EF_SEARCH` | `128` | Recall tuning for Qdrant HNSW queries (increase for higher recall). |
-| `KM_SEARCH_WARN_GRAPH_MS` | `250` | Log warning when graph enrichment exceeds this latency (milliseconds). |
+| `KM_SEARCH_WARN_GRAPH_MS` | `250` | Log warning when graph enrichment exceeds this latency (milliseconds); passed to `GraphEnricher` as a slow lookup threshold. |
+| `KM_SEARCH_GRAPH_MAX_RESULTS` | `20` | Upper bound on results that receive graph enrichment before falling back to cached/stub context. |
+| `KM_SEARCH_GRAPH_TIME_BUDGET_MS` | `750` | Global time budget (milliseconds) for the `GraphEnricher`; extra lookups are skipped once exhausted. |
 | `KM_SEARCH_SCORING_MODE` | `heuristic` | Set to `ml` to load coefficients from `KM_SEARCH_MODEL_PATH`. |
 | `KM_FEEDBACK_LOG_MAX_BYTES` | `5242880` | Rotate the search feedback JSONL log once it exceeds this size (bytes). |
 | `KM_FEEDBACK_LOG_MAX_FILES` | `5` | Number of rotated search feedback logs to retain (`events.log`, `events.log.1`, ...). |

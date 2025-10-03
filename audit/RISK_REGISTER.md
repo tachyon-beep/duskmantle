@@ -33,7 +33,7 @@
 - **Likelihood**: Low
 - **Impact**: Medium
 - **Description**: Graph enrichment now enforces result/time budgets, but mis-tuned limits or persistent Neo4j slowness can still degrade relevance when many results skip graph context.
-- **Mitigation Strategy**: Maintain WP-204 budgets and continue the planned WP-206 refactor to isolate enrichment. Tune `KM_SEARCH_GRAPH_MAX_RESULTS` / `KM_SEARCH_GRAPH_TIME_BUDGET_MS` based on telemetry and add dashboards for skip counters.
+- **Mitigation Strategy**: Maintain WP-204 budgets and leverage the completed WP-206 collaborators to isolate enrichment hot spots. Tune `KM_SEARCH_GRAPH_MAX_RESULTS` / `KM_SEARCH_GRAPH_TIME_BUDGET_MS` based on telemetry and add dashboards for skip counters.
 - **Risk Owner**: Gateway maintainers / Performance engineer
 - **Monitoring & Review**: Track `km_search_graph_skipped_total` and `SEARCH_GRAPH_LOOKUP_SECONDS` for sustained increases; revisit settings quarterly or whenever Neo4j topology changes.
 

@@ -12,14 +12,13 @@ import uuid
 from collections import deque
 from collections.abc import Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
+from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
-from contextlib import suppress
-
-from opentelemetry import trace
-from opentelemetry.trace import Status, StatusCode
 
 from filelock import FileLock, Timeout
+from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 
 from gateway.ingest.artifacts import Chunk, ChunkEmbedding
 from gateway.ingest.chunking import Chunker

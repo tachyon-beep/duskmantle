@@ -12,7 +12,12 @@ from rich.console import Console
 from gateway.config.settings import AppSettings, get_settings
 from gateway.observability import configure_logging, configure_tracing
 from gateway.search.evaluation import evaluate_model
-from gateway.search.exporter import ExportOptions, export_training_dataset
+from gateway.search.exporter import (
+    ExportOptions,
+    discover_feedback_logs,
+    export_feedback_logs,
+    export_training_dataset,
+)
 from gateway.search.maintenance import PruneOptions, RedactOptions, prune_feedback_log, redact_dataset
 from gateway.search.trainer import DatasetLoadError, save_artifact, train_from_dataset
 
@@ -49,6 +54,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--limit",
         type=int,
         help="Maximum number of rows to export",
+    )
+    export_parser.add_argument(
+        "--include-rotations",
+        action="store_true",
+        help="Include rotated feedback logs (events.log.N) when exporting",
     )
 
     train_parser = subparsers.add_parser(
@@ -145,16 +155,23 @@ def export_training_data(
     fmt: str,
     require_vote: bool,
     limit: int | None,
+    include_rotations: bool,
     settings: AppSettings | None = None,
 ) -> None:
     """Materialise feedback events into a training dataset file."""
     if settings is None:
         settings = get_settings()
     feedback_dir = settings.state_path / "feedback"
-    events_log = feedback_dir / "events.log"
-    if not events_log.exists():
-        console.print(f"No feedback events found at {events_log}", style="yellow")
-        logger.warning("Feedback events log missing: %s", events_log)
+    log_paths = (
+        discover_feedback_logs(feedback_dir, include_rotations=include_rotations)
+        if include_rotations
+        else [feedback_dir / "events.log"]
+    )
+    existing_logs = [path for path in log_paths if path.exists()]
+    if not existing_logs:
+        target = feedback_dir / "events.log"
+        console.print(f"No feedback events found at {target}", style="yellow")
+        logger.warning("Feedback events log missing under %s (searched: %s)", feedback_dir, log_paths)
         return
 
     datasets_dir = feedback_dir / "datasets"
@@ -169,7 +186,11 @@ def export_training_data(
         require_vote=require_vote,
         limit=limit,
     )
-    stats = export_training_dataset(events_log, options=options)
+    stats = (
+        export_feedback_logs(existing_logs, options=options)
+        if include_rotations
+        else export_training_dataset(existing_logs[0], options=options)
+    )
 
     console.print(
         f"Export complete → {output} (wrote {stats.written_rows} rows from {stats.total_events} events; "
@@ -337,6 +358,7 @@ def main(argv: list[str] | None = None) -> None:
             fmt=args.format,
             require_vote=args.require_vote,
             limit=args.limit,
+            include_rotations=args.include_rotations,
             settings=settings,
         )
     elif args.command == "train-model":

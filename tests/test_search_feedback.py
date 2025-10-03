@@ -1,16 +1,15 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 import pytest
 
-from gateway.search.feedback import SearchFeedbackStore
-from gateway.search.service import SearchResponse, SearchResult
 from gateway.observability.metrics import (
     SEARCH_FEEDBACK_LOG_BYTES,
     SEARCH_FEEDBACK_ROTATIONS_TOTAL,
 )
+from gateway.search.feedback import SearchFeedbackStore
+from gateway.search.service import SearchResponse, SearchResult
 
 
 def _make_response(query: str, note: str) -> SearchResponse:

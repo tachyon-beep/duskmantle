@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import time
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
-import time
 from typing import Any
 
 import pytest

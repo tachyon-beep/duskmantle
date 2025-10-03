@@ -48,8 +48,9 @@ Replace fixed heuristics with a model-driven scorer that:
 
 ### Phase 5 — Inference Integration
 
-- Implemented: `SearchService` now loads model artifacts when `KM_SEARCH_SCORING_MODE=ml` is set (with optional `KM_SEARCH_MODEL_PATH`) and falls back to heuristics if the model is missing or invalid.
-- Responses surface `metadata.scoring_mode` and per-feature contributions under `scoring.model`, giving MCP clients clear provenance for ranking decisions.
+- Implemented: `SearchService` now delegates to `VectorRetriever`, `GraphEnricher`, `HeuristicScorer`, and `ModelScorer` collaborators. Model artifacts are loaded when `KM_SEARCH_SCORING_MODE=ml` is set (with optional `KM_SEARCH_MODEL_PATH`) and the orchestrator falls back to heuristics if the model is missing or invalid.
+- Responses surface `metadata.scoring_mode` and per-feature contributions under `scoring.model`, giving MCP clients clear provenance for ranking decisions while preserving the existing heuristic snapshot in metadata.
+- Each collaborator has focused unit coverage under `tests/search/test_*.py`, making future signal additions safer and faster.
 - Next: explore memoising graph lookups for large result sets and adding runtime health checks that verify the configured model matches the expected feature schema.
 
 ### Phase 6 — Ops & Governance

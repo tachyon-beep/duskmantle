@@ -129,9 +129,9 @@ graph TD
 
 - **Search Flow:**
   1. API validates payload, resolves filters, and fetches SearchService dependency.
-  2. Query vector computed using shared embedder; Qdrant search executed with optional HNSW parameters.
-  3. Payload filters, lexical scoring, and coverage heuristics applied; optional ML model adjusts ranking.
-  4. Graph context fetched per result (subject to timeout); metadata assembled; feedback optionally logged.
+  2. `VectorRetriever` encodes the query with the shared embedder and executes Qdrant search with optional HNSW parameters.
+  3. `build_filter_state` screens payloads, `HeuristicScorer` applies lexical/subsystem/coverage signals, and (when enabled) `ModelScorer` reranks using stored coefficients.
+  4. `GraphEnricher` retrieves Neo4j context under slot/time budgets, updates telemetry, and the service assembles metadata/feedback prompts.
 
 - **MCP Interaction:**
   1. FastMCP loads `GatewayClient` within lifespan to reuse HTTP connections.
