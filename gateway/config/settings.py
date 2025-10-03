@@ -47,7 +47,7 @@ class AppSettings(BaseSettings):
     api_host: str = Field("0.0.0.0", alias="KM_API_HOST")
     api_port: int = Field(8000, alias="KM_API_PORT")
     auth_mode: Literal["secure", "insecure"] = Field("secure", alias="KM_AUTH_MODE")
-    auth_enabled: bool = Field(False, alias="KM_AUTH_ENABLED")
+    auth_enabled: bool = Field(True, alias="KM_AUTH_ENABLED")
     reader_token: str | None = Field(None, alias="KM_READER_TOKEN")
     maintainer_token: str | None = Field(None, alias="KM_ADMIN_TOKEN")
     rate_limit_requests: int = Field(120, alias="KM_RATE_LIMIT_REQUESTS")
@@ -125,6 +125,9 @@ class AppSettings(BaseSettings):
     search_lexical_weight: float = Field(0.25, alias="KM_SEARCH_LEXICAL_WEIGHT")
     search_hnsw_ef_search: int | None = Field(128, alias="KM_SEARCH_HNSW_EF_SEARCH")
 
+    feedback_log_max_bytes: int = Field(5 * 1024 * 1024, alias="KM_FEEDBACK_LOG_MAX_BYTES")
+    feedback_log_max_files: int = Field(5, alias="KM_FEEDBACK_LOG_MAX_FILES")
+
     dry_run: bool = Field(False, alias="KM_INGEST_DRY_RUN")
 
     model_config = {
@@ -197,6 +200,22 @@ class AppSettings(BaseSettings):
     def _sanitize_backup_retention(cls, value: int) -> int:
         if value < 0:
             return 0
+        return value
+
+    @field_validator("feedback_log_max_bytes")
+    @classmethod
+    def _sanitize_feedback_bytes(cls, value: int) -> int:
+        if value < 1024:
+            return 1024
+        return value
+
+    @field_validator("feedback_log_max_files")
+    @classmethod
+    def _sanitize_feedback_files(cls, value: int) -> int:
+        if value < 1:
+            return 1
+        if value > 20:
+            return 20
         return value
 
     def resolved_search_weights(self) -> tuple[str, dict[str, float]]:

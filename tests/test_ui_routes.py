@@ -22,6 +22,7 @@ def _reset_settings(tmp_path: Path | None = None) -> None:
 def test_ui_landing_served(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
     """The landing page renders successfully and increments the landing metric."""
     monkeypatch.setenv("KM_STATE_PATH", str(tmp_path / "state"))
+    monkeypatch.setenv("KM_AUTH_ENABLED", "false")
     _reset_settings()
     app = create_app()
     client = TestClient(app)
@@ -48,6 +49,7 @@ def test_ui_landing_served(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
 def test_ui_search_view(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
     """The search view renders and increments the search metric."""
     monkeypatch.setenv("KM_STATE_PATH", str(tmp_path / "state"))
+    monkeypatch.setenv("KM_AUTH_ENABLED", "false")
     _reset_settings()
     app = create_app()
     client = TestClient(app)
@@ -73,6 +75,7 @@ def test_ui_search_view(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
 def test_ui_subsystems_view(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
     """The subsystems view renders and increments the subsystem metric."""
     monkeypatch.setenv("KM_STATE_PATH", str(tmp_path / "state"))
+    monkeypatch.setenv("KM_AUTH_ENABLED", "false")
     _reset_settings()
     app = create_app()
     client = TestClient(app)
@@ -100,6 +103,7 @@ def test_ui_lifecycle_download(tmp_path: Path, monkeypatch: MonkeyPatch) -> None
     report_path.write_text('{"stale_docs": [], "isolated_nodes": []}')
 
     monkeypatch.setenv("KM_STATE_PATH", str(state_dir))
+    monkeypatch.setenv("KM_AUTH_ENABLED", "false")
     _reset_settings()
     app = create_app()
     client = TestClient(app)
@@ -119,6 +123,7 @@ def test_ui_lifecycle_download(tmp_path: Path, monkeypatch: MonkeyPatch) -> None
 def test_ui_events_endpoint(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
     """Custom UI events are accepted and reflected in Prometheus metrics."""
     monkeypatch.setenv("KM_STATE_PATH", str(tmp_path / "state"))
+    monkeypatch.setenv("KM_AUTH_ENABLED", "false")
     _reset_settings()
     app = create_app()
     client = TestClient(app)

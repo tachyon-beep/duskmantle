@@ -23,7 +23,7 @@ The knowledge gateway reads its runtime configuration from environment variables
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `KM_AUTH_ENABLED` | `false` | Require bearer tokens on HTTP and CLI entry points. The container entrypoint enables this unless `KM_ALLOW_INSECURE_BOOT=true`. |
+| `KM_AUTH_ENABLED` | `true` | Require bearer tokens on HTTP and CLI entry points. Disable only for isolated development via `KM_ALLOW_INSECURE_BOOT=true`. |
 | `KM_ALLOW_INSECURE_BOOT` | `false` | Set to `true` for short-lived demos to disable auth and skip secret generation (prints a warning). Avoid in production. |
 | `KM_READER_TOKEN` | _unset_ | Token granting read-only operations (search/graph). Optional—maintainer credentials satisfy reader endpoints when omitted. |
 | `KM_ADMIN_TOKEN` | _unset_ | Token granting maintainer operations (ingest, coverage, backups). Mandatory when `KM_AUTH_ENABLED=true`. |
@@ -42,6 +42,8 @@ The knowledge gateway reads its runtime configuration from environment variables
 | `KM_SEARCH_HNSW_EF_SEARCH` | `128` | Recall tuning for Qdrant HNSW queries (increase for higher recall). |
 | `KM_SEARCH_WARN_GRAPH_MS` | `250` | Log warning when graph enrichment exceeds this latency (milliseconds). |
 | `KM_SEARCH_SCORING_MODE` | `heuristic` | Set to `ml` to load coefficients from `KM_SEARCH_MODEL_PATH`. |
+| `KM_FEEDBACK_LOG_MAX_BYTES` | `5242880` | Rotate the search feedback JSONL log once it exceeds this size (bytes). |
+| `KM_FEEDBACK_LOG_MAX_FILES` | `5` | Number of rotated search feedback logs to retain (`events.log`, `events.log.1`, ...). |
 
 ## Scheduler & Automation
 

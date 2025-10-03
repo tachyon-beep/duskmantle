@@ -7,6 +7,8 @@ All notable changes to this project will be documented in this file. The format 
 ### Changed
 
 - Hardened backup retention: backups now default to `${KM_STATE_PATH}/backups/archives`, the scheduler only prunes `km-backup-*.tgz` archives, and a new metric (`km_backup_retention_deletes_total`) tracks deletions while leaving operator-managed files untouched.
+- Authentication now defaults to enabled (`KM_AUTH_ENABLED=true`). Manual boots without credentials fail closed, and startup logs warn explicitly when auth is disabled.
+- Search feedback logging now supports size-based rotation (`KM_FEEDBACK_LOG_MAX_BYTES`, `KM_FEEDBACK_LOG_MAX_FILES`) with Prometheus metrics (`km_feedback_log_bytes`, `km_feedback_rotations_total`).
 
 ## 1.1.0 - 2025-10-01
 

@@ -15,3 +15,9 @@ def test_neo4j_auth_enabled_defaults_true(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.delenv("KM_NEO4J_AUTH_ENABLED", raising=False)
     settings = AppSettings()
     assert settings.neo4j_auth_enabled is True
+
+
+def test_auth_enabled_defaults_true(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("KM_AUTH_ENABLED", raising=False)
+    settings = AppSettings()
+    assert settings.auth_enabled is True

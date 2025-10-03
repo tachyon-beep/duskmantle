@@ -50,7 +50,7 @@ graph TD
 ```
 
 - ## Technology Stack
-- **FastAPI 0.110+ & Uvicorn 0.24+** – Serve REST endpoints, static UI assets, and manage dependency injection (`gateway/api`). Upgrade path: keep pace with FastAPI/Starlette releases and re-run regression tests for dependency injection wiring and SlowAPI middleware changes.
+- **FastAPI 0.110+ & Uvicorn 0.24+** – Serve REST endpoints, static UI assets, and manage dependency injection (`gateway/api`). Authentication is enabled by default (bearer tokens) and startup logs warn explicitly when operators set `KM_AUTH_ENABLED=false`. Upgrade path: keep pace with FastAPI/Starlette releases and re-run regression tests for dependency injection wiring and SlowAPI middleware changes.
 - **fastmcp 2.12+** – Exposes the gateway as an MCP toolset (`gateway/mcp/server.py`) with HTTPX client bindings to the REST API. Monitor MCP spec updates; adapter code already centralises schema definitions in `docs/MCP_INTERFACE_SPEC.md`.
 - **Neo4j 5.26** – Primary graph store (Compose defaults to `neo4j:5.26.0`). Accessed via the official Bolt driver for schema migrations, query execution, and graph enrichment (`gateway/graph/service.py`, `gateway/ingest/neo4j_writer.py`). Upgrades require Cypher migration compatibility checks and driver pin updates in `pyproject.toml`.
 - **Qdrant 1.15.4** – Vector database for chunk embeddings, accessed via `qdrant-client>=1.7`. Collection creation/upsert semantics are encapsulated in `gateway/ingest/qdrant_writer.py`; when upgrading ensure HNSW/optimizer defaults remain backward compatible.
@@ -149,6 +149,6 @@ graph TD
 ## Development & Operations
 - **Environment Setup:** `python3.12 -m venv .venv`, `pip install -e .[dev]`. Lint with `ruff` and format via `black`. Type checking through `mypy` (plugins enabled for Pydantic).
 - **Testing:** Primary suite under `tests/` with pytest markers for Neo4j (`-m neo4j`) and MCP smoke tests (`-m mcp_smoke`). Coverage via `pytest --cov=gateway --cov-report=term-missing`.
-- **Observability:** Structured logging initialised in `gateway/observability/logging.py`, OpenTelemetry tracing optional via env toggles, Prometheus metrics exposed on `/metrics` (including backup gauges/counters such as `km_backup_runs_total`, `km_backup_last_status`, `km_backup_retention_deletes_total`) and enriched during ingestion/search/MCP flows.
+- **Observability:** Structured logging initialised in `gateway/observability/logging.py`, OpenTelemetry tracing optional via env toggles, Prometheus metrics exposed on `/metrics` (including backup gauges/counters such as `km_backup_runs_total`, `km_backup_last_status`, `km_backup_retention_deletes_total` and feedback log metrics `km_feedback_log_bytes`, `km_feedback_rotations_total`) and enriched during ingestion/search/MCP flows.
 - **Operational Playbooks:** Ingestion orchestrated via CLI or scheduler; backups triggered through MCP tool; lifecycle and coverage reports read from `KM_STATE_PATH/reports`.
 - **Deployment Considerations:** Ensure secrets supplied through environment or secret management, mount persistent volumes for state, configure TLS/ingress for API and Qdrant, and monitor metrics for ingestion/scheduler health.

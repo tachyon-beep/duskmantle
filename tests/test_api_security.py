@@ -130,6 +130,7 @@ def test_secure_mode_without_admin_token_fails(tmp_path: Path, monkeypatch: pyte
     monkeypatch.setenv("KM_STATE_PATH", str(tmp_path / "state"))
     monkeypatch.setenv("KM_AUTH_ENABLED", "true")
     monkeypatch.setenv("KM_NEO4J_PASSWORD", "super-secure")
+    monkeypatch.delenv("KM_ADMIN_TOKEN", raising=False)
 
     with pytest.raises(RuntimeError, match="KM_ADMIN_TOKEN"):
         create_app()

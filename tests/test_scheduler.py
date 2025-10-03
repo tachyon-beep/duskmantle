@@ -42,6 +42,7 @@ def scheduler_settings(tmp_path: Path) -> AppSettings:
             "state_path": tmp_path / "state",
             "scheduler_enabled": True,
             "scheduler_interval_minutes": 1,
+            "maintainer_token": "maintainer-token",
         }
     )
 

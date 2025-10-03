@@ -1,14 +1,14 @@
 
 # Risk Register
 
-## RISK-001: Insecure Gateway Boots When Launched Manually
+## RISK-001: Credential Hygiene After Secure Defaults
 - **Category**: Security
-- **Likelihood**: Medium
-- **Impact**: High
-- **Description**: Launching the API without the container entrypoint leaves `KM_AUTH_ENABLED` disabled by default (`gateway/config/settings.py:50`), exposing every route to unauthenticated callers.
-- **Mitigation Strategy**: Implement WP-201 to default to secure boots, warn loudly when auth is disabled, and extend security tests.
+- **Likelihood**: Low
+- **Impact**: Medium
+- **Description**: Authentication now defaults to enabled, but operators can still disable it intentionally or reuse weak maintainer tokens/Neo4j passwords. Manual launches that unset tokens will fail, yet poor credential rotation remains a concern.
+- **Mitigation Strategy**: Maintain WP-201 changes (secure default, disable warning) and enforce strong credential guidance in docs; consider telemetry on repeated `auth_disabled` warnings.
 - **Risk Owner**: Gateway maintainers
-- **Monitoring & Review**: Add CI coverage in `tests/test_api_security.py`, include a release checklist item verifying auth defaults, and review at every minor release.
+- **Monitoring & Review**: Keep `tests/test_api_security.py` coverage, monitor logs for the `auth_disabled` warning, and review credential rotation guidance each release.
 
 ## RISK-002: Backup Retention Deletes Unrelated Files
 - **Category**: Operational
@@ -19,14 +19,14 @@
 - **Risk Owner**: Operations / SRE
 - **Monitoring & Review**: Track `km_backup_retention_deletes_total` and `km_backup_runs_total`, audit the archive directory monthly, and keep backup destinations dedicated to gateway artifacts.
 
-## RISK-003: Search Feedback Log Grows Without Bound
+## RISK-003: Feedback Log Retention Tuning
 - **Category**: Operational
-- **Likelihood**: High
+- **Likelihood**: Low
 - **Impact**: Medium
-- **Description**: `SearchFeedbackStore` appends to `events.log` indefinitely (`gateway/search/feedback.py:29-66`) with no rotation or size monitoring.
-- **Mitigation Strategy**: Execute WP-203 to add rotation, metrics, and health checks; consider archiving old logs.
+- **Description**: Search feedback logs now rotate automatically, but misconfigured limits (large `KM_FEEDBACK_LOG_MAX_BYTES` / `KM_FEEDBACK_LOG_MAX_FILES`) can still grow disk usage over time.
+- **Mitigation Strategy**: Keep default rotations from WP-203, monitor `km_feedback_log_bytes` / `km_feedback_rotations_total`, and document recommended settings for large deployments.
 - **Risk Owner**: Gateway maintainers
-- **Monitoring & Review**: Track new metrics (`km_feedback_events_bytes_total`) once implemented; until then, include file size checks in weekly ops runbooks.
+- **Monitoring & Review**: Dashboard the new metrics, review retention settings quarterly, and archive rotated logs as part of backup routines.
 
 ## RISK-004: Neo4j Tail Latency Stalls Search Responses
 - **Category**: Performance

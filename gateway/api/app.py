@@ -56,6 +56,10 @@ def _validate_auth_settings(settings: AppSettings) -> None:
             "Neo4j authentication disabled via KM_NEO4J_AUTH_ENABLED=false; Bolt endpoints accept anonymous connections",
         )
     if not settings.auth_enabled:
+        logger.warning(
+            "KM_AUTH_ENABLED=false; gateway starting without authentication",
+            extra={"event": "auth_disabled"},
+        )
         return
     missing: list[str] = []
     if not settings.maintainer_token:
@@ -151,7 +155,11 @@ def _configure_rate_limits(app: FastAPI, settings: AppSettings) -> Limiter:
 
 def _init_feedback_store(settings: AppSettings) -> SearchFeedbackStore | None:
     try:
-        return SearchFeedbackStore(settings.state_path / "feedback")
+        return SearchFeedbackStore(
+            settings.state_path / "feedback",
+            max_bytes=settings.feedback_log_max_bytes,
+            max_files=settings.feedback_log_max_files,
+        )
     except (OSError, RuntimeError, json.JSONDecodeError) as exc:  # pragma: no cover - defensive guard
         logger.warning("Search feedback logging disabled: %s", exc)
         return None

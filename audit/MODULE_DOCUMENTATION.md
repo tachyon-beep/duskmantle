@@ -87,23 +87,23 @@
 
 ### Functions
 - `_validate_auth_settings(settings: AppSettings) -> None` (line 53) — No docstring provided.
-- `_log_startup_configuration(settings: AppSettings) -> None` (line 79) — No docstring provided.
-- `_build_lifespan(settings: AppSettings) -> Callable[[FastAPI], AbstractAsyncContextManager[None]]` (line 102) — No docstring provided.
-- `_configure_rate_limits(app: FastAPI, settings: AppSettings) -> Limiter` (line 141) — No docstring provided.
-- `_init_feedback_store(settings: AppSettings) -> SearchFeedbackStore | None` (line 152) — No docstring provided.
-- `_load_search_model(settings: AppSettings) -> ModelArtifact | None` (line 160) — No docstring provided.
-- `_initialise_graph_manager(manager: Neo4jConnectionManager, settings: AppSettings) -> None` (line 178) — No docstring provided.
-- `_initialise_qdrant_manager(manager: QdrantConnectionManager) -> None` (line 213) — No docstring provided.
-- `async _dependency_heartbeat_loop(app: FastAPI, interval: float) -> None` (line 217) — No docstring provided.
-- `_verify_graph_database(driver: Driver, database: str) -> bool` (line 228) — No docstring provided.
-- `_ensure_graph_database(settings: AppSettings) -> bool` (line 251) — Ensure the configured Neo4j database exists, creating it if missing.
-- `_run_graph_auto_migration(driver: Driver, database: str) -> None` (line 281) — No docstring provided.
-- `_fetch_pending_migrations(runner: MigrationRunner) -> list[str] | None` (line 297) — No docstring provided.
-- `_log_migration_plan(pending: list[str] | None) -> None` (line 308) — No docstring provided.
-- `_log_migration_completion(pending: list[str] | None) -> None` (line 321) — No docstring provided.
-- `_set_migration_metrics(status: int, timestamp: float | None) -> None` (line 333) — No docstring provided.
-- `create_app() -> FastAPI` (line 338) — Create the FastAPI application instance.
-- `_rate_limit_handler(_request: Request, exc: Exception) -> JSONResponse` (line 412) — No docstring provided.
+- `_log_startup_configuration(settings: AppSettings) -> None` (line 83) — No docstring provided.
+- `_build_lifespan(settings: AppSettings) -> Callable[[FastAPI], AbstractAsyncContextManager[None]]` (line 106) — No docstring provided.
+- `_configure_rate_limits(app: FastAPI, settings: AppSettings) -> Limiter` (line 145) — No docstring provided.
+- `_init_feedback_store(settings: AppSettings) -> SearchFeedbackStore | None` (line 156) — No docstring provided.
+- `_load_search_model(settings: AppSettings) -> ModelArtifact | None` (line 164) — No docstring provided.
+- `_initialise_graph_manager(manager: Neo4jConnectionManager, settings: AppSettings) -> None` (line 182) — No docstring provided.
+- `_initialise_qdrant_manager(manager: QdrantConnectionManager) -> None` (line 217) — No docstring provided.
+- `async _dependency_heartbeat_loop(app: FastAPI, interval: float) -> None` (line 221) — No docstring provided.
+- `_verify_graph_database(driver: Driver, database: str) -> bool` (line 232) — No docstring provided.
+- `_ensure_graph_database(settings: AppSettings) -> bool` (line 255) — Ensure the configured Neo4j database exists, creating it if missing.
+- `_run_graph_auto_migration(driver: Driver, database: str) -> None` (line 285) — No docstring provided.
+- `_fetch_pending_migrations(runner: MigrationRunner) -> list[str] | None` (line 301) — No docstring provided.
+- `_log_migration_plan(pending: list[str] | None) -> None` (line 312) — No docstring provided.
+- `_log_migration_completion(pending: list[str] | None) -> None` (line 325) — No docstring provided.
+- `_set_migration_metrics(status: int, timestamp: float | None) -> None` (line 337) — No docstring provided.
+- `create_app() -> FastAPI` (line 342) — Create the FastAPI application instance.
+- `_rate_limit_handler(_request: Request, exc: Exception) -> JSONResponse` (line 416) — No docstring provided.
 
 ### Constants and Configuration
 - DEPENDENCY_HEARTBEAT_INTERVAL_SECONDS = 30.0 (line 50)
@@ -482,7 +482,7 @@
 
 ### Classes
 - `AppSettings` (line 44) — Runtime configuration for the knowledge gateway. Inherits from BaseSettings.
-  - Attributes: api_host: str = Field('0.0.0.0', alias='KM_API_HOST'), api_port: int = Field(8000, alias='KM_API_PORT'), auth_mode: Literal['secure', 'insecure'] = Field('secure', alias='KM_AUTH_MODE'), auth_enabled: bool = Field(False, alias='KM_AUTH_ENABLED'), reader_token: str | None = Field(None, alias='KM_READER_TOKEN'), maintainer_token: str | None = Field(None, alias='KM_ADMIN_TOKEN'), rate_limit_requests: int = Field(120, alias='KM_RATE_LIMIT_REQUESTS'), rate_limit_window_seconds: int = Field(60, alias='KM_RATE_LIMIT_WINDOW'), repo_root: Path = Field(Path('/workspace/repo'), alias='KM_REPO_PATH'), state_path: Path = Field(Path('/opt/knowledge/var'), alias='KM_STATE_PATH'), content_root: Path = Field(Path('/workspace/repo'), alias='KM_CONTENT_ROOT'), content_docs_subdir: Path = Field(Path('docs'), alias='KM_CONTENT_DOCS_SUBDIR'), upload_default_overwrite: bool = Field(False, alias='KM_UPLOAD_DEFAULT_OVERWRITE'), upload_default_ingest: bool = Field(False, alias='KM_UPLOAD_DEFAULT_INGEST'), qdrant_url: str = Field('http://localhost:6333', alias='KM_QDRANT_URL'), qdrant_api_key: str | None = Field(None, alias='KM_QDRANT_API_KEY'), qdrant_collection: str = Field('km_knowledge_v1', alias='KM_QDRANT_COLLECTION'), neo4j_uri: str = Field('bolt://localhost:7687', alias='KM_NEO4J_URI'), neo4j_user: str = Field('neo4j', alias='KM_NEO4J_USER'), neo4j_password: str = Field('neo4jadmin', alias='KM_NEO4J_PASSWORD'), neo4j_database: str = Field('neo4j', alias='KM_NEO4J_DATABASE'), neo4j_auth_enabled: bool = Field(True, alias='KM_NEO4J_AUTH_ENABLED'), neo4j_readonly_uri: str | None = Field(None, alias='KM_NEO4J_READONLY_URI'), neo4j_readonly_user: str | None = Field(None, alias='KM_NEO4J_READONLY_USER'), neo4j_readonly_password: str | None = Field(None, alias='KM_NEO4J_READONLY_PASSWORD'), embedding_model: str = Field('sentence-transformers/all-MiniLM-L6-v2', alias='KM_EMBEDDING_MODEL'), ingest_window: int = Field(1000, alias='KM_INGEST_WINDOW'), ingest_overlap: int = Field(200, alias='KM_INGEST_OVERLAP'), ingest_use_dummy_embeddings: bool = Field(False, alias='KM_INGEST_USE_DUMMY'), ingest_incremental_enabled: bool = Field(True, alias='KM_INGEST_INCREMENTAL'), ingest_parallel_workers: int = Field(2, alias='KM_INGEST_PARALLEL_WORKERS'), ingest_max_pending_batches: int = Field(4, alias='KM_INGEST_MAX_PENDING_BATCHES'), scheduler_enabled: bool = Field(False, alias='KM_SCHEDULER_ENABLED'), scheduler_interval_minutes: int = Field(30, alias='KM_SCHEDULER_INTERVAL_MINUTES'), scheduler_cron: str | None = Field(None, alias='KM_SCHEDULER_CRON'), coverage_enabled: bool = Field(True, alias='KM_COVERAGE_ENABLED'), coverage_history_limit: int = Field(5, alias='KM_COVERAGE_HISTORY_LIMIT'), backup_enabled: bool = Field(False, alias='KM_BACKUP_ENABLED'), backup_interval_minutes: int = Field(720, alias='KM_BACKUP_INTERVAL_MINUTES'), backup_cron: str | None = Field(None, alias='KM_BACKUP_CRON'), backup_retention_limit: int = Field(7, alias='KM_BACKUP_RETENTION_LIMIT'), backup_destination: Path | None = Field(None, alias='KM_BACKUP_DEST_PATH'), backup_script_path: Path | None = Field(None, alias='KM_BACKUP_SCRIPT'), lifecycle_report_enabled: bool = Field(True, alias='KM_LIFECYCLE_REPORT_ENABLED'), lifecycle_stale_days: int = Field(30, alias='KM_LIFECYCLE_STALE_DAYS'), lifecycle_history_limit: int = Field(10, alias='KM_LIFECYCLE_HISTORY_LIMIT'), tracing_enabled: bool = Field(False, alias='KM_TRACING_ENABLED'), tracing_endpoint: str | None = Field(None, alias='KM_TRACING_ENDPOINT'), tracing_headers: str | None = Field(None, alias='KM_TRACING_HEADERS'), tracing_service_name: str = Field('duskmantle-knowledge-gateway', alias='KM_TRACING_SERVICE_NAME'), tracing_sample_ratio: float = Field(1.0, alias='KM_TRACING_SAMPLE_RATIO'), tracing_console_export: bool = Field(False, alias='KM_TRACING_CONSOLE_EXPORT'), graph_auto_migrate: bool = Field(False, alias='KM_GRAPH_AUTO_MIGRATE'), graph_subsystem_cache_ttl_seconds: int = Field(30, alias='KM_GRAPH_SUBSYSTEM_CACHE_TTL'), graph_subsystem_cache_max_entries: int = Field(128, alias='KM_GRAPH_SUBSYSTEM_CACHE_MAX'), search_weight_profile: Literal['default', 'analysis', 'operations', 'docs-heavy'] = Field('default', alias='KM_SEARCH_WEIGHT_PROFILE'), search_weight_subsystem: float = Field(0.28, alias='KM_SEARCH_W_SUBSYSTEM'), search_weight_relationship: float = Field(0.05, alias='KM_SEARCH_W_RELATIONSHIP'), search_weight_support: float = Field(0.09, alias='KM_SEARCH_W_SUPPORT'), search_weight_coverage_penalty: float = Field(0.15, alias='KM_SEARCH_W_COVERAGE_PENALTY'), search_weight_criticality: float = Field(0.12, alias='KM_SEARCH_W_CRITICALITY'), search_sort_by_vector: bool = Field(False, alias='KM_SEARCH_SORT_BY_VECTOR'), search_scoring_mode: Literal['heuristic', 'ml'] = Field('heuristic', alias='KM_SEARCH_SCORING_MODE'), search_model_path: Path | None = Field(None, alias='KM_SEARCH_MODEL_PATH'), search_warn_slow_graph_ms: int = Field(250, alias='KM_SEARCH_WARN_GRAPH_MS'), search_vector_weight: float = Field(1.0, alias='KM_SEARCH_VECTOR_WEIGHT'), search_lexical_weight: float = Field(0.25, alias='KM_SEARCH_LEXICAL_WEIGHT'), search_hnsw_ef_search: int | None = Field(128, alias='KM_SEARCH_HNSW_EF_SEARCH'), dry_run: bool = Field(False, alias='KM_INGEST_DRY_RUN'), model_config = {'env_file': '.env', 'extra': 'ignore'}
+  - Attributes: api_host: str = Field('0.0.0.0', alias='KM_API_HOST'), api_port: int = Field(8000, alias='KM_API_PORT'), auth_mode: Literal['secure', 'insecure'] = Field('secure', alias='KM_AUTH_MODE'), auth_enabled: bool = Field(True, alias='KM_AUTH_ENABLED'), reader_token: str | None = Field(None, alias='KM_READER_TOKEN'), maintainer_token: str | None = Field(None, alias='KM_ADMIN_TOKEN'), rate_limit_requests: int = Field(120, alias='KM_RATE_LIMIT_REQUESTS'), rate_limit_window_seconds: int = Field(60, alias='KM_RATE_LIMIT_WINDOW'), repo_root: Path = Field(Path('/workspace/repo'), alias='KM_REPO_PATH'), state_path: Path = Field(Path('/opt/knowledge/var'), alias='KM_STATE_PATH'), content_root: Path = Field(Path('/workspace/repo'), alias='KM_CONTENT_ROOT'), content_docs_subdir: Path = Field(Path('docs'), alias='KM_CONTENT_DOCS_SUBDIR'), upload_default_overwrite: bool = Field(False, alias='KM_UPLOAD_DEFAULT_OVERWRITE'), upload_default_ingest: bool = Field(False, alias='KM_UPLOAD_DEFAULT_INGEST'), qdrant_url: str = Field('http://localhost:6333', alias='KM_QDRANT_URL'), qdrant_api_key: str | None = Field(None, alias='KM_QDRANT_API_KEY'), qdrant_collection: str = Field('km_knowledge_v1', alias='KM_QDRANT_COLLECTION'), neo4j_uri: str = Field('bolt://localhost:7687', alias='KM_NEO4J_URI'), neo4j_user: str = Field('neo4j', alias='KM_NEO4J_USER'), neo4j_password: str = Field('neo4jadmin', alias='KM_NEO4J_PASSWORD'), neo4j_database: str = Field('neo4j', alias='KM_NEO4J_DATABASE'), neo4j_auth_enabled: bool = Field(True, alias='KM_NEO4J_AUTH_ENABLED'), neo4j_readonly_uri: str | None = Field(None, alias='KM_NEO4J_READONLY_URI'), neo4j_readonly_user: str | None = Field(None, alias='KM_NEO4J_READONLY_USER'), neo4j_readonly_password: str | None = Field(None, alias='KM_NEO4J_READONLY_PASSWORD'), embedding_model: str = Field('sentence-transformers/all-MiniLM-L6-v2', alias='KM_EMBEDDING_MODEL'), ingest_window: int = Field(1000, alias='KM_INGEST_WINDOW'), ingest_overlap: int = Field(200, alias='KM_INGEST_OVERLAP'), ingest_use_dummy_embeddings: bool = Field(False, alias='KM_INGEST_USE_DUMMY'), ingest_incremental_enabled: bool = Field(True, alias='KM_INGEST_INCREMENTAL'), ingest_parallel_workers: int = Field(2, alias='KM_INGEST_PARALLEL_WORKERS'), ingest_max_pending_batches: int = Field(4, alias='KM_INGEST_MAX_PENDING_BATCHES'), scheduler_enabled: bool = Field(False, alias='KM_SCHEDULER_ENABLED'), scheduler_interval_minutes: int = Field(30, alias='KM_SCHEDULER_INTERVAL_MINUTES'), scheduler_cron: str | None = Field(None, alias='KM_SCHEDULER_CRON'), coverage_enabled: bool = Field(True, alias='KM_COVERAGE_ENABLED'), coverage_history_limit: int = Field(5, alias='KM_COVERAGE_HISTORY_LIMIT'), backup_enabled: bool = Field(False, alias='KM_BACKUP_ENABLED'), backup_interval_minutes: int = Field(720, alias='KM_BACKUP_INTERVAL_MINUTES'), backup_cron: str | None = Field(None, alias='KM_BACKUP_CRON'), backup_retention_limit: int = Field(7, alias='KM_BACKUP_RETENTION_LIMIT'), backup_destination: Path | None = Field(None, alias='KM_BACKUP_DEST_PATH'), backup_script_path: Path | None = Field(None, alias='KM_BACKUP_SCRIPT'), lifecycle_report_enabled: bool = Field(True, alias='KM_LIFECYCLE_REPORT_ENABLED'), lifecycle_stale_days: int = Field(30, alias='KM_LIFECYCLE_STALE_DAYS'), lifecycle_history_limit: int = Field(10, alias='KM_LIFECYCLE_HISTORY_LIMIT'), tracing_enabled: bool = Field(False, alias='KM_TRACING_ENABLED'), tracing_endpoint: str | None = Field(None, alias='KM_TRACING_ENDPOINT'), tracing_headers: str | None = Field(None, alias='KM_TRACING_HEADERS'), tracing_service_name: str = Field('duskmantle-knowledge-gateway', alias='KM_TRACING_SERVICE_NAME'), tracing_sample_ratio: float = Field(1.0, alias='KM_TRACING_SAMPLE_RATIO'), tracing_console_export: bool = Field(False, alias='KM_TRACING_CONSOLE_EXPORT'), graph_auto_migrate: bool = Field(False, alias='KM_GRAPH_AUTO_MIGRATE'), graph_subsystem_cache_ttl_seconds: int = Field(30, alias='KM_GRAPH_SUBSYSTEM_CACHE_TTL'), graph_subsystem_cache_max_entries: int = Field(128, alias='KM_GRAPH_SUBSYSTEM_CACHE_MAX'), search_weight_profile: Literal['default', 'analysis', 'operations', 'docs-heavy'] = Field('default', alias='KM_SEARCH_WEIGHT_PROFILE'), search_weight_subsystem: float = Field(0.28, alias='KM_SEARCH_W_SUBSYSTEM'), search_weight_relationship: float = Field(0.05, alias='KM_SEARCH_W_RELATIONSHIP'), search_weight_support: float = Field(0.09, alias='KM_SEARCH_W_SUPPORT'), search_weight_coverage_penalty: float = Field(0.15, alias='KM_SEARCH_W_COVERAGE_PENALTY'), search_weight_criticality: float = Field(0.12, alias='KM_SEARCH_W_CRITICALITY'), search_sort_by_vector: bool = Field(False, alias='KM_SEARCH_SORT_BY_VECTOR'), search_scoring_mode: Literal['heuristic', 'ml'] = Field('heuristic', alias='KM_SEARCH_SCORING_MODE'), search_model_path: Path | None = Field(None, alias='KM_SEARCH_MODEL_PATH'), search_warn_slow_graph_ms: int = Field(250, alias='KM_SEARCH_WARN_GRAPH_MS'), search_vector_weight: float = Field(1.0, alias='KM_SEARCH_VECTOR_WEIGHT'), search_lexical_weight: float = Field(0.25, alias='KM_SEARCH_LEXICAL_WEIGHT'), search_hnsw_ef_search: int | None = Field(128, alias='KM_SEARCH_HNSW_EF_SEARCH'), dry_run: bool = Field(False, alias='KM_INGEST_DRY_RUN'), model_config = {'env_file': '.env', 'extra': 'ignore'}
   - Methods:
     - `_clamp_tracing_ratio(cls, value: float) -> float` (line 137) — Ensure the tracing sampling ratio stays within [0, 1].
     - `_clamp_search_weights(cls, value: float) -> float` (line 156) — Clamp search weights to [0, 1] for stability.
@@ -2439,8 +2439,9 @@
 
 ### Functions
 - `disable_real_graph_driver(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest) -> None` (line 84) — No docstring provided.
-- `neo4j_test_environment() -> Iterator[dict[str, str | None]]` (line 149) — No docstring provided.
-- `pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None` (line 250) — No docstring provided.
+- `default_authentication_env(monkeypatch: pytest.MonkeyPatch) -> None` (line 149) — Provide secure default credentials so create_app() can boot under auth-on defaults.
+- `neo4j_test_environment() -> Iterator[dict[str, str | None]]` (line 158) — No docstring provided.
+- `pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None` (line 259) — No docstring provided.
 
 ### Constants and Configuration
 - No module-level constants detected.
@@ -2582,8 +2583,8 @@
 - `test_rate_limiting(monkeypatch: pytest.MonkeyPatch) -> None` (line 99) — No docstring provided.
 - `test_startup_logs_configuration(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None` (line 113) — No docstring provided.
 - `test_secure_mode_without_admin_token_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None` (line 129) — No docstring provided.
-- `test_secure_mode_requires_custom_neo4j_password(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None` (line 138) — No docstring provided.
-- `test_rate_limiting_search(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None` (line 148) — No docstring provided.
+- `test_secure_mode_requires_custom_neo4j_password(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None` (line 139) — No docstring provided.
+- `test_rate_limiting_search(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None` (line 149) — No docstring provided.
 
 ### Constants and Configuration
 - No module-level constants detected.
@@ -2602,22 +2603,22 @@
 
 **File path**: `tests/test_app_smoke.py`
 **Purpose**: Module tests/test_app_smoke.py lacks docstring; review source for intent.
-**Dependencies**: External – __future__.annotations, fastapi.testclient.TestClient, json, logging, pathlib.Path, pytest, time, unittest.mock; Internal – gateway.api.app.create_app, gateway.api.connections.DependencyStatus, gateway.config.settings.get_settings, gateway.ingest.audit.AuditLogger
+**Dependencies**: External – __future__.annotations, fastapi.testclient.TestClient, json, logging, os, pathlib.Path, pytest, time, unittest.mock; Internal – gateway.api.app.create_app, gateway.api.connections.DependencyStatus, gateway.config.settings.get_settings, gateway.ingest.audit.AuditLogger
 **Related modules**: gateway.api.app.create_app, gateway.api.connections.DependencyStatus, gateway.config.settings.get_settings, gateway.ingest.audit.AuditLogger
 
 ### Classes
 - None
 
 ### Functions
-- `reset_settings_cache() -> None` (line 19) — No docstring provided.
-- `_stub_connection_managers(monkeypatch: pytest.MonkeyPatch) -> None` (line 25) — No docstring provided.
-- `test_health_endpoint_reports_diagnostics(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None` (line 65) — No docstring provided.
-- `test_health_endpoint_ok_when_artifacts_present(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None` (line 85) — No docstring provided.
-- `test_ready_endpoint_returns_ready() -> None` (line 112) — No docstring provided.
-- `test_lifecycle_history_endpoint(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None` (line 120) — No docstring provided.
-- `test_requires_non_default_neo4j_password_when_auth_enabled(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None` (line 150) — No docstring provided.
-- `test_requires_non_empty_neo4j_password_when_auth_enabled(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None` (line 168) — No docstring provided.
-- `test_logs_warning_when_neo4j_auth_disabled(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None` (line 186) — No docstring provided.
+- `reset_settings_cache() -> None` (line 20) — No docstring provided.
+- `_stub_connection_managers(monkeypatch: pytest.MonkeyPatch) -> None` (line 26) — No docstring provided.
+- `test_health_endpoint_reports_diagnostics(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None` (line 66) — No docstring provided.
+- `test_health_endpoint_ok_when_artifacts_present(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None` (line 86) — No docstring provided.
+- `test_ready_endpoint_returns_ready() -> None` (line 113) — No docstring provided.
+- `test_lifecycle_history_endpoint(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None` (line 121) — No docstring provided.
+- `test_requires_non_default_neo4j_password_when_auth_enabled(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None` (line 155) — No docstring provided.
+- `test_requires_non_empty_neo4j_password_when_auth_enabled(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None` (line 173) — No docstring provided.
+- `test_logs_warning_when_neo4j_auth_disabled(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None` (line 191) — No docstring provided.
 
 ### Constants and Configuration
 - No module-level constants detected.
@@ -2627,7 +2628,7 @@
 - Executes pytest fixtures or assertions to validate behaviour.
 
 ### Integration Points
-- fastapi, json, logging, pathlib, pytest, time, unittest
+- fastapi, json, logging, os, pathlib, pytest, time, unittest
 
 ### Code Quality Notes
 - 9 public element(s) lack docstrings.
@@ -3364,18 +3365,18 @@
 ### Functions
 - `reset_cache() -> Generator[None, None, None]` (line 26) — Clear cached settings before and after each test.
 - `scheduler_settings(tmp_path: Path) -> AppSettings` (line 34) — Provide scheduler settings pointing at a temporary repo.
-- `make_scheduler(settings: AppSettings) -> IngestionScheduler` (line 49) — Instantiate a scheduler with its APScheduler stubbed out.
-- `_metric_value(name: str, labels: dict[str, str] | None = None) -> float` (line 56) — Fetch a Prometheus sample value with defaults for missing metrics.
-- `make_result(head: str) -> IngestionResult` (line 62) — Construct a minimal ingestion result for scheduler tests.
-- `test_scheduler_skips_when_repo_head_unchanged(scheduler_settings: AppSettings) -> None` (line 76) — Scheduler skips when repository head hash matches the cached value.
-- `test_scheduler_runs_when_repo_head_changes(scheduler_settings: AppSettings) -> None` (line 105) — Scheduler triggers ingestion when the repository head changes.
-- `test_scheduler_start_uses_interval_trigger(scheduler_settings: AppSettings) -> None` (line 122) — Schedulers without cron use the configured interval trigger.
-- `test_scheduler_start_uses_cron_trigger(tmp_path: Path) -> None` (line 132) — Cron expressions configure a cron trigger instead of interval.
-- `test_scheduler_schedules_backup_job(tmp_path: Path) -> None` (line 151) — Standalone backup schedules a job even when ingestion is disabled.
-- `test_scheduler_backup_run_records_metrics(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None` (line 173) — Backup job updates metrics and retention tracking.
-- `test_scheduler_backup_failure_records_metrics(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None` (line 221) — Failures set the status gauge and increment failure counters.
-- `test_scheduler_skips_when_lock_contended(scheduler_settings: AppSettings) -> None` (line 251) — Lock contention causes the scheduler to skip runs and record metrics.
-- `test_scheduler_requires_maintainer_token(tmp_path: Path) -> None` (line 269) — Schedulers skip setup when auth is enabled without a maintainer token.
+- `make_scheduler(settings: AppSettings) -> IngestionScheduler` (line 50) — Instantiate a scheduler with its APScheduler stubbed out.
+- `_metric_value(name: str, labels: dict[str, str] | None = None) -> float` (line 57) — Fetch a Prometheus sample value with defaults for missing metrics.
+- `make_result(head: str) -> IngestionResult` (line 63) — Construct a minimal ingestion result for scheduler tests.
+- `test_scheduler_skips_when_repo_head_unchanged(scheduler_settings: AppSettings) -> None` (line 77) — Scheduler skips when repository head hash matches the cached value.
+- `test_scheduler_runs_when_repo_head_changes(scheduler_settings: AppSettings) -> None` (line 106) — Scheduler triggers ingestion when the repository head changes.
+- `test_scheduler_start_uses_interval_trigger(scheduler_settings: AppSettings) -> None` (line 123) — Schedulers without cron use the configured interval trigger.
+- `test_scheduler_start_uses_cron_trigger(tmp_path: Path) -> None` (line 133) — Cron expressions configure a cron trigger instead of interval.
+- `test_scheduler_schedules_backup_job(tmp_path: Path) -> None` (line 152) — Standalone backup schedules a job even when ingestion is disabled.
+- `test_scheduler_backup_run_records_metrics(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None` (line 174) — Backup job updates metrics and retention tracking.
+- `test_scheduler_backup_failure_records_metrics(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None` (line 222) — Failures set the status gauge and increment failure counters.
+- `test_scheduler_skips_when_lock_contended(scheduler_settings: AppSettings) -> None` (line 252) — Lock contention causes the scheduler to skip runs and record metrics.
+- `test_scheduler_requires_maintainer_token(tmp_path: Path) -> None` (line 270) — Schedulers skip setup when auth is enabled without a maintainer token.
 
 ### Constants and Configuration
 - No module-level constants detected.
@@ -3666,6 +3667,7 @@
 ### Functions
 - `test_neo4j_database_defaults_to_neo4j(monkeypatch: pytest.MonkeyPatch) -> None` (line 8) — No docstring provided.
 - `test_neo4j_auth_enabled_defaults_true(monkeypatch: pytest.MonkeyPatch) -> None` (line 14) — No docstring provided.
+- `test_auth_enabled_defaults_true(monkeypatch: pytest.MonkeyPatch) -> None` (line 20) — No docstring provided.
 
 ### Constants and Configuration
 - No module-level constants detected.
@@ -3677,7 +3679,7 @@
 - pytest
 
 ### Code Quality Notes
-- 2 public element(s) lack docstrings.
+- 3 public element(s) lack docstrings.
 
 ## tests/test_tracing.py
 
@@ -3720,10 +3722,10 @@
 ### Functions
 - `_reset_settings(tmp_path: Path | None = None) -> None` (line 15) — Clear cached settings and ensure the state directory exists for tests.
 - `test_ui_landing_served(tmp_path: Path, monkeypatch: MonkeyPatch) -> None` (line 22) — The landing page renders successfully and increments the landing metric.
-- `test_ui_search_view(tmp_path: Path, monkeypatch: MonkeyPatch) -> None` (line 48) — The search view renders and increments the search metric.
-- `test_ui_subsystems_view(tmp_path: Path, monkeypatch: MonkeyPatch) -> None` (line 73) — The subsystems view renders and increments the subsystem metric.
-- `test_ui_lifecycle_download(tmp_path: Path, monkeypatch: MonkeyPatch) -> None` (line 94) — Lifecycle report downloads are returned and recorded in metrics.
-- `test_ui_events_endpoint(tmp_path: Path, monkeypatch: MonkeyPatch) -> None` (line 119) — Custom UI events are accepted and reflected in Prometheus metrics.
+- `test_ui_search_view(tmp_path: Path, monkeypatch: MonkeyPatch) -> None` (line 49) — The search view renders and increments the search metric.
+- `test_ui_subsystems_view(tmp_path: Path, monkeypatch: MonkeyPatch) -> None` (line 75) — The subsystems view renders and increments the subsystem metric.
+- `test_ui_lifecycle_download(tmp_path: Path, monkeypatch: MonkeyPatch) -> None` (line 97) — Lifecycle report downloads are returned and recorded in metrics.
+- `test_ui_events_endpoint(tmp_path: Path, monkeypatch: MonkeyPatch) -> None` (line 123) — Custom UI events are accepted and reflected in Prometheus metrics.
 
 ### Constants and Configuration
 - No module-level constants detected.

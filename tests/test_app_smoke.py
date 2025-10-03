@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+import os
 from pathlib import Path
 from unittest import mock
 
@@ -133,11 +134,15 @@ def test_lifecycle_history_endpoint(tmp_path: Path, monkeypatch: pytest.MonkeyPa
 
     monkeypatch.setenv("KM_STATE_PATH", str(state_path))
     monkeypatch.setenv("KM_LIFECYCLE_HISTORY_LIMIT", "5")
+    monkeypatch.setenv("KM_AUTH_ENABLED", "true")
 
     app = create_app()
     client = TestClient(app)
 
-    response = client.get("/lifecycle/history?limit=5")
+    response = client.get(
+        "/lifecycle/history?limit=5",
+        headers={"Authorization": f"Bearer {os.getenv('KM_ADMIN_TOKEN', 'maintainer-token')}"},
+    )
     assert response.status_code == 200
     payload = response.json()
     assert payload["history"]
@@ -190,7 +195,7 @@ def test_logs_warning_when_neo4j_auth_disabled(
 ) -> None:
     monkeypatch.setenv("KM_STATE_PATH", str(tmp_path / "state"))
     monkeypatch.setenv("KM_NEO4J_AUTH_ENABLED", "false")
-    monkeypatch.delenv("KM_AUTH_ENABLED", raising=False)
+    monkeypatch.setenv("KM_AUTH_ENABLED", "false")
     monkeypatch.delenv("KM_ADMIN_TOKEN", raising=False)
 
     _stub_connection_managers(monkeypatch)

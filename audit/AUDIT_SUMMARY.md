@@ -6,14 +6,14 @@ The Duskmantle gateway remains a well-structured platform with clear service bou
 
 ## Key Metrics
 - Python modules analysed: 111 (production 71, tests 39, scripts 1)
-- Total Python LOC: 18,720 (production 11,623; tests 7,014)
+- Total Python LOC: 18,751 (production 11,627; tests 7,041)
 - Test focus: extensive pytest suite covering API, ingest, graph, MCP, and scheduler paths (`pytest.ini`)
 - Observability: Prometheus metrics, structured logging, SlowAPI limits, optional OTLP tracing
 - Deployment: Docker Compose with `gateway`, `neo4j:5.26.0`, and `qdrant/qdrant:1.15.4`; backups managed via `bin/km-backup`
 
 ## Findings By Category
-- **Security** – Auth defaults rely on the container entrypoint; running `uvicorn` directly leaves the API wide open (`gateway/config/settings.py:50`). (WP-201)
-- **Operational** – Feedback logs never rotate (`gateway/search/feedback.py:29-66`) and `/audit/history` accepts unbounded limits. (WP-203, WP-208)
+- **Security** – Auth boots are now secure by default (`gateway/config/settings.py:50`), but direct CREATE_APP users still need to supply non-default credentials when disabling auth; continue monitoring for credential hygiene gaps. (WP-201 completed)
+- **Operational** – `/audit/history` still accepts unbounded limits while feedback log rotation now ships with configurable caps and metrics. (WP-208)
 - **Performance** – Search graph enrichment executes two serial Cypher calls per result with no timeout budget, creating tail-latency spikes under Neo4j load (`gateway/search/service.py:150-430`). (WP-204)
 - **Code Quality** – `SearchService` has grown past 1k LOC combining vector search, graph enrichment, and ML ranking, complicating reviews and targeted testing. (WP-206)
 - **Best Practice** – REST routes lack versioning, so protocol changes break MCP clients with no migration path (`gateway/api/routes/*.py`). (WP-207)
@@ -21,18 +21,16 @@ The Duskmantle gateway remains a well-structured platform with clear service bou
 - **Technical Debt** – Artifact ledger writes are non-atomic and risk corruption on crashes or concurrent ingest runs (`gateway/ingest/pipeline.py:432-444`). (WP-205)
 
 ## Top Priority Actions
-1. **WP-201** – Flip auth defaults to secure mode and warn loudly when exposed.
-2. **WP-204** – Bound graph enrichment latency with concurrency limits and timeouts.
-3. **WP-203** – Rotate and monitor search feedback logs before disks fill.
-4. **WP-205** – Make artifact ledger updates atomic with locking and temp files.
-5. **WP-207** – Introduce a versioned REST prefix to stabilise external integrations.
-6. **WP-206** – Decompose `SearchService` for maintainability and clearer extensibility.
-7. **WP-208** – Clamp `/audit/history` limits to prevent accidental DoS.
-8. **WP-209** – Export feedback logs into the training pipeline to revive ML scoring.
+1. **WP-204** – Bound graph enrichment latency with concurrency limits and timeouts.
+2. **WP-203** – Rotate and monitor search feedback logs before disks fill.
+3. **WP-205** – Make artifact ledger updates atomic with locking and temp files.
+4. **WP-207** – Introduce a versioned REST prefix to stabilise external integrations.
+5. **WP-206** – Decompose `SearchService` for maintainability and clearer extensibility.
+6. **WP-208** – Clamp `/audit/history` limits to prevent accidental DoS.
+7. **WP-209** – Export feedback logs into the training pipeline to revive ML scoring.
 
 ## Overall System Health
 - **Score**: 7/10 (Amber) – Core functionality is dependable and well tested, but tightening auth defaults, backup safety, and graph/search performance is necessary before scaling to less supervised environments.
 
 ## Recommended Immediate Actions
-- Prioritise WP-201 in the next sprint to eliminate the top security gap; ensure unit coverage for secure/insecure boots.
-- Schedule WP-204 alongside telemetry review to stabilise search latency under Neo4j drift; run `pytest tests/test_search_service.py` after changes.
+- With auth defaults hardened, focus on WP-204 alongside telemetry review to stabilise search latency under Neo4j drift; run `pytest tests/test_search_service.py` after changes.

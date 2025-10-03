@@ -145,6 +145,15 @@ def disable_real_graph_driver(monkeypatch: pytest.MonkeyPatch, request: pytest.F
     )
 
 
+@pytest.fixture(autouse=True)
+def default_authentication_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Provide secure default credentials so create_app() can boot under auth-on defaults."""
+
+    monkeypatch.setenv("KM_ADMIN_TOKEN", os.getenv("KM_ADMIN_TOKEN", "maintainer-token"))
+    monkeypatch.setenv("KM_READER_TOKEN", os.getenv("KM_READER_TOKEN", "reader-token"))
+    monkeypatch.setenv("KM_NEO4J_PASSWORD", os.getenv("KM_NEO4J_PASSWORD", "super-secure-password"))
+
+
 @pytest.fixture(scope="session")
 def neo4j_test_environment() -> Iterator[dict[str, str | None]]:
     uri = os.getenv("NEO4J_TEST_URI", "bolt://127.0.0.1:7687")

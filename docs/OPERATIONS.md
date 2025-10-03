@@ -59,3 +59,13 @@ For HA deployments, restore the backing stores (Neo4j, Qdrant) individually befo
 - Prometheus dashboard should display the latest `km_backup_*` metrics.
 
 Keep this playbook with your runbooks so on-call responders have clear restore steps.
+
+## Search Feedback Log Rotation
+
+Search feedback votes accumulate in `${KM_STATE_PATH}/feedback/events.log`. The gateway now rotates this JSONL log automatically.
+
+- `KM_FEEDBACK_LOG_MAX_BYTES` controls the maximum size of the active log before rotation (default 5 MiB).
+- `KM_FEEDBACK_LOG_MAX_FILES` controls how many rolled files (`events.log.1`, `events.log.2`, …) are retained (default 5). Older files are removed.
+- Prometheus metrics `km_feedback_log_bytes` and `km_feedback_rotations_total` expose the current log size and rotation count for dashboards/alerts.
+
+For manual maintenance, inspect the feedback directory and archive rotated files as needed before the retention window expires.

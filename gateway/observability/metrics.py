@@ -124,6 +124,16 @@ SEARCH_GRAPH_CACHE_EVENTS = Counter(
     labelnames=["status"],
 )
 
+SEARCH_FEEDBACK_ROTATIONS_TOTAL = Counter(
+    "km_feedback_rotations_total",
+    "Number of times the search feedback log rotated due to size limits",
+)
+
+SEARCH_FEEDBACK_LOG_BYTES = Gauge(
+    "km_feedback_log_bytes",
+    "Current size of the primary search feedback log in bytes",
+)
+
 SEARCH_GRAPH_LOOKUP_SECONDS = Histogram(
     "km_search_graph_lookup_seconds",
     "Latency of graph lookups for search enrichment",

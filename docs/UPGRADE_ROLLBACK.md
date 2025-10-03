@@ -45,13 +45,11 @@ This document explains how to safely upgrade the Duskmantle knowledge gateway co
    ```bash
    KM_IMAGE=duskmantle/km:<new-tag> \
    KM_NEO4J_DATABASE=neo4j \
-   KM_AUTH_ENABLED=true \
    KM_ADMIN_TOKEN=<token> \
    bin/km-run --detach
    ```
 
-   (Include any additional env vars used previously.)
-   Secure mode now refuses to start with default credentials—rotate `KM_ADMIN_TOKEN` and set a non-default `KM_NEO4J_PASSWORD` before flipping `KM_AUTH_ENABLED=true`.
+   (Include any additional env vars used previously; authentication is enabled by default.) Secure mode refuses to start with default credentials—ensure `KM_ADMIN_TOKEN` and a non-default `KM_NEO4J_PASSWORD` are set before launch. Use `KM_ALLOW_INSECURE_BOOT=true` only for isolated demos.
 4. **Run an ingest if required:**
 
    ```bash
