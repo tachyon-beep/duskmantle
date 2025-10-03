@@ -225,9 +225,10 @@ def test_fetch_subsystem_paths_inlines_depth_literal(monkeypatch: pytest.MonkeyP
     graph_service._fetch_subsystem_paths(tx, name="Kasmina", depth=3)
 
     assert tx.run.call_count == 1
-    query, params = tx.run.call_args
-    assert "*1..3" in query[0]
-    assert params == {"name": "Kasmina"}
+    args = tx.run.call_args.args
+    kwargs = tx.run.call_args.kwargs
+    assert "*1..3" in args[0]
+    assert kwargs == {"name": "Kasmina"}
 
 
 def test_get_node_with_relationships(
