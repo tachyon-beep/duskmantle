@@ -1,430 +1,373 @@
+
 # Work Packages
 
-## Priority: CRITICAL
+## Summary Stats
+- Total work packages: 9 (Security:1, Operational:3, Performance:1, Quality:1, BestPractice:1, Enhancement:1, TechnicalDebt:1)
+- Priority distribution: High=3, Medium=5, Low=1
+- Estimated effort by priority: High ≈ 2×S + 1×M; Medium ≈ 4×S + 1×XS + 1×M; Low ≈ 1×M
+- Quick-win candidates: WP-203, WP-208 (≤S effort with medium/high impact)
 
-## WP-001: Enforce Secure Authentication Defaults *(Completed)*
+## Priority: HIGH
+
+## WP-201: Default To Authenticated Gateway Boots
 
 **Category**: Security
-**Priority**: CRITICAL
-**Effort**: S
-**Risk Level**: Critical
+**Priority**: HIGH
+**Effort**: S (2-8hrs)
+**Risk Level**: High
 
 ### Description
-Ensure the container ships with secure-by-default behaviour so unauthenticated access is never exposed inadvertently.
+Running the API outside the packaged container starts with `KM_AUTH_ENABLED` set to `False`, exposing every reader and maintainer endpoint without credentials.
 
 ### Current State
-As of the latest hardening pass the entrypoint generates reader/maintainer tokens and a strong Neo4j password on first boot, persists them to `${KM_VAR}/secrets.env`, and fails fast when credentials are missing while auth remains enabled. Documentation and samples now reference the stored secrets and the `KM_ALLOW_INSECURE_BOOT` escape hatch for demos.
+`AppSettings.auth_enabled` defaults to `False` (`gateway/config/settings.py:50`). The Docker entrypoint flips the flag to `True`, but developers or operators who launch `uvicorn gateway.api.app:create_app --factory` directly inherit the insecure default with no warning.
 
 ### Desired State
-Continue to enforce and document secure defaults, and monitor for regressions in future releases (e.g., non-container deployments or custom entrypoints).
+Gateway processes should fail closed unless `KM_AUTH_ENABLED=false` is explicitly provided. Local development remains possible via an explicit env override or a dedicated `--insecure` CLI flag.
 
 ### Impact if Not Addressed
-Regressions would reintroduce the risk of accidental anonymous access to REST and MCP surfaces.
+An accidentally exposed gateway leaks graph/search data and permits destructive maintainer workflows to any network peer.
 
 ### Proposed Solution
-Maintain automated tests guarding against missing/weak credentials, keep documentation up to date, and include secure-boot verification in release smoke tests.
+1. Change the default to `True` and emit a loud log warning when auth is disabled. 2. Update CLI/docs to require `KM_ALLOW_INSECURE_BOOT=true` (or similar) for demo scenarios. 3. Extend tests (`tests/test_api_security.py`) to cover both secure and insecure boot paths.
 
 ### Affected Components
-- gateway/api/app.py
 - gateway/config/settings.py
-- infra/docker-entrypoint.sh
-- infra/examples/docker-compose.sample.yml
-- Dockerfile
-- bin/km-bootstrap
-- tests/test_app_smoke.py
-- tests/test_settings_defaults.py
+- gateway/api/app.py
+- docs/QUICK_START.md
+- tests/test_api_security.py
 
 ### Dependencies
 - None
 
 ### Acceptance Criteria
-- [x] Startup aborts with clear error when auth is enabled but tokens/passwords are missing or weak
-- [x] Docker compose example and README describe secure bootstrapping steps
-- [x] pytest smoke covering new behaviours passes
+- [ ] Creating the app without explicit overrides enforces authentication and fails fast if tokens are missing.
+- [ ] Documentation explains how to opt into insecure dev-mode and calls out risks.
+- [ ] Security tests cover secure, insecure, and misconfigured credential scenarios.
 
 ### Related Issues
-RISK-001
+- RISK-001
 
-## WP-002: Protect Qdrant Collections From Accidental Recreate *(Completed)*
-
-**Category**: Operational
-**Priority**: CRITICAL
-**Effort**: S
-**Risk Level**: Critical
-
-### Description
-Prior behaviour recreated the Qdrant collection whenever existence checks failed, wiping embeddings during transient outages. The package captures the remediation and guards needed to keep collection management safe.
-
-### Current State
-`QdrantWriter.ensure_collection()` now performs idempotent `create_collection` calls with bounded retries and exposes a separate `reset_collection` helper for explicit destructive resets. New unit tests cover retry/backoff, conflict handling, and the reset path.
-
-### Desired State
-Collection creation remains idempotent and data-preserving; destructive recreation is only triggered through the explicit reset helper.
-
-### Impact if Not Addressed
-Addressed; regression tests should guard against future reintroduction of destructive behaviour.
-
-### Proposed Solution
-Maintained via regression tests around the non-destructive ensure path and explicit reset helper.
-
-### Affected Components
-- gateway/ingest/qdrant_writer.py
-- gateway/ingest/service.py
-- tests/test_qdrant_writer.py
-
-### Dependencies
-- WP-001
-
-### Acceptance Criteria
-- [x] Integration/unit tests prove ensure_collection survives transient errors without data loss
-- [x] Collection recreation happens only when an explicit destructive helper is invoked
-- [ ] Operational runbook updated to explain safe recovery steps
-
-### Related Issues
-RISK-002
-
-## Priority: HIGH
-
-## WP-003: Harden Maintainer Cypher Endpoint
-
-**Category**: Security
-**Priority**: HIGH
-**Effort**: M
-**Risk Level**: High
-
-### Description
-The /graph/cypher endpoint relies on simple string checks to enforce read-only queries, which can be bypassed with obfuscated Cypher.
-
-### Current State
-Cypher requests now execute via a read-only driver (when configured) with `RoutingControl.READ`, the summary counters are inspected for write activity, literals/comments are stripped before validation, and procedure calls are whitelisted to schema inspection routines. New unit tests cover write attempts (including counters) and disallowed procedures. Operators can supply `KM_NEO4J_READONLY_*` credentials to enforce read-only access at the driver level.
-
-### Desired State
-Maintain the read-only enforcement and expand documentation/runbooks so operations teams routinely configure separate read-only credentials for maintainer queries.
-
-### Impact if Not Addressed
-A compromised maintainer token or auth-disabled deployment could allow hostile graph mutations or data exfiltration beyond expectations.
-
-### Proposed Solution
-Completed in code (read-only driver option, stricter validation/whitelisting, regression tests); update operational docs to prescribe the read-only credential setup and add monitoring for repeated blocked calls.
-
-### Affected Components
-- gateway/api/routes/graph.py
-- gateway/graph/service.py
-- infra/neo4j.conf
-- tests/test_graph_api.py
-
-### Dependencies
-- WP-001
-
-### Acceptance Criteria
-- [x] Attempted write queries are rejected in unit/integration tests
-- [x] Documentation/runbook instructs operators to configure read-only Neo4j credentials for maintainer queries
-- [x] Observability guidance captures monitoring for blocked Cypher attempts
-
-### Related Issues
-RISK-003
-
-## WP-004: Add Dependency Health Checks and Auto-Reconnect *(Completed)*
+## WP-202: Make Scheduled Backup Pruning Safe *(Completed)*
 
 **Category**: Operational
 **Priority**: HIGH
-**Effort**: M
+**Effort**: S (2-8hrs)
 **Risk Level**: High
 
 ### Description
-Once booted, the API keeps long-lived Neo4j and Qdrant handles without periodic validation or automatic recovery.
+Backup retention deletes *every* item in the configured destination beyond the retention limit, even if the directory contains unrelated files.
 
 ### Current State
-Neo4j and Qdrant access now flows through `Neo4jConnectionManager` / `QdrantConnectionManager` wrappers that lazily build drivers, emit connectivity gauges, and rebuild clients after failures. A background heartbeat loop updates Prometheus metrics and `/healthz`, while Graph/Search/Ingest codepaths request fresh handles per call and invoke failure callbacks to trigger reconnects.
+`gateway/backup/service.py` now defaults backups to `${KM_STATE_PATH}/backups/archives`, `km-backup-*.tgz` filenames, and exposes helper utilities (`default_backup_destination`, `is_backup_archive`). The scheduler (`gateway/scheduler.py`) prunes only managed archives, increments a new Prometheus metric (`km_backup_retention_deletes_total`), and leaves foreign files intact. `bin/km-backup` writes to the archival subdirectory by default, and documentation references have been updated.
 
 ### Desired State
-Background probes detect unhealthy dependencies, refresh clients, and expose degraded status via /healthz and metrics.
+✔️ Achieved — retention operates exclusively on managed archives inside a dedicated directory.
 
 ### Impact if Not Addressed
-Service restarts or network partitions cause prolonged downtime and confusing 500s for MCP tools and API consumers.
+Resolved by the implemented changes; residual risk tracked in RISK-002 has been reduced to monitoring.
 
-### Proposed Solution
-Delivered: connection managers with metrics + heartbeat loop, dependency injection rewired for on-demand drivers, `/healthz` extended with dependency snapshots, docs/tests refreshed. Future work is limited to keeping documentation and gauges in sync with new integrations.
+### Delivered Changes
+1. Shared helpers (`default_backup_destination`, `is_backup_archive`) surfaced for schedulers and tooling.
+2. Scheduler now records deletion metrics, updates health status with counts, and limits pruning to `km-backup-*` archives.
+3. `bin/km-backup` defaults to `.duskmantle/backups/archives`; docs (`OPERATIONS.md`, `QUICK_START.md`, `UPGRADE_ROLLBACK.md`, `MCP_INTERFACE_SPEC.md`) reflect the new layout.
+4. Regression tests added/updated (`tests/test_scheduler.py`, `tests/mcp/test_server_tools.py`) to cover safe pruning and path expectations.
 
 ### Affected Components
-- gateway/api/app.py
-- gateway/api/connections.py
-- gateway/api/dependencies.py
-- gateway/api/routes/health.py
-- gateway/api/routes/search.py
-- gateway/graph/service.py
-- gateway/ingest/service.py
-- gateway/observability/__init__.py
+- gateway/scheduler.py
+- gateway/backup/service.py
+- gateway/backup/__init__.py
 - gateway/observability/metrics.py
-- gateway/scheduler.py
-- gateway/search/service.py
-- tests/conftest.py
-- tests/test_app_smoke.py
-- tests/test_connection_managers.py
-- tests/test_graph_api.py
-- tests/test_graph_auto_migrate.py
-- tests/test_graph_service_unit.py
-
-### Dependencies
-- WP-001
-- WP-002
-
-### Acceptance Criteria
-- [x] Automated test simulates Neo4j restart and verifies client recovery without full API reboot
-- [x] /healthz surfaces dependency degradation and recovery timing
-- [x] Runbook updated with troubleshooting guidance
-
-### Related Issues
-RISK-004
-
-## WP-005: Automate State Backups and Recovery Playbooks *(Completed)*
-
-**Category**: Operational
-**Priority**: HIGH
-**Effort**: M
-**Risk Level**: High
-
-### Description
-Backups exist only as a manual MCP tool; there is no scheduled capture or documented restoration workflow.
-
-### Current State
-Automated backups run via the scheduler when `KM_BACKUP_ENABLED` is set; archives land in `${KM_STATE_PATH}/backups` with retention trimming and Prometheus metrics (`km_backup_*`). Manual MCP backups reuse the same helper. Restore instructions live in `docs/OPERATIONS.md`.
-
-### Desired State
-Automated, scheduled backups with configurable retention and documented recovery drills.
-
-### Impact if Not Addressed
-Operational mistakes or disk loss could permanently delete Neo4j/Qdrant state.
-
-### Proposed Solution
-Add scheduler hooks or external scripts to trigger backups, stream archives to durable storage, document restore procedure, and add smoke tests validating archives.
-
-### Affected Components
-- gateway/mcp/backup.py
-- gateway/scheduler.py
+- bin/km-backup
 - docs/OPERATIONS.md
-- infra/examples/docker-compose.sample.yml
+- docs/QUICK_START.md
+- docs/UPGRADE_ROLLBACK.md
+- docs/MCP_INTERFACE_SPEC.md
+- docs/ACCEPTANCE_DEMO_PLAYBOOK.md
+- tests/test_scheduler.py
+- tests/mcp/test_server_tools.py
 
 ### Dependencies
-- WP-002
+- None
 
 ### Acceptance Criteria
-- [x] Backup job runs on configurable cadence and surfaces metrics
-- [x] Disaster-recovery doc demonstrates restoring a fresh environment
-- [x] CI smoke test validates archive integrity
+- [x] Retention logic deletes only gateway-created archives.
+- [x] Backup destination defaults to a safe, isolated directory.
+- [x] Tests cover retention with extraneous files and verify no collateral deletions.
 
 ### Related Issues
-RISK-005
+- RISK-002
 
-## WP-006: Harden Container Runtime and Service Isolation
+## WP-204: Bound Graph Enrichment Latency In Search
 
-**Category**: BestPractice
+**Category**: Performance
 **Priority**: HIGH
-**Effort**: M
+**Effort**: M (1-3 days)
 **Risk Level**: Medium
 
 ### Description
-The Docker image runs as root and bundles Neo4j, Qdrant, and the API in a single container.
+Hybrid search performs two synchronous Cypher calls per hit (`get_node` + `shortest_path_depth`), causing tail-latency spikes when Neo4j is slow or results are numerous.
 
 ### Current State
-Gateway image drops root privileges (runs as `km:km`), `infra/examples/docker-compose.sample.yml` splits the API/Qdrant/Neo4j services, and helper scripts (`bin/km-bootstrap`, `bin/km-run`, `infra/smoke-test.sh`) orchestrate the compose topology. A new `docs/DEPLOYMENT.md` captures compose and Kubernetes hardening guidance, including security context snippets. Sample compose exposes only the API port, uses tmpfs for `/tmp`, and persists state under `.duskmantle/compose/config/`.
+`SearchService.search` / `_resolve_graph_context` (`gateway/search/service.py:150-430`) iterate results sequentially with no concurrency cap, timeout, or per-request budget. A single slow node can delay the entire response.
 
 ### Desired State
-Maintain the non-root runtime, compose separation, and security documentation as defaults going forward.
+Graph enrichment should run within a bounded per-request budget, skip or degrade gracefully when Neo4j is slow, and ideally fetch results concurrently up to a small worker pool.
 
 ### Impact if Not Addressed
-Regression would reintroduce root-level containers or bundled dependencies, allowing a single compromise to leak graph/vector data and escalate to host privileges.
+Search endpoints stall under load, Prometheus latency alerts fire, and MCP tools appear hung even though vector search completed.
 
 ### Proposed Solution
-Completed: non-root `km` user baked into the image, entrypoint refuses to start without Neo4j credentials, compose sample isolates dependencies, new deployment guide documents Docker/Kubernetes security contexts, and smoke tests assert the gateway runs as non-root.
+1. Introduce an async or thread-based worker pool with a configurable concurrency limit. 2. Apply per-hit timeouts and short-circuit once the graph budget is exhausted. 3. Emit metrics for skipped/slow enrichments and extend tests (`tests/test_search_service.py`) to cover degraded graph scenarios.
 
 ### Affected Components
-- Dockerfile
-- infra/docker-entrypoint.sh
-- infra/examples/docker-compose.sample.yml
-- docs/DEPLOYMENT.md
+- gateway/search/service.py
+- gateway/graph/service.py
+- gateway/observability/metrics.py
+- tests/test_search_service.py
 
 ### Dependencies
-- WP-001
+- None
 
 ### Acceptance Criteria
-- [x] Containers run as non-root in CI smoke tests *(validated locally; see smoke script notes about host iptables requirements)*
-- [x] Sample deployment separates API/Qdrant/Neo4j with documented networking
-- [x] Security guide updated with hardening steps
+- [ ] Search responses return within the configured graph budget even under Neo4j slowness.
+- [ ] Metrics report skipped/timeout graph lookups and concurrency usage.
+- [ ] Regression tests cover mixed fast/slow graph situations.
 
 ### Related Issues
-RISK-006
+- RISK-004
 
 ## Priority: MEDIUM
 
-## WP-008: Bound Search Feedback Store Growth
+## WP-203: Rotate Search Feedback Event Logs
 
 **Category**: Operational
 **Priority**: MEDIUM
-**Effort**: S
+**Effort**: S (2-8hrs)
 **Risk Level**: Medium
 
 ### Description
-Search feedback events append to a single JSONL file without retention or rotation.
+The feedback store appends JSON lines indefinitely with no size cap, rotation, or corruption handling.
 
 ### Current State
-events.log grows indefinitely; corrupted writes or disk exhaustion are not handled.
+`SearchFeedbackStore` (`gateway/search/feedback.py:29-66`) writes to a single `events.log`. Long-running gateways accumulate unbounded state and have no metric indicating log health.
 
 ### Desired State
-Feedback storage rotates, validates writes, and surfaces capacity metrics.
+Feedback storage should rotate once a configurable size or age threshold is reached, with metrics and alerts when rotation occurs.
 
 ### Impact if Not Addressed
-Disk fill leads to ingestion/search failures and loss of feedback data.
+Disk fills compromise ingestion and backups, and truncated/corrupt logs silently drop training data.
 
 ### Proposed Solution
-Integrate log rotation or SQLite, guard writes with fsync/size limits, and emit Prometheus metrics for event counts.
+Implement rollover (size or time-based), optionally back by gzip, surface `km_feedback_events_bytes_total`, and add health checks for stale rotation. Update docs for retention tuning.
 
 ### Affected Components
 - gateway/search/feedback.py
 - gateway/observability/metrics.py
+- docs/OPERATIONS.md
 - tests/test_search_service.py
 
 ### Dependencies
 - None
 
 ### Acceptance Criteria
-- [ ] Feedback store enforces configurable max file size/count
-- [ ] Metrics or alerts fire when rotation occurs
-- [ ] Existing tests updated to cover rotation edge cases
+- [ ] Feedback logs rotate automatically with configurable limits.
+- [ ] Metrics/health endpoints expose current file size and last rotation.
+- [ ] Tests verify rotation, retention, and corrupted-log recovery.
 
 ### Related Issues
-RISK-007
+- RISK-003
 
-## WP-009: Stabilise Incremental Ledger Handling
+## WP-205: Make Artifact Ledger Updates Atomic
 
 **Category**: TechnicalDebt
 **Priority**: MEDIUM
-**Effort**: S
+**Effort**: S (2-8hrs)
 **Risk Level**: Medium
 
 ### Description
-The artifact ledger is plain JSON with no locking or schema validation, making incremental ingest brittle.
+The incremental ingest ledger is rewritten wholesale without locking or atomic rename, so concurrent runs or crashes can corrupt it.
 
 ### Current State
-Ledger writes overwrite the entire file, concurrent runs can corrupt it, and malformed entries are silently discarded.
+`IngestionPipeline._write_artifact_ledger` (`gateway/ingest/pipeline.py:432-444`) writes JSON directly to disk. There is no locking, validation, or recovery path for partial writes.
 
 ### Desired State
-Ledger updates are atomic, schema-validated, and recoverable after crashes.
+Ledger writes should use `NamedTemporaryFile` + atomic rename, file locks to block concurrent writers, and schema validation to quarantine corrupt entries.
 
 ### Impact if Not Addressed
-Incremental ingest may skip updates or reprocess large sections when ledger corruption occurs.
+Incremental ingest can revert to full reprocessing or produce inconsistent coverage metrics after a crash.
 
 ### Proposed Solution
-Use file locking, atomic temp-file writes, JSON schema validation, and recovery tooling for corrupt ledgers.
+1. Introduce `filelock` around ledger writes. 2. Write to `*.tmp` and rename on success. 3. Validate schema before loading, with automatic backup/repair. Extend tests to simulate partial writes.
 
 ### Affected Components
 - gateway/ingest/pipeline.py
-- gateway/ingest/service.py
 - tests/test_ingest_pipeline.py
+- tests/test_coverage_report.py
 
 ### Dependencies
-- WP-002
+- None
 
 ### Acceptance Criteria
-- [ ] Ledger writes use atomic rename and acquire locks
-- [ ] Schema validation rejects malformed entries with metrics/alerts
-- [ ] Regression tests simulate interrupted writes without data loss
+- [ ] Ledger updates are atomic and concurrent ingestion attempts block gracefully.
+- [ ] Corrupt ledgers are detected with a clear error and recovery instructions.
+- [ ] Tests cover crash/retry scenarios.
 
 ### Related Issues
-RISK-008
+- RISK-005
 
-## WP-007: Optimize Graph Enrichment Latency for Search
+## WP-206: Refactor SearchService For Maintainability
 
-**Category**: Performance
+**Category**: Quality
 **Priority**: MEDIUM
-**Effort**: M
-**Risk Level**: Medium
-
-### Description
-SearchService fetches graph context per result sequentially, risking latency spikes for larger result sets.
-
-### Current State
-Graph lookups run synchronously with per-result sessions; caching mitigates repeats but high-limit queries still incur N round-trips.
-
-### Desired State
-Graph enrichment batches lookups, honours timeouts, and emits metrics/alerts when graph fetches dominate response time.
-
-### Impact if Not Addressed
-User-facing MCP tools and API calls experience slow responses, undermining search experience.
-
-### Proposed Solution
-Introduce concurrent/batched graph fetches, enrich metadata with timings, add thresholds for disabling graph context when Neo4j is slow.
-
-### Affected Components
-- gateway/search/service.py
-- gateway/graph/service.py
-- gateway/observability/metrics.py
-- tests/test_search_service.py
-
-### Dependencies
-- WP-004
-
-### Acceptance Criteria
-- [ ] Load test demonstrates improved p95 latency for include_graph=true
-- [ ] Metrics expose graph enrichment timing per request
-- [ ] Feature flag toggles graph enrichment when Neo4j is degraded
-
-### Related Issues
-RISK-007
-
-## WP-010: Clarify API Versioning and Contract Guarantees
-
-**Category**: BestPractice
-**Priority**: MEDIUM
-**Effort**: S
+**Effort**: M (1-3 days)
 **Risk Level**: Low
 
 ### Description
-Public REST and MCP contracts lack explicit versioning or deprecation policy.
+`gateway/search/service.py` exceeds 1k LOC and mixes vector retrieval, scoring, graph enrichment, and ML reranking in a single class, raising the maintenance burden.
 
 ### Current State
-Routes live under /search, /graph, /coverage without version prefix; docs omit change management guidance.
+Complex helper functions (`_resolve_graph_context`, `_compute_scoring`, `_build_model_features`, etc.) interleave concerns, and tests rely on large fixtures (`tests/test_search_service.py`, `tests/test_search_maintenance.py`).
 
 ### Desired State
-Versioned API surface with changelog and compatibility expectations.
+Separate modules or dataclasses for vector search, scoring heuristics, graph enrichment, and ML reranking with targeted unit tests and docstrings.
 
 ### Impact if Not Addressed
-Client updates risk breaking changes, slowing adoption.
+Future changes (e.g., new signals or models) risk regressions and slow review cycles.
 
 ### Proposed Solution
-Introduce /v1 prefix (or header-based versioning), publish schema docs, and add contract tests.
+1. Split `SearchService` into smaller collaborators (e.g., `GraphEnricher`, `ScoreCombiner`). 2. Add docstrings and type aliases. 3. Expand unit tests for each component. 4. Update public API documentation to reflect new structure.
+
+### Affected Components
+- gateway/search/service.py
+- gateway/search/maintenance.py
+- tests/test_search_service.py
+- docs/SEARCH_SCORING_PLAN.md
+
+### Dependencies
+- None
+
+### Acceptance Criteria
+- [ ] Search code is decomposed into well-documented modules with focused tests.
+- [ ] Cyclomatic complexity metrics drop significantly (target <15 per function).
+- [ ] Documentation reflects the new architecture.
+
+### Related Issues
+- RISK-004
+
+## WP-207: Introduce Versioned REST Surface
+
+**Category**: BestPractice
+**Priority**: MEDIUM
+**Effort**: S (2-8hrs)
+**Risk Level**: Medium
+
+### Description
+All FastAPI routes are mounted at the root (e.g., `/search`, `/graph/...`) with no versioning or compatibility contract.
+
+### Current State
+Routers in `gateway/api/routes/*.py` expose bare paths, and clients (MCP, UI, scripts) couple to them directly. Breaking changes require lockstep upgrades.
+
+### Desired State
+Expose a versioned prefix (e.g., `/api/v1/`) with backward-compatible aliases and document deprecation timelines.
+
+### Impact if Not Addressed
+Future schema changes or refactors risk breaking MCP tools and external automation.
+
+### Proposed Solution
+1. Introduce a versioned APIRouter (`/api/v1`) and maintain legacy aliases behind a feature flag. 2. Update MCP client defaults and docs. 3. Add contract tests ensuring both paths stay in sync until the legacy surface is retired.
 
 ### Affected Components
 - gateway/api/app.py
 - gateway/api/routes/*
-- docs/API_REFERENCE.md
-- tests/test_app_smoke.py
+- gateway/mcp/client.py
+- docs/API_APP_REFACTOR_PLAN.md
 
 ### Dependencies
-- WP-001
+- WP-201 (ensures consistent auth handling during migration)
 
 ### Acceptance Criteria
-- [ ] OpenAPI spec reflects versioned paths
-- [ ] Docs describe upgrade policy and breaking-change process
-- [ ] Contract tests assert backwards compatibility for core endpoints
+- [ ] `/api/v1/*` endpoints mirror existing behaviour with automated contract tests.
+- [ ] Legacy routes emit deprecation warnings with a removal schedule.
+- [ ] Client libraries and docs reference the versioned paths by default.
 
 ### Related Issues
-RISK-009
-## Summary Statistics
+- RISK-006
 
-### Counts by Category
-- BestPractice: 2
-- Operational: 4
-- Performance: 1
-- Security: 2
-- TechnicalDebt: 1
+## WP-208: Clamp Audit History Window
 
-### Counts by Priority
-- CRITICAL: 2
-- HIGH: 4
-- MEDIUM: 4
+**Category**: Operational
+**Priority**: MEDIUM
+**Effort**: XS (<2hrs)
+**Risk Level**: Low
 
-### Estimated Effort (hours) by Priority
-- CRITICAL: ~8h
-- HIGH: ~64h
-- MEDIUM: ~28h
+### Description
+Maintainer users can request an unbounded number of audit entries, loading the entire SQLite table into memory.
+
+### Current State
+`/audit/history` passes the query `limit` straight to `AuditLogger.recent` (`gateway/api/routes/reporting.py:25-38`) without validation.
+
+### Desired State
+Clamp the limit to a sensible maximum (e.g., 100), validate inputs, and document the ceiling.
+
+### Impact if Not Addressed
+Large requests can impact latency and memory usage on modest hardware.
+
+### Proposed Solution
+1. Normalise the limit parameter with min/max bounds. 2. Add tests covering invalid/large limits. 3. Surface the configured limit via docs or response metadata.
+
+### Affected Components
+- gateway/api/routes/reporting.py
+- tests/test_coverage_report.py
+
+### Dependencies
+- None
+
+### Acceptance Criteria
+- [ ] Requests exceeding the configured limit are clamped and return a warning.
+- [ ] Unit tests cover boundary and invalid values.
+- [ ] Documentation lists the maximum retrievable audit history span.
+
+### Related Issues
+- RISK-007
+
+## Priority: LOW
+
+## WP-209: Promote Feedback Events Into Training Pipeline
+
+**Category**: Enhancement
+**Priority**: LOW
+**Effort**: M (1-3 days)
+**Risk Level**: Low
+
+### Description
+Collected feedback is never transformed into structured datasets for `gateway/search/trainer.py`, limiting the value of ML scoring mode.
+
+### Current State
+`search/trainer.py` expects curated training files, but the system only stores append-only logs (`gateway/search/feedback.py`). No tooling automates aggregation or model retraining.
+
+### Desired State
+Provide a CLI or scheduled job that rolls feedback logs into training datasets, retrains/validates models, and publishes artifacts for deployment.
+
+### Impact if Not Addressed
+The ML scoring mode stays stale and operators cannot incorporate collected ratings.
+
+### Proposed Solution
+1. Add a `gateway-search export-feedback` command that aggregates events into the trainer format. 2. Offer optional auto-training via scheduler or makefile. 3. Document the workflow in `docs/MCP_RECIPES.md` and add tests covering export edge cases.
+
+### Affected Components
+- gateway/search/feedback.py
+- gateway/search/trainer.py
+- gateway/search/cli.py
+- docs/MCP_RECIPES.md
+
+### Dependencies
+- WP-203 (ensures feedback logs are well-behaved and rotated)
+
+### Acceptance Criteria
+- [ ] CLI command exports validated datasets ready for `gateway/search/trainer.py`.
+- [ ] Documentation walks through feedback-driven retraining.
+- [ ] Tests cover aggregation and malformed log handling.
+
+### Related Issues
+- RISK-008

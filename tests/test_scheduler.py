@@ -175,8 +175,8 @@ def test_scheduler_backup_run_records_metrics(tmp_path: Path, monkeypatch: pytes
 
     state_path = tmp_path / "state"
     state_path.mkdir()
-    destination = state_path / "backups"
-    archive_path = destination / "backup-001.tar.gz"
+    destination = state_path / "backups" / "archives"
+    archive_path = destination / "km-backup-001.tgz"
     settings = AppSettings().model_copy(
         update={
             "state_path": state_path,
@@ -190,9 +190,11 @@ def test_scheduler_backup_run_records_metrics(tmp_path: Path, monkeypatch: pytes
     scheduler = IngestionScheduler(settings)
     archive_path.parent.mkdir(parents=True, exist_ok=True)
     archive_path.write_text("")
-    old_archive = destination / "old-backup.tar.gz"
+    old_archive = destination / "km-backup-000.tgz"
     old_archive.write_text("")
     os.utime(old_archive, (1, 1))
+    foreign_file = destination / "notes.txt"
+    foreign_file.write_text("keep")
     monkeypatch.setattr(
         "gateway.scheduler.run_backup",
         lambda state_path, script_path, destination_path=None: {
@@ -201,6 +203,7 @@ def test_scheduler_backup_run_records_metrics(tmp_path: Path, monkeypatch: pytes
     )
     BACKUP_LAST_STATUS.set(0)
     before_success = _metric_value("km_backup_runs_total", {"result": "success"})
+    before_deleted = _metric_value("km_backup_retention_deletes_total")
     scheduler._run_backup()
     assert BACKUP_LAST_STATUS._value.get() == 1
     assert _metric_value("km_backup_runs_total", {"result": "success"}) == pytest.approx(
@@ -208,8 +211,11 @@ def test_scheduler_backup_run_records_metrics(tmp_path: Path, monkeypatch: pytes
     )
     health = scheduler.backup_health()
     assert health["status"] == "ok"
+    assert health.get("deleted") == 1
     assert "last_success" in health
     assert not old_archive.exists()
+    assert foreign_file.exists()
+    assert _metric_value("km_backup_retention_deletes_total") == pytest.approx(before_deleted + 1)
 
 
 def test_scheduler_backup_failure_records_metrics(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

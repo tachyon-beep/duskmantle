@@ -359,14 +359,14 @@ async def test_backup_trigger(
 
     async def stub_trigger_backup(_settings: MCPSettings) -> dict[str, object]:
         await asyncio.sleep(0)
-        return {"archive": "backups/km-backup.tgz"}
+        return {"archive": "backups/archives/km-backup.tgz"}
 
     monkeypatch.setattr("gateway.mcp.server.trigger_backup", stub_trigger_backup)
 
     tool_fn = _tool_fn(await server.get_tool("km-backup-trigger"))
     archive = await tool_fn(context=None)
 
-    assert archive == {"archive": "backups/km-backup.tgz"}
+    assert archive == {"archive": "backups/archives/km-backup.tgz"}
     assert _counter_value(MCP_REQUESTS_TOTAL, "km-backup-trigger", "success") == 1
 
 

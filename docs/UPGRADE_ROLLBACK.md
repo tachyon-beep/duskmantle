@@ -17,10 +17,10 @@ This document explains how to safely upgrade the Duskmantle knowledge gateway co
 
    ```bash
    bin/km-backup
-   ls .duskmantle/backups
+   ls .duskmantle/backups/archives
    ```
 
-   Copy the archive (`.duskmantle/backups/km-backup-YYYYMMDDTHHMMSS.tgz`) to a safe location.
+   Copy the archive (`.duskmantle/backups/archives/km-backup-YYYYMMDDTHHMMSS.tgz`) to a safe location.
 4. **Note current config:** record `KM_*` env vars, `.codex` MCP entries, and `bin/km-run` overrides.
 5. **Capture the current acceptance snapshot:** run the quick checks from `docs/ACCEPTANCE_DEMO_PLAYBOOK.md` (at minimum `/healthz`, `/coverage`, and a sample `/search`) and refresh `docs/ACCEPTANCE_DEMO_SNAPSHOT.md` so you know the pre-upgrade baseline.
 
@@ -72,7 +72,7 @@ This document explains how to safely upgrade the Duskmantle knowledge gateway co
 
    ```bash
    rm -rf .duskmantle/config/*
-   tar -xzf .duskmantle/backups/km-backup-YYYYMMDDTHHMMSS.tgz -C .duskmantle/config
+   tar -xzf .duskmantle/backups/archives/km-backup-YYYYMMDDTHHMMSS.tgz -C .duskmantle/config
    ```
 
 3. **Launch previous version:**

@@ -54,7 +54,7 @@ The knowledge gateway reads its runtime configuration from environment variables
 | `KM_BACKUP_INTERVAL_MINUTES` | `720` | Interval (minutes) between backups when cron is not set. |
 | `KM_BACKUP_CRON` | _unset_ | Cron expression (UTC) for backup runs. Takes precedence over the interval. |
 | `KM_BACKUP_RETENTION_LIMIT` | `7` | Number of recent backup archives to retain (older archives are removed). |
-| `KM_BACKUP_DEST_PATH` | `${KM_STATE_PATH}/backups` | Directory where backup archives are stored. |
+| `KM_BACKUP_DEST_PATH` | `${KM_STATE_PATH}/backups/archives` | Directory where managed backup archives are stored. |
 | `KM_BACKUP_SCRIPT` | `<repo>/bin/km-backup` | Optional override for the backup helper script executed by the scheduler/MCP tool. |
 Legacy watcher variables (`KM_WATCH_*`) remain for backward compatibility but the hardened container no longer spawns an in-process watcher. Run `bin/km-watch` on the host when you need automatic ingests and configure cadence via CLI flags.
 

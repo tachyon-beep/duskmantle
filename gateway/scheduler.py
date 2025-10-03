@@ -16,12 +16,14 @@ from apscheduler.triggers.interval import IntervalTrigger  # type: ignore[import
 from filelock import FileLock, Timeout
 
 from gateway.api.connections import Neo4jConnectionManager, QdrantConnectionManager
-from gateway.backup import BackupExecutionError, run_backup
+from gateway.backup import BackupExecutionError
+from gateway.backup.service import default_backup_destination, is_backup_archive, run_backup
 from gateway.config.settings import AppSettings
 from gateway.ingest.service import execute_ingestion
 from gateway.observability.metrics import (
     BACKUP_LAST_STATUS,
     BACKUP_LAST_SUCCESS_TIMESTAMP,
+    BACKUP_RETENTION_DELETES_TOTAL,
     BACKUP_RUNS_TOTAL,
     INGEST_SKIPS_TOTAL,
     SCHEDULER_LAST_SUCCESS_TIMESTAMP,
@@ -53,7 +55,8 @@ class IngestionScheduler:
         self._qdrant_manager = qdrant_manager
         self._backup_enabled = settings.backup_enabled
         self._backup_retention_limit = max(0, settings.backup_retention_limit)
-        self._backup_destination = (settings.backup_destination or (settings.state_path / "backups")).resolve()
+        default_destination = default_backup_destination(self.settings.state_path)
+        self._backup_destination = (settings.backup_destination or default_destination).resolve()
         self._backup_script_path = settings.backup_script_path
         self._backup_status: dict[str, object] = {"status": "disabled" if not self._backup_enabled else "pending"}
         self._backup_lock_path = self._state_dir / "backup.lock"
@@ -199,13 +202,20 @@ class IngestionScheduler:
             BACKUP_LAST_STATUS.set(1)
             timestamp = time.time()
             BACKUP_LAST_SUCCESS_TIMESTAMP.set(timestamp)
+            deleted = self._prune_backups()
             self._backup_status = {
                 "status": "ok",
                 "last_success": timestamp,
                 "archive": str(archive_path),
+                "deleted": deleted,
             }
-            self._prune_backups()
-            logger.info("Scheduled backup completed", extra={"archive": str(archive_path)})
+            size_bytes = result.get("size_bytes")
+            if size_bytes is not None:
+                self._backup_status["size_bytes"] = size_bytes
+            logger.info(
+                "Scheduled backup completed",
+                extra={"archive": str(archive_path), "deleted": deleted},
+            )
         finally:
             with suppress(RuntimeError):
                 lock.release()
@@ -219,22 +229,47 @@ class IngestionScheduler:
     def _write_last_head(self, head: str) -> None:
         self._last_head_path.write_text(head)
 
-    def _prune_backups(self) -> None:
+    def _prune_backups(self) -> int:
         if self._backup_retention_limit <= 0:
-            return
+            return 0
+        if not self._backup_destination.exists():
+            return 0
+
         try:
-            archives = sorted(
-                self._backup_destination.glob("*") if self._backup_destination.exists() else [],
-                key=lambda path: path.stat().st_mtime,
-                reverse=True,
-            )
+            candidates = list(self._backup_destination.iterdir())
         except OSError:  # pragma: no cover - defensive guard
-            return
-        for index, archive in enumerate(archives):
+            return 0
+
+        managed_archives: list[tuple[float, Path]] = []
+        for path in candidates:
+            if not is_backup_archive(path):
+                continue
+            try:
+                managed_archives.append((path.stat().st_mtime, path))
+            except OSError:
+                continue
+
+        managed_archives.sort(key=lambda item: item[0], reverse=True)
+
+        deleted = 0
+        for index, (_, archive) in enumerate(managed_archives):
             if index < self._backup_retention_limit:
                 continue
-            with suppress(OSError):
+            try:
                 archive.unlink()
+            except OSError as exc:
+                logger.warning(
+                    "Failed to delete expired backup archive",
+                    extra={"archive": str(archive), "error": str(exc)},
+                )
+            else:
+                deleted += 1
+                BACKUP_RETENTION_DELETES_TOTAL.inc()
+                logger.info(
+                    "Deleted expired backup archive",
+                    extra={"archive": str(archive)},
+                )
+        return deleted
 
     def backup_health(self) -> dict[str, object]:
         if not self._backup_enabled:

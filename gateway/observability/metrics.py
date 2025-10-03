@@ -20,6 +20,11 @@ BACKUP_LAST_SUCCESS_TIMESTAMP = Gauge(
     "Unix timestamp of the last successful backup run",
 )
 
+BACKUP_RETENTION_DELETES_TOTAL = Counter(
+    "km_backup_retention_deletes_total",
+    "Number of backup archives removed by retention pruning",
+)
+
 GRAPH_DEPENDENCY_STATUS = Gauge(
     "km_graph_dependency_status",
     "Neo4j connectivity status (1=healthy,0=unavailable)",

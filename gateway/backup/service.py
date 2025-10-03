@@ -6,17 +6,38 @@ import os
 import re
 import subprocess
 from collections.abc import Mapping
+from contextlib import suppress
 from pathlib import Path
 
 from .exceptions import BackupExecutionError
 
 _BACKUP_DONE_PATTERN = re.compile(r"Backup written to (?P<path>.+)$")
 
+ARCHIVE_FILENAME_PREFIX = "km-backup-"
+ARCHIVE_ALLOWED_SUFFIXES = (".tgz", ".tar.gz")
+DEFAULT_BACKUP_DIRNAME = "backups"
+DEFAULT_BACKUP_ARCHIVE_DIRNAME = "archives"
+
 
 class BackupResult(dict):
     """Simple mapping describing the archive produced by a backup run."""
 
     archive: Path
+
+
+def default_backup_destination(state_path: Path) -> Path:
+    """Return the default directory for storing backup archives."""
+
+    return (state_path / DEFAULT_BACKUP_DIRNAME / DEFAULT_BACKUP_ARCHIVE_DIRNAME).resolve()
+
+
+def is_backup_archive(path: Path) -> bool:
+    """Return ``True`` when ``path`` matches the managed backup filename pattern."""
+
+    if not path.is_file() or not path.name.startswith(ARCHIVE_FILENAME_PREFIX):
+        return False
+    name_lower = path.name.lower()
+    return any(name_lower.endswith(suffix) for suffix in ARCHIVE_ALLOWED_SUFFIXES)
 
 
 def run_backup(
@@ -34,7 +55,7 @@ def run_backup(
     if not os.access(resolved_script, os.X_OK):
         raise BackupExecutionError(f"Backup script is not executable: {resolved_script}")
 
-    destination = destination_path or state_path / "backups"
+    destination = (destination_path or default_backup_destination(state_path)).resolve()
     destination.mkdir(parents=True, exist_ok=True)
 
     env = os.environ.copy()
@@ -65,7 +86,11 @@ def run_backup(
     if not resolved_archive.is_absolute():
         resolved_archive = (destination / resolved_archive).resolve()
 
-    return BackupResult({"archive": resolved_archive})
+    size_bytes: int | None = None
+    with suppress(OSError):
+        size_bytes = resolved_archive.stat().st_size
+
+    return BackupResult({"archive": resolved_archive, "size_bytes": size_bytes})
 
 
 def _parse_archive_path(output: str) -> str | None:
@@ -80,4 +105,11 @@ def _default_backup_script() -> Path:
     return Path(__file__).resolve().parents[2] / "bin" / "km-backup"
 
 
-__all__ = ["BackupResult", "run_backup"]
+__all__ = [
+    "ARCHIVE_ALLOWED_SUFFIXES",
+    "ARCHIVE_FILENAME_PREFIX",
+    "BackupResult",
+    "default_backup_destination",
+    "is_backup_archive",
+    "run_backup",
+]

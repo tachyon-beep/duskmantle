@@ -1,41 +1,38 @@
+
 # Audit Summary
 
 ## Executive Summary
-The Duskmantle knowledge gateway delivers a cohesive hybrid search and graph experience that spans FastAPI, FastMCP, Neo4j, and Qdrant. The codebase is well-structured with clear service boundaries and strong test coverage across critical workflows. Recent hardening work now auto-generates credentials at startup, but several operational safeguards still lag behind production expectations: Qdrant collections can be recreated destructively, long-lived dependency handles are brittle, and backups rely on manual intervention. Addressing these gaps promptly will reduce the most acute security and availability risks while preserving the solid foundations already in place.
+The Duskmantle gateway remains a well-structured platform with clear service boundaries, strong test coverage, and solid observability hooks. Search, graph, and ingest workflows share a consistent dependency layer, and every FastAPI route is guarded by rate limiting and scope checks. Recent hardening of backup retention removes the highest operational risk; remaining gaps focus on configuration defaults, long-running telemetry storage, and the monolithic search service. Addressing the highlighted work packages will harden day-to-day operations without disrupting the existing architecture, while a modest refactor of the monolithic search service will unlock faster iteration on relevance improvements.
 
 ## Key Metrics
-- Python modules analysed: 106
-- Total Python LOC: 16965
-- Production LOC: 10483
-- Test LOC: 6482
-- Work packages logged: 10 (Critical=2, High=4, Medium=4)
-- Estimated technical debt ratio: ~0.35
-- Current automated test coverage: Not measured in repository (run `pytest --cov=gateway --cov-report=term-missing`)
+- Python modules analysed: 111 (production 71, tests 39, scripts 1)
+- Total Python LOC: 18,720 (production 11,623; tests 7,014)
+- Test focus: extensive pytest suite covering API, ingest, graph, MCP, and scheduler paths (`pytest.ini`)
+- Observability: Prometheus metrics, structured logging, SlowAPI limits, optional OTLP tracing
+- Deployment: Docker Compose with `gateway`, `neo4j:5.26.0`, and `qdrant/qdrant:1.15.4`; backups managed via `bin/km-backup`
 
-## Findings by Category
-- **Security:** Secure boot now generates strong credentials automatically, but the maintainer Cypher endpoint (WP-003) remains permissive and needs read-only enforcement.
-- **Operational:** Qdrant recreation (WP-002), missing dependency health checks (WP-004), and absent automated backups (WP-005) threaten uptime and recovery.
-- **Performance:** Search graph enrichment runs serially and lacks protective fallbacks when Neo4j slows (WP-007).
-- **Code Quality:** Incremental ingest ledger writes are fragile and merit schema validation plus atomic writes (WP-009); otherwise tests and structure are solid.
-- **Best Practice:** Container images run as root and bundle all services (WP-006); API contracts remain unversioned (WP-010).
-- **Enhancement:** Quick wins around feedback log rotation (WP-008) and backup automation (WP-005) unlock immediate resiliency gains.
-- **Technical Debt:** Manual operational playbooks (backups, dependency recovery) and unbounded logs represent the bulk of outstanding debt but are addressable within upcoming sprints.
+## Findings By Category
+- **Security** – Auth defaults rely on the container entrypoint; running `uvicorn` directly leaves the API wide open (`gateway/config/settings.py:50`). (WP-201)
+- **Operational** – Feedback logs never rotate (`gateway/search/feedback.py:29-66`) and `/audit/history` accepts unbounded limits. (WP-203, WP-208)
+- **Performance** – Search graph enrichment executes two serial Cypher calls per result with no timeout budget, creating tail-latency spikes under Neo4j load (`gateway/search/service.py:150-430`). (WP-204)
+- **Code Quality** – `SearchService` has grown past 1k LOC combining vector search, graph enrichment, and ML ranking, complicating reviews and targeted testing. (WP-206)
+- **Best Practice** – REST routes lack versioning, so protocol changes break MCP clients with no migration path (`gateway/api/routes/*.py`). (WP-207)
+- **Enhancement** – Collected feedback never feeds the ML scoring pipeline; no tooling exports datasets for `gateway/search/trainer.py`. (WP-209)
+- **Technical Debt** – Artifact ledger writes are non-atomic and risk corruption on crashes or concurrent ingest runs (`gateway/ingest/pipeline.py:432-444`). (WP-205)
 
-## Top 10 Priority Actions
-1. **WP-004** – Add dependency health probes and auto-reconnect logic for Neo4j/Qdrant.
-2. **WP-005** – Automate backups and document restoration procedures.
-3. **WP-006** – Harden containers by running non-root and splitting data services.
-4. **WP-007** – Optimise graph enrichment latency and guard against slow Neo4j responses.
-5. **WP-008** – Rotate and monitor search feedback storage.
-6. **WP-009** – Make incremental ingest ledger updates atomic and validated.
-7. **WP-010** – Introduce explicit API versioning and compatibility guarantees.
-8. **WP-001** – (Completed) Monitor the new secure-boot path and document procedures for custom deployments.
-9. **WP-002** – (Completed) Keep regression tests guarding against destructive Qdrant resets.
-10. **WP-003** – (Completed) Keep read-only Cypher safeguards documented and monitored.
+## Top Priority Actions
+1. **WP-201** – Flip auth defaults to secure mode and warn loudly when exposed.
+2. **WP-204** – Bound graph enrichment latency with concurrency limits and timeouts.
+3. **WP-203** – Rotate and monitor search feedback logs before disks fill.
+4. **WP-205** – Make artifact ledger updates atomic with locking and temp files.
+5. **WP-207** – Introduce a versioned REST prefix to stabilise external integrations.
+6. **WP-206** – Decompose `SearchService` for maintainability and clearer extensibility.
+7. **WP-208** – Clamp `/audit/history` limits to prevent accidental DoS.
+8. **WP-209** – Export feedback logs into the training pipeline to revive ML scoring.
 
-## System Health Score
-- **Overall score:** 6.5/10 (Amber) – Core functionality is reliable, but security posture and operational resilience require targeted remediation before production scale-out.
+## Overall System Health
+- **Score**: 7/10 (Amber) – Core functionality is dependable and well tested, but tightening auth defaults, backup safety, and graph/search performance is necessary before scaling to less supervised environments.
 
 ## Recommended Immediate Actions
-- Schedule WP-004 and WP-005 immediately after to stabilise runtime behaviour and backups.
-- Tackle Quick Wins (WP-008, WP-009, WP-010) alongside remediation for rapid, low-effort resilience gains.
+- Prioritise WP-201 in the next sprint to eliminate the top security gap; ensure unit coverage for secure/insecure boots.
+- Schedule WP-204 alongside telemetry review to stabilise search latency under Neo4j drift; run `pytest tests/test_search_service.py` after changes.

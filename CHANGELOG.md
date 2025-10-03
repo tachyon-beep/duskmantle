@@ -4,7 +4,9 @@ All notable changes to this project will be documented in this file. The format 
 
 ## Unreleased
 
-- _Placeholder_ — upcoming changes will be listed here.
+### Changed
+
+- Hardened backup retention: backups now default to `${KM_STATE_PATH}/backups/archives`, the scheduler only prunes `km-backup-*.tgz` archives, and a new metric (`km_backup_retention_deletes_total`) tracks deletions while leaving operator-managed files untouched.
 
 ## 1.1.0 - 2025-10-01
 

@@ -12,10 +12,10 @@ Scheduled backups are controlled via the `KM_BACKUP_*` environment variables.
 | `KM_BACKUP_INTERVAL_MINUTES` | `720` | Interval cadence (in minutes) when a cron expression is not supplied. |
 | `KM_BACKUP_CRON` | _unset_ | Cron expression (UTC); takes precedence over the interval. |
 | `KM_BACKUP_RETENTION_LIMIT` | `7` | Number of most recent archives preserved under the destination path. |
-| `KM_BACKUP_DEST_PATH` | `${KM_STATE_PATH}/backups` | Directory receiving backup archives. |
+| `KM_BACKUP_DEST_PATH` | `${KM_STATE_PATH}/backups/archives` | Directory receiving managed backup archives. |
 | `KM_BACKUP_SCRIPT` | `<repo>/bin/km-backup` | Override path to the helper script executed by the scheduler/MCP tool. |
 
-When enabled, the scheduler executes the backup script, writes archives into the destination directory, updates Prometheus metrics (`km_backup_runs_total`, `km_backup_last_status`, `km_backup_last_success_timestamp`), and trims older archives once the retention limit is exceeded. `/healthz` exposes a `backup` check with the most recent status.
+When enabled, the scheduler executes the backup script, writes archives into the destination directory, updates Prometheus metrics (`km_backup_runs_total`, `km_backup_last_status`, `km_backup_last_success_timestamp`, `km_backup_retention_deletes_total`), and trims older `km-backup-*.tgz` archives once the retention limit is exceeded. Files that do not match this naming scheme are ignored. `/healthz` exposes a `backup` check with the most recent status.
 
 ## Manual Backup Invocation
 
@@ -27,7 +27,7 @@ python -m gateway.mcp.cli backup
 
 # Manual execution (inside the container)
 KM_BACKUP_SOURCE=${KM_STATE_PATH} \
-KM_BACKUP_DEST=${KM_STATE_PATH}/backups \
+KM_BACKUP_DEST=${KM_STATE_PATH}/backups/archives \
     bin/km-backup
 ```
 

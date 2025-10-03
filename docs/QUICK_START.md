@@ -153,10 +153,10 @@ Create a backup (tar.gz) of `/opt/knowledge/var`:
 bin/km-backup
 ```
 
-The archive lands in `.duskmantle/backups/km-backup-<timestamp>.tgz`. To restore:
+The archive lands in `.duskmantle/backups/archives/km-backup-<timestamp>.tgz`. To restore:
 
 ```bash
-tar -xzf .duskmantle/backups/km-backup-<timestamp>.tgz -C .duskmantle/config
+tar -xzf .duskmantle/backups/archives/km-backup-<timestamp>.tgz -C .duskmantle/config
 ```
 
 Restart the container to pick up restored state.
@@ -188,7 +188,7 @@ For more detail, consult `docs/OBSERVABILITY_GUIDE.md` and the release playbook 
 ## 11. Upgrades & Rollback
 
 1. Review the release changelog for schema/config changes.
-2. Back up `/opt/knowledge/var` (`bin/km-backup`). Copy `.duskmantle/backups/km-backup-*.tgz` off-host.
+2. Back up `/opt/knowledge/var` (`bin/km-backup`). Copy `.duskmantle/backups/archives/km-backup-*.tgz` off-host.
 3. Stop the running container (`docker rm -f duskmantle`).
 4. Pull or build the new image (`docker pull duskmantle/km:<tag>` or `scripts/build-image.sh`). Relaunch with the same env vars
 (`KM_NEO4J_DATABASE=neo4j`, tokens, mounts).

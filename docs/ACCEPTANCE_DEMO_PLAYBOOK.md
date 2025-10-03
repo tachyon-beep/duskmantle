@@ -113,7 +113,7 @@ Record total artifacts and chunk counts.
 
    ```bash
    bin/km-backup
-   ls backups
+   ls backups/archives
    ```
 
    Note the archive name.
@@ -127,7 +127,7 @@ Record total artifacts and chunk counts.
 
    ```bash
    docker run --rm -v $(pwd)/.duskmantle/config:/data alpine:3.20 sh -c "rm -rf /data/*"
-   tar -xzf backups/<archive>.tgz -C .duskmantle/config
+   tar -xzf backups/archives/<archive>.tgz -C .duskmantle/config
    ```
 
 4. Relaunch the container and rerun health checks (`/readyz`, `/healthz`, `/coverage`).

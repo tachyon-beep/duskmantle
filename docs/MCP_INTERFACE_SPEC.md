@@ -149,7 +149,7 @@ The MCP server exposes the following helper summaries. These mirror the metadata
 - **Errors:** `recipe_not_found`, `tool_failed`, `assert_failed`, `timeout`.
 
 - **Request:** `{ "destination": null }`
-- **Response:** `{ "archive": "backups/km-backup-20250927T195120.tgz" }`
+- **Response:** `{ "archive": "backups/archives/km-backup-20250927T195120.tgz" }`
 
 ### 3.10 `km-upload`
 - **Request:**

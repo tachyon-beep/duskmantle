@@ -1,181 +1,74 @@
+
 # Risk Register
 
-## RISK-001: Gateway deployed with authentication disabled or default credentials
+## RISK-001: Insecure Gateway Boots When Launched Manually
+- **Category**: Security
+- **Likelihood**: Medium
+- **Impact**: High
+- **Description**: Launching the API without the container entrypoint leaves `KM_AUTH_ENABLED` disabled by default (`gateway/config/settings.py:50`), exposing every route to unauthenticated callers.
+- **Mitigation Strategy**: Implement WP-201 to default to secure boots, warn loudly when auth is disabled, and extend security tests.
+- **Risk Owner**: Gateway maintainers
+- **Monitoring & Review**: Add CI coverage in `tests/test_api_security.py`, include a release checklist item verifying auth defaults, and review at every minor release.
 
-**Likelihood**: Low
-**Impact**: Critical
+## RISK-002: Backup Retention Deletes Unrelated Files
+- **Category**: Operational
+- **Likelihood**: Low
+- **Impact**: Medium
+- **Description**: Retention now targets `km-backup-*.tgz` archives inside `${KM_STATE_PATH}/backups/archives`, leaving foreign files untouched. Residual risk comes from operators manually placing sensitive data in the managed archive directory or renaming files to match the pattern.
+- **Mitigation Strategy**: Completed via WP-202 — scheduler pruning is pattern scoped, `bin/km-backup` writes to the archival subdirectory by default, documentation highlights the layout, and `km_backup_retention_deletes_total` surfaces deletions.
+- **Risk Owner**: Operations / SRE
+- **Monitoring & Review**: Track `km_backup_retention_deletes_total` and `km_backup_runs_total`, audit the archive directory monthly, and keep backup destinations dedicated to gateway artifacts.
 
-### Description
-Earlier revisions shipped with auth disabled and well-known credentials. The entrypoint now auto-generates strong secrets, but regressions or deliberate use of `KM_ALLOW_INSECURE_BOOT` can still expose the surface if misused.
+## RISK-003: Search Feedback Log Grows Without Bound
+- **Category**: Operational
+- **Likelihood**: High
+- **Impact**: Medium
+- **Description**: `SearchFeedbackStore` appends to `events.log` indefinitely (`gateway/search/feedback.py:29-66`) with no rotation or size monitoring.
+- **Mitigation Strategy**: Execute WP-203 to add rotation, metrics, and health checks; consider archiving old logs.
+- **Risk Owner**: Gateway maintainers
+- **Monitoring & Review**: Track new metrics (`km_feedback_events_bytes_total`) once implemented; until then, include file size checks in weekly ops runbooks.
 
-### Mitigation Strategy
-Keep WP-001 protections in place, bake secure-boot checks into release smoke tests, and document when insecure boot is permissible.
+## RISK-004: Neo4j Tail Latency Stalls Search Responses
+- **Category**: Performance
+- **Likelihood**: Medium
+- **Impact**: Medium-High
+- **Description**: Search enrichment performs two sequential Cypher queries per hit (`gateway/search/service.py:150-430`), so a slow node degrades the entire response.
+- **Mitigation Strategy**: Complete WP-204 (bounded graph budget) and WP-206 (refactor) to parallelise lookups, enforce timeouts, and improve observability.
+- **Risk Owner**: Gateway maintainers / Performance engineer
+- **Monitoring & Review**: Watch `SEARCH_GRAPH_LOOKUP_SECONDS` for P95 spikes; if over 500ms for two consecutive days, prioritise mitigation work.
 
-### Risk Ownership
-Platform engineering
+## RISK-005: Artifact Ledger Corruption Breaks Incremental Ingest
+- **Category**: Technical Debt
+- **Likelihood**: Low-Medium
+- **Impact**: Medium
+- **Description**: Ledger writes are non-atomic (`gateway/ingest/pipeline.py:432-444`), so concurrent runs or crashes can corrupt incremental state.
+- **Mitigation Strategy**: Implement WP-205 for atomic writes, locking, and validation; add recovery tooling.
+- **Risk Owner**: Gateway maintainers
+- **Monitoring & Review**: Run ingestion smoke tests after each release and check for ledger read warnings in logs.
 
-### Monitoring & Alerts
-Add startup log assertions and periodic security scans to verify auth posture; review environment configs during release checklist.
+## RISK-006: Lack Of API Versioning Breaks External Clients
+- **Category**: Best Practice
+- **Likelihood**: Medium
+- **Impact**: Medium
+- **Description**: REST routes live at the root (`gateway/api/routes/*.py`), so schema changes can break MCP clients and automation with no migration path.
+- **Mitigation Strategy**: Deliver WP-207 to introduce `/api/v1` and document deprecation timelines.
+- **Risk Owner**: Gateway maintainers / Developer relations
+- **Monitoring & Review**: Track MCP smoke tests (`pytest -m mcp_smoke`) in CI; review compatibility before each minor release.
 
-### Review Cadence
-Quarterly security review and pre-release penetration test.
+## RISK-007: Audit History Endpoint Can Exhaust Memory
+- **Category**: Operational
+- **Likelihood**: Low
+- **Impact**: Medium
+- **Description**: `/audit/history` accepts arbitrary `limit` values (`gateway/api/routes/reporting.py:25-38`), allowing a single request to dump the full SQLite table.
+- **Mitigation Strategy**: Apply WP-208 to clamp limits, validate inputs, and document ceilings.
+- **Risk Owner**: Operations / API owners
+- **Monitoring & Review**: Once limit clamping is in place, log when requests hit the ceiling; review monthly.
 
-## RISK-002: Qdrant collection recreated on transient errors
-
-**Likelihood**: Low
-**Impact**: High
-
-### Description
-Legacy logic recreated the Qdrant collection whenever existence checks failed, erasing embeddings during transient outages. The writer now performs non-destructive creation with retries; risk remains only if future regressions reintroduce destructive paths.
-
-### Mitigation Strategy
-Maintain the WP-002 safeguards (idempotent creation, explicit reset helper, regression tests) and monitor for client changes that might bypass the guardrails.
-
-### Risk Ownership
-Search platform
-
-### Monitoring & Alerts
-Emit metrics/alerts for Qdrant connectivity and collection mutations; audit ingestion logs for reset_collection usage.
-
-### Review Cadence
-Review after each release touching ingestion/Qdrant logic and during quarterly DR drills.
-
-## RISK-003: Maintainer Cypher endpoint allows graph mutation
-
-**Likelihood**: Low
-**Impact**: High
-
-### Description
-String-based filtering previously allowed obfuscated write queries when a maintainer token leaked. The API now enforces read-only routing, inspects summary counters for mutations, strips literals/comments, and whitelists safe procedures. Residual risk remains if operators fail to configure read-only credentials or if future changes weaken validation.
-
-### Mitigation Strategy
-Maintain the WP-003 safeguards (read-only driver credentials, strict validation, regression tests) and document the requirement to supply dedicated read-only Neo4j credentials. Monitor for repeated blocked queries as a signal of probing.
-
-### Risk Ownership
-Graph services
-
-### Monitoring & Alerts
-Log all /graph/cypher invocations with safe auditing; alert on client errors or suspicious patterns.
-
-### Review Cadence
-Security review after mitigation and annually thereafter.
-
-## RISK-004: Long-lived Neo4j/Qdrant handles fail after dependency restart
-
-**Likelihood**: Medium
-**Impact**: High
-
-### Description
-The API caches drivers forever; service restarts lead to stuck 503/500 responses until manual intervention.
-
-### Mitigation Strategy
-Complete WP-004 to add health probes, auto-reconnect logic, and surfaced metrics.
-
-### Risk Ownership
-Platform engineering
-
-### Monitoring & Alerts
-Track dependency health metrics and alert on repeated auto-restart attempts or 5xx rates.
-
-### Review Cadence
-Include in on-call weekly health check and post-incident reviews.
-
-## RISK-005: No automated backups for graph/vector state
-
-**Likelihood**: Medium
-**Impact**: High
-
-### Description
-State lives on local disk; only ad-hoc MCP backups exist, risking irrecoverable loss after hardware failure.
-
-### Mitigation Strategy
-Execute WP-005 to schedule backups, replicate archives, and document recovery.
-
-### Risk Ownership
-SRE / operations
-
-### Monitoring & Alerts
-Alert when scheduled backups fail or grow stale; track restore tests in runbook.
-
-### Review Cadence
-Include in quarterly DR exercises and after infrastructure changes.
-
-## RISK-006: Monolithic container running as root
-
-**Likelihood**: Low
-**Impact**: High
-
-### Description
-Compromise of any process yields root access and full control of Neo4j and Qdrant data.
-
-### Mitigation Strategy
-Adopt WP-006 to split services, drop privileges, and tighten runtime policies.
-
-### Risk Ownership
-DevOps
-
-### Monitoring & Alerts
-Container scanning, runtime security events, and periodic CIS benchmark checks.
-
-### Review Cadence
-Security review after implementation and on each base-image update.
-
-## RISK-007: Search latency and disk pressure from enrichment and feedback logs
-
-**Likelihood**: High
-**Impact**: Medium
-
-### Description
-Sequential graph enrichment and unbounded feedback logging can cause timeouts and fill storage during heavy usage.
-
-### Mitigation Strategy
-Implement WP-007 and WP-008 to batch graph calls, add timeouts, and rotate feedback artifacts.
-
-### Risk Ownership
-Search platform
-
-### Monitoring & Alerts
-Track graph lookup latency histograms, file sizes for events.log, and alert when thresholds are exceeded.
-
-### Review Cadence
-Monthly performance review and after major ingest/search releases.
-
-## RISK-008: Incremental ingest ledger corruption
-
-**Likelihood**: Medium
-**Impact**: Medium
-
-### Description
-Ledger writes lack locking/validation, so partial writes or concurrent runs can break incremental ingest.
-
-### Mitigation Strategy
-Deliver WP-009 to introduce atomic writes, validation, and recovery tooling.
-
-### Risk Ownership
-Ingestion team
-
-### Monitoring & Alerts
-Add checksums/alerts when ledger fails to parse; monitor ingestion skip metrics.
-
-### Review Cadence
-Post-ingest incident review and quarterly ingest pipeline audit.
-
-## RISK-009: Unversioned API contracts
-
-**Likelihood**: Low
-**Impact**: Medium
-
-### Description
-REST and MCP clients have no explicit compatibility guarantees, increasing breakage risk during releases.
-
-### Mitigation Strategy
-Complete WP-010 to add versioning, documentation, and contract tests.
-
-### Risk Ownership
-Platform engineering
-
-### Monitoring & Alerts
-Track API changes in release checklist; add CI contract tests.
-
-### Review Cadence
-With each API-affecting release.
+## RISK-008: Feedback Insights Never Reach ML Scoring
+- **Category**: Enhancement Opportunity
+- **Likelihood**: High
+- **Impact**: Low
+- **Description**: Feedback logs are not transformed into training datasets (`gateway/search/trainer.py`), so ML scoring mode stagnates.
+- **Mitigation Strategy**: Implement WP-209 to export feedback, retrain models, and document the loop.
+- **Risk Owner**: Search relevance team
+- **Monitoring & Review**: Track model artifact freshness (timestamp in state directory) and schedule quarterly retraining reviews.
