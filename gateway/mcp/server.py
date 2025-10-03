@@ -60,6 +60,16 @@ TOOL_USAGE = {
             """
         ).strip(),
     },
+    "km-graph-tests-of": {
+        "description": "List tests that exercise a given symbol",
+        "details": dedent(
+            """
+        Required: `symbol_id` such as `src/project/module.py::Example.method`.
+        Example: `/sys mcp run duskmantle km-graph-tests-of --symbol-id "src/project/module.py::Example.method"`.
+        Returns the symbol metadata plus any `TestCase` nodes linked via `EXERCISES` edges.
+        """
+        ).strip(),
+    },
     "km-graph-search": {
         "description": "Search graph entities (artifacts, subsystems, teams) by term",
         "details": dedent(
@@ -300,6 +310,29 @@ def build_server(settings: MCPSettings | None = None) -> FastMCP:
             raise
         _record_success("km-graph-node", start)
         return result
+
+
+    @server.tool(name="km-graph-tests-of", description=TOOL_USAGE["km-graph-tests-of"]["description"])
+    async def km_graph_tests_of(
+        symbol_id: str,
+        context: Context | None = None,
+    ) -> dict[str, Any]:
+        symbol_id = symbol_id.strip()
+        if not symbol_id:
+            raise ValueError("symbol_id must be a non-empty string")
+        start = perf_counter()
+        try:
+            response = await state.require_client().symbol_tests(symbol_id)
+        except GatewayRequestError as exc:
+            await _report_error(context, f"Symbol lookup failed: {exc.detail}")
+            _record_failure("km-graph-tests-of", exc, start)
+            raise
+        except Exception as exc:  # pragma: no cover - defensive
+            _record_failure("km-graph-tests-of", exc, start)
+            raise
+        _record_success("km-graph-tests-of", start)
+        await _report_info(context, f"Found {len(response.get('tests', []))} test(s)")
+        return response
 
     @server.tool(name="km-graph-subsystem", description=TOOL_USAGE["km-graph-subsystem"]["description"])
     async def km_graph_subsystem(

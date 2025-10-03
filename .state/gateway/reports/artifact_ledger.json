@@ -1,0 +1,975 @@
+{
+  "updated_at": 1759529457.4964201,
+  "artifacts": {
+    ".codacy/cli.sh": {
+      "artifact_type": "config",
+      "subsystem": null,
+      "digest": "1bb82234e74e5385ae6a6e93cb61cbc3356fdffdeb36f907686b88679c0cd82c",
+      "git_commit": null,
+      "git_timestamp": null,
+      "chunk_count": 5,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    ".codacy/cli-config.yaml": {
+      "artifact_type": "config",
+      "subsystem": null,
+      "digest": "f70e7c9f02f7d41653bcd166a4e3f316a41a704c69f9b81b5514ffcf707ec972",
+      "git_commit": null,
+      "git_timestamp": null,
+      "chunk_count": 1,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    ".codacy/.gitignore": {
+      "artifact_type": "config",
+      "subsystem": null,
+      "digest": "ee11aa1a75df6b5abeed7374ee377a507579d5149076dd99df54eb05c1197d3e",
+      "git_commit": null,
+      "git_timestamp": null,
+      "chunk_count": 1,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    ".codacy/codacy.yaml": {
+      "artifact_type": "config",
+      "subsystem": null,
+      "digest": "284a33b502619f6e2a67b6dbf8404abda3856db3cf01556c8232f3c2a6084fe6",
+      "git_commit": null,
+      "git_timestamp": null,
+      "chunk_count": 1,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/test_graph_cli.py": {
+      "artifact_type": "test",
+      "subsystem": null,
+      "digest": "184b6ad4708d4454a7050c2dc5346049707897b5b7873e2686d6049c25ec0b01",
+      "git_commit": "8593cc07f764e04c35d91b1b4f50ca8649bb2ed7",
+      "git_timestamp": 1759293029,
+      "chunk_count": 2,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/conftest.py": {
+      "artifact_type": "test",
+      "subsystem": null,
+      "digest": "6e5bfe0c034b07722c24ed8657d2bf69041781ea06121e954d4c0494d069b1da",
+      "git_commit": "5ad069a4dbfe3a8c0c5c62b6a030eef2ff92c084",
+      "git_timestamp": 1759494846,
+      "chunk_count": 12,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/test_qdrant_writer.py": {
+      "artifact_type": "test",
+      "subsystem": null,
+      "digest": "6431e146cf6d6830a15078e6922507aab5422da69fe52b366ba326daba2df0e9",
+      "git_commit": "b40329332f9a935cd37877afe7631f1dc1f62c26",
+      "git_timestamp": 1759400316,
+      "chunk_count": 5,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/test_symbol_extraction.py": {
+      "artifact_type": "test",
+      "subsystem": null,
+      "digest": "c2dc51d94ce2c89fcc3c4050a6605686dcf393c4ce3354855f0338e038681d94",
+      "git_commit": "860da96c5199df140774d3bca902f2c7666c3cff",
+      "git_timestamp": 1759518057,
+      "chunk_count": 1,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/test_discovery_symbols.py": {
+      "artifact_type": "test",
+      "subsystem": null,
+      "digest": "3920581c64e92d7dec7eec5c9e59196e31a8e35ef816626628f3f285bd753427",
+      "git_commit": "860da96c5199df140774d3bca902f2c7666c3cff",
+      "git_timestamp": 1759518057,
+      "chunk_count": 3,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/test_coverage_report.py": {
+      "artifact_type": "test",
+      "subsystem": null,
+      "digest": "aa0d60961d89880392bb7d88930378eef782c2fd91397a65ac7e19d1fe7eee85",
+      "git_commit": "267804f5a62d46d02817e0438d82bd7e7db885fd",
+      "git_timestamp": 1759482803,
+      "chunk_count": 7,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/test_graph_api.py": {
+      "artifact_type": "test",
+      "subsystem": null,
+      "digest": "4df12e74873e20b6b1ed96d5719f9df3840195dbd49ca82756985c83cc2b6edf",
+      "git_commit": "267804f5a62d46d02817e0438d82bd7e7db885fd",
+      "git_timestamp": 1759482803,
+      "chunk_count": 22,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/test_graph_service_startup.py": {
+      "artifact_type": "test",
+      "subsystem": null,
+      "digest": "8cc892752380125e4de861c9999b8128f5276bb4ebd9c0194c93d233919b17ef",
+      "git_commit": "267804f5a62d46d02817e0438d82bd7e7db885fd",
+      "git_timestamp": 1759482803,
+      "chunk_count": 4,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/test_mcp_recipes.py": {
+      "artifact_type": "test",
+      "subsystem": null,
+      "digest": "28b9fdfcb73e6b18bf49f8d4f4398d0fab59ed37f1c686a95bdd0be258675011",
+      "git_commit": "ba6fb3d9eb22d0a772f3e7f51fe24c6b6f0172d2",
+      "git_timestamp": 1759198032,
+      "chunk_count": 1,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/test_connection_managers.py": {
+      "artifact_type": "test",
+      "subsystem": null,
+      "digest": "23249a7b7d51e459a8d9ba2f16159cd849e7727549cf370cff3327f57dabeeee",
+      "git_commit": "19cb33a96c7f9a62031c0b61da34d5e571db59e5",
+      "git_timestamp": 1759466939,
+      "chunk_count": 6,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/test_graph_validation.py": {
+      "artifact_type": "test",
+      "subsystem": null,
+      "digest": "e8f6a2f676f3187d3b781e41e17e338ce6af1a8d381bd11e90bd2f24f204f12e",
+      "git_commit": "8593cc07f764e04c35d91b1b4f50ca8649bb2ed7",
+      "git_timestamp": 1759293029,
+      "chunk_count": 12,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/test_search_feedback.py": {
+      "artifact_type": "test",
+      "subsystem": null,
+      "digest": "9b0ee2a61b5e603b0b286bfb832064ded7cab27267b46df5d539d5edc500a4c3",
+      "git_commit": "78fb94519123fa18622051561f1951137ffe2f91",
+      "git_timestamp": 1759488980,
+      "chunk_count": 3,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/test_search_service.py": {
+      "artifact_type": "test",
+      "subsystem": null,
+      "digest": "549c832e73d6ae3252bf20adbc603255eeb7ad2573b93cd39ebc5d8464e86f67",
+      "git_commit": "78fb94519123fa18622051561f1951137ffe2f91",
+      "git_timestamp": 1759488980,
+      "chunk_count": 37,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/test_search_exporter.py": {
+      "artifact_type": "test",
+      "subsystem": null,
+      "digest": "2ce3ddfbb806cc40b08621f6429267bd9098008ba9ce3cb3e667a47a140fbbe6",
+      "git_commit": "78fb94519123fa18622051561f1951137ffe2f91",
+      "git_timestamp": 1759488980,
+      "chunk_count": 7,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/test_search_evaluation.py": {
+      "artifact_type": "test",
+      "subsystem": null,
+      "digest": "69263a3271ef1fed28ad9c35d86439310fcdfea0e60bb060e6480decf5acc998",
+      "git_commit": "8593cc07f764e04c35d91b1b4f50ca8649bb2ed7",
+      "git_timestamp": 1759293029,
+      "chunk_count": 3,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/test_lifecycle_report.py": {
+      "artifact_type": "test",
+      "subsystem": null,
+      "digest": "fa170c7ea645ed31a1b2284ac8aebe76a4eb506bb9c516df3356dc77232fee5f",
+      "git_commit": "bee1b5240e6db486b5d75af298f94738eea9fdb4",
+      "git_timestamp": 1759434716,
+      "chunk_count": 8,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/test_scheduler.py": {
+      "artifact_type": "test",
+      "subsystem": null,
+      "digest": "9ad754d8ad44093931c5735e726828ce09eba6a5a04e24715e7c6dca9721ca1b",
+      "git_commit": "5e6388578ba621ea1d1e547116b139e333ef3d4e",
+      "git_timestamp": 1759473653,
+      "chunk_count": 15,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/test_search_profiles.py": {
+      "artifact_type": "test",
+      "subsystem": null,
+      "digest": "37a67371bdfb9950a716f9ea25c5ee07a140502c7be2c9edaef632593276f70b",
+      "git_commit": "ba6fb3d9eb22d0a772f3e7f51fe24c6b6f0172d2",
+      "git_timestamp": 1759198032,
+      "chunk_count": 3,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/test_search_api.py": {
+      "artifact_type": "test",
+      "subsystem": null,
+      "digest": "112f139a5641394924432b056251cda8a05f430be7564b3738735b1629981a5a",
+      "git_commit": "860da96c5199df140774d3bca902f2c7666c3cff",
+      "git_timestamp": 1759518057,
+      "chunk_count": 17,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/test_graph_auto_migrate.py": {
+      "artifact_type": "test",
+      "subsystem": null,
+      "digest": "3933d58e2ea2eeb15e12a645c0857c6375a5790f07826d0fa389474efe6061f4",
+      "git_commit": "bee1b5240e6db486b5d75af298f94738eea9fdb4",
+      "git_timestamp": 1759434716,
+      "chunk_count": 9,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/test_graph_service_unit.py": {
+      "artifact_type": "test",
+      "subsystem": null,
+      "digest": "0d8da0773d51f230de8bacd1e52480a2c6e06df51930c7dc68230b6f521c42d4",
+      "git_commit": "b26ac9f0f5afbee51ed77c25bf015710edde0f4d",
+      "git_timestamp": 1759494940,
+      "chunk_count": 22,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/test_ingest_cli.py": {
+      "artifact_type": "test",
+      "subsystem": null,
+      "digest": "e85235fcdbfbbe8e1fd37924eb9e12d3e4e031b840fb742463b2ecc2100b731a",
+      "git_commit": "267804f5a62d46d02817e0438d82bd7e7db885fd",
+      "git_timestamp": 1759482803,
+      "chunk_count": 9,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/test_search_maintenance.py": {
+      "artifact_type": "test",
+      "subsystem": null,
+      "digest": "90ce7f3291123658381fdc3de6a173f40b8ae0f09c340ac6b2bda2f2a3f3eb46",
+      "git_commit": "f69174759b14a37f432190f53bade20fcd0fc16d",
+      "git_timestamp": 1759318728,
+      "chunk_count": 15,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/test_mcp_smoke_recipes.py": {
+      "artifact_type": "test",
+      "subsystem": null,
+      "digest": "8da36e423184451b901f2c7e8a3f5dc4b6901ba23f143eb78dd2ce3e4ffaf4b0",
+      "git_commit": "d0a31d5b07fcc14f906271a16e1076c9b86a7391",
+      "git_timestamp": 1759328798,
+      "chunk_count": 2,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/test_ingest_pipeline.py": {
+      "artifact_type": "test",
+      "subsystem": null,
+      "digest": "11312b9dec9742761868e233a64b4fb8c6450e6e8fe685132c574fa240b3548a",
+      "git_commit": "267804f5a62d46d02817e0438d82bd7e7db885fd",
+      "git_timestamp": 1759482803,
+      "chunk_count": 10,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/test_km_watch.py": {
+      "artifact_type": "test",
+      "subsystem": null,
+      "digest": "ac724efce9a0fc418dfcc50485222761db0dfbc2d3fe547d23c73d1812e0c6cc",
+      "git_commit": "8593cc07f764e04c35d91b1b4f50ca8649bb2ed7",
+      "git_timestamp": 1759293029,
+      "chunk_count": 5,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/test_graph_migrations.py": {
+      "artifact_type": "test",
+      "subsystem": null,
+      "digest": "15b07282aa9a9b8597d01824aa2661ea323c05ebf6a97eb63e177372278e777f",
+      "git_commit": "6462cd5d60a683871b38004543ac0caec9d98f31",
+      "git_timestamp": 1759213999,
+      "chunk_count": 4,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/test_tracing.py": {
+      "artifact_type": "test",
+      "subsystem": null,
+      "digest": "1f6a6ee28955dfa72c75b8aad58dd07f3940ed03cb85c69e6fb6f8ea7a51a222",
+      "git_commit": "3c0f4b0062cc2c89c9f21a5bc3b60afdb0e84ff4",
+      "git_timestamp": 1759209313,
+      "chunk_count": 6,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/test_lifecycle_cli.py": {
+      "artifact_type": "test",
+      "subsystem": null,
+      "digest": "f6064a5048f37db9e4b3e812969ce89ac119ecf8ee59d313a2090ac8e784fece",
+      "git_commit": "f53c815d16e7328a154d2e95295f2135cf7d6399",
+      "git_timestamp": 1759141857,
+      "chunk_count": 2,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/test_recipes_executor.py": {
+      "artifact_type": "test",
+      "subsystem": null,
+      "digest": "715efb5ee7e59eb58c3495b4403684af437db48cde109f497b5675ded64815ac",
+      "git_commit": "01fc40440934ce5ebcaef0e084722603a61dd605",
+      "git_timestamp": 1759145023,
+      "chunk_count": 6,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/test_ui_routes.py": {
+      "artifact_type": "test",
+      "subsystem": null,
+      "digest": "15e201bdb0b72ecc6043600ba448f10690d65b29b506ae15b331a8832aeaa49b",
+      "git_commit": "5ad069a4dbfe3a8c0c5c62b6a030eef2ff92c084",
+      "git_timestamp": 1759494846,
+      "chunk_count": 10,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/playwright_server.py": {
+      "artifact_type": "test",
+      "subsystem": null,
+      "digest": "dbb9c3d58f8f343e5b58a4073a84a195782a89eb14bea3bc34174ca0857ba07e",
+      "git_commit": "8593cc07f764e04c35d91b1b4f50ca8649bb2ed7",
+      "git_timestamp": 1759293029,
+      "chunk_count": 7,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/test_settings_defaults.py": {
+      "artifact_type": "test",
+      "subsystem": null,
+      "digest": "8f5b9516256a95615a35ab72e8b8eb28d64cc2a803d890b4c0362472f9549f3a",
+      "git_commit": "860da96c5199df140774d3bca902f2c7666c3cff",
+      "git_timestamp": 1759518057,
+      "chunk_count": 3,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/test_neo4j_writer.py": {
+      "artifact_type": "test",
+      "subsystem": null,
+      "digest": "ad490ece0a21947afe11b3dddef3289935b7fec6b4a04694d1d188cc8239d99d",
+      "git_commit": "860da96c5199df140774d3bca902f2c7666c3cff",
+      "git_timestamp": 1759518057,
+      "chunk_count": 10,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/test_symbol_linking.py": {
+      "artifact_type": "test",
+      "subsystem": null,
+      "digest": "3cb75ef89d644a2c457c235de2d1c9f2b6a37774b4c8e42b3e3fb1ed632702cf",
+      "git_commit": null,
+      "git_timestamp": null,
+      "chunk_count": 3,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/test_release_scripts.py": {
+      "artifact_type": "test",
+      "subsystem": null,
+      "digest": "055193f1fd91603f7b5d80e2179539f9657913e001ef7524a6368f7f0c2cf962",
+      "git_commit": "ba6fb3d9eb22d0a772f3e7f51fe24c6b6f0172d2",
+      "git_timestamp": 1759198032,
+      "chunk_count": 5,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/test_api_security.py": {
+      "artifact_type": "test",
+      "subsystem": null,
+      "digest": "9593cf0dd206ec8f7581f074b3ead0a57ae16e6be1aa3ae8e165c24a966ca28d",
+      "git_commit": "267804f5a62d46d02817e0438d82bd7e7db885fd",
+      "git_timestamp": 1759482803,
+      "chunk_count": 13,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/test_app_smoke.py": {
+      "artifact_type": "test",
+      "subsystem": null,
+      "digest": "8b512f9ab9aa2bac94ae8c4a4c1915e0f099fbac4a0795d890b06a307b97909c",
+      "git_commit": "5ad069a4dbfe3a8c0c5c62b6a030eef2ff92c084",
+      "git_timestamp": 1759494846,
+      "chunk_count": 14,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/test_graph_database_validation.py": {
+      "artifact_type": "test",
+      "subsystem": null,
+      "digest": "7c8e2fe87fd6082d5ba88230e46644d8cc1a32a451d761415b58c7e0ec7e9342",
+      "git_commit": "bc6d9fd945713b212dcd4e2f9363748db6cde252",
+      "git_timestamp": 1759329733,
+      "chunk_count": 2,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/test_search_cli_show_weights.py": {
+      "artifact_type": "test",
+      "subsystem": null,
+      "digest": "63a577157861395e26e0c393531ab49c175739625162f0a01a4a6520d9f21fab",
+      "git_commit": "4efe369f29dfe843e75771aef7455258285976a4",
+      "git_timestamp": 1758951608,
+      "chunk_count": 1,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/__init__.py": {
+      "artifact_type": "test",
+      "subsystem": null,
+      "digest": "ee0fcf51bfe7e23270a951e1297fe3b42b83e9a0b329cb482ffdb5042c0def4f",
+      "git_commit": "299fff524fe0400b6438bf3515b7b025f02235d5",
+      "git_timestamp": 1758843473,
+      "chunk_count": 1,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "docs/QUICK_START.md": {
+      "artifact_type": "doc",
+      "subsystem": null,
+      "digest": "f2b7f136c6846733dc25e65f3fee1229be60e0b7a94760227ca15696815b5aee",
+      "git_commit": "860da96c5199df140774d3bca902f2c7666c3cff",
+      "git_timestamp": 1759518057,
+      "chunk_count": 17,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "docs/MCP_AGENT_PLAYBOOK.md": {
+      "artifact_type": "doc",
+      "subsystem": null,
+      "digest": "cdf6e5ed8fca34eefc25c3f6a2e58da440f14c4ff362febe1267a3c1f8721ce7",
+      "git_commit": "01fc40440934ce5ebcaef0e084722603a61dd605",
+      "git_timestamp": 1759145023,
+      "chunk_count": 7,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "docs/KNOWLEDGE_MANAGEMENT_DESIGN.md": {
+      "artifact_type": "doc",
+      "subsystem": null,
+      "digest": "97be3ee109b69aae6370821a5b9d3e51ce58bf132da9ab7dae23e83050d7af66",
+      "git_commit": "267804f5a62d46d02817e0438d82bd7e7db885fd",
+      "git_timestamp": 1759482803,
+      "chunk_count": 14,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "docs/MCP_RECIPES.md": {
+      "artifact_type": "doc",
+      "subsystem": null,
+      "digest": "847b5007e37241b20ec2b0b339ca21eb67e3650964a9968f6ad2fb659db93f07",
+      "git_commit": "860da96c5199df140774d3bca902f2c7666c3cff",
+      "git_timestamp": 1759518057,
+      "chunk_count": 10,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "docs/KNOWLEDGE_MANAGEMENT.md": {
+      "artifact_type": "doc",
+      "subsystem": null,
+      "digest": "07ab8ba0548497771ef29cc7e01140278a0a827606ce7a2dbb6807681a696aaa",
+      "git_commit": "267804f5a62d46d02817e0438d82bd7e7db885fd",
+      "git_timestamp": 1759482803,
+      "chunk_count": 28,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "docs/ACCEPTANCE_DEMO_PLAYBOOK.md": {
+      "artifact_type": "doc",
+      "subsystem": "ReleaseTooling",
+      "digest": "a0149767088f8cc94b0cd0c57f32d6a80a5a60f41190b913eae195502ad127f9",
+      "git_commit": "267804f5a62d46d02817e0438d82bd7e7db885fd",
+      "git_timestamp": 1759482803,
+      "chunk_count": 8,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "docs/OPERATIONS.md": {
+      "artifact_type": "doc",
+      "subsystem": null,
+      "digest": "4ac701f9d31f9c337adc471ad2378c066777b893c5a953d82616a17c70c1fa83",
+      "git_commit": "5e6388578ba621ea1d1e547116b139e333ef3d4e",
+      "git_timestamp": 1759473653,
+      "chunk_count": 5,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "docs/UI_SPIKE_REPORT.md": {
+      "artifact_type": "doc",
+      "subsystem": null,
+      "digest": "dffbc2e00726121107f3aecc1f2d4f530e570b6dd0645c14e552b552e8523480",
+      "git_commit": "267804f5a62d46d02817e0438d82bd7e7db885fd",
+      "git_timestamp": 1759482803,
+      "chunk_count": 5,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "docs/RISK_MITIGATION_PLAN.md": {
+      "artifact_type": "doc",
+      "subsystem": null,
+      "digest": "e4adf9fa870a78c2b1aaa9801edd7dd1e4277b5194ae4a6124196a0d4dd8012a",
+      "git_commit": "4a644c6965f7508fe99f849a530ca950b6abb47d",
+      "git_timestamp": 1759188315,
+      "chunk_count": 8,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "docs/UPGRADE_ROLLBACK.md": {
+      "artifact_type": "doc",
+      "subsystem": null,
+      "digest": "2b89b4ac00dd691eda323f4783d3bfe7785b90316ecccc7828e08a7ed11bece7",
+      "git_commit": "267804f5a62d46d02817e0438d82bd7e7db885fd",
+      "git_timestamp": 1759482803,
+      "chunk_count": 5,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "docs/MCP_RECIPES_DESIGN.md": {
+      "artifact_type": "doc",
+      "subsystem": null,
+      "digest": "a7dbd0ef81373cc420519b490085284a8df0d99d9b4c3306e85602a4df6a6e98",
+      "git_commit": "6f4adf8dc322ab6ab1bab1f9e3995b6a18f30a5a",
+      "git_timestamp": 1759209697,
+      "chunk_count": 10,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "docs/OBSERVABILITY_GUIDE.md": {
+      "artifact_type": "doc",
+      "subsystem": "Observability",
+      "digest": "b7df96f05c3eb1a0529edc6cc43201ad1ad690553ae36fbeeb8b5326e3c928c8",
+      "git_commit": "860da96c5199df140774d3bca902f2c7666c3cff",
+      "git_timestamp": 1759518057,
+      "chunk_count": 30,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "docs/HYBRID_SEARCH_TODO.md": {
+      "artifact_type": "doc",
+      "subsystem": null,
+      "digest": "380f49f20ff543614e890c8ae3877e545e26e4869d220f7a725aa722988d59e4",
+      "git_commit": "4a644c6965f7508fe99f849a530ca950b6abb47d",
+      "git_timestamp": 1759188315,
+      "chunk_count": 2,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "docs/DRAFT_PR1.md": {
+      "artifact_type": "doc",
+      "subsystem": null,
+      "digest": "ea4fcba55c54d2f9456182e55dfafabf9e866fe53e6ea986e80e5a0988dba601",
+      "git_commit": "267804f5a62d46d02817e0438d82bd7e7db885fd",
+      "git_timestamp": 1759482803,
+      "chunk_count": 6,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "docs/MCP_INTEGRATION.md": {
+      "artifact_type": "doc",
+      "subsystem": null,
+      "digest": "925e5710d66b8fcf98b3388f4004501df063d5d557e86b1ec4f17f9be269e9b8",
+      "git_commit": "860da96c5199df140774d3bca902f2c7666c3cff",
+      "git_timestamp": 1759518057,
+      "chunk_count": 9,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "docs/DEPLOYMENT.md": {
+      "artifact_type": "doc",
+      "subsystem": null,
+      "digest": "0551aeec6c74ebec1a6daaff6c46391fd835e3352e6e194389479d31ae8300b2",
+      "git_commit": "19cb33a96c7f9a62031c0b61da34d5e571db59e5",
+      "git_timestamp": 1759466939,
+      "chunk_count": 8,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "docs/DASHBOARD_SEARCH_HEALTH.md": {
+      "artifact_type": "doc",
+      "subsystem": "Observability",
+      "digest": "e3f464567eee8bbfcfc7c9d80aa44bcb8eea5a008939133a593571a748899b51",
+      "git_commit": "4a644c6965f7508fe99f849a530ca950b6abb47d",
+      "git_timestamp": 1759188315,
+      "chunk_count": 7,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "docs/ROADMAP.md": {
+      "artifact_type": "doc",
+      "subsystem": null,
+      "digest": "26104583798e55ca2a7db122e6d5f4cfd585433b0cd0127749e9306eaca8264c",
+      "git_commit": "267804f5a62d46d02817e0438d82bd7e7db885fd",
+      "git_timestamp": 1759482803,
+      "chunk_count": 11,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "docs/MCP_INTERFACE_SPEC.md": {
+      "artifact_type": "doc",
+      "subsystem": null,
+      "digest": "62a1e86a61a4b6e4b221b97b4f58f806526e272b037aecfb83a911ba55d1b2d2",
+      "git_commit": "860da96c5199df140774d3bca902f2c7666c3cff",
+      "git_timestamp": 1759518057,
+      "chunk_count": 16,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "docs/SEARCH_SCORING_PLAN.md": {
+      "artifact_type": "doc",
+      "subsystem": null,
+      "digest": "a5291e16f8c05ac9cb1ecd028833e4abb20b9e3a7c3d9823d3a704f42802d497",
+      "git_commit": "78fb94519123fa18622051561f1951137ffe2f91",
+      "git_timestamp": 1759488980,
+      "chunk_count": 10,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "docs/TESTING.md": {
+      "artifact_type": "doc",
+      "subsystem": null,
+      "digest": "c2bf73a136ab17dc1df5a7ef8449bb7fc4cd125bd82f993258931566a4e75a26",
+      "git_commit": "bee1b5240e6db486b5d75af298f94738eea9fdb4",
+      "git_timestamp": 1759434716,
+      "chunk_count": 1,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "docs/ACCEPTANCE_DEMO_SNAPSHOT.md": {
+      "artifact_type": "doc",
+      "subsystem": "ReleaseTooling",
+      "digest": "c96a06fafd6699958a7312e692f7080bf470b9e599404ad73659f7837e485798",
+      "git_commit": "267804f5a62d46d02817e0438d82bd7e7db885fd",
+      "git_timestamp": 1759482803,
+      "chunk_count": 4,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "docs/KNOWLEDGE_MANAGEMENT_IMPLEMENTATION_PLAN.md": {
+      "artifact_type": "doc",
+      "subsystem": null,
+      "digest": "983aa11d19bd14acb6dff4dcaeebda9ab87a4c190f0527f5983f4b00a2c49f6c",
+      "git_commit": "267804f5a62d46d02817e0438d82bd7e7db885fd",
+      "git_timestamp": 1759482803,
+      "chunk_count": 22,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "docs/subsystems.json": {
+      "artifact_type": "doc",
+      "subsystem": null,
+      "digest": "407d62f5545d6b3ec48ed907705ec5029ef30a604109070a8350d134366165cb",
+      "git_commit": "9d64999b8d68c87fcb1caee91abb39b1d386b9e9",
+      "git_timestamp": 1759030921,
+      "chunk_count": 2,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "docs/CONFIG_REFERENCE.md": {
+      "artifact_type": "doc",
+      "subsystem": null,
+      "digest": "93dfd32f7975de15d3f068a5426e85ae7b6dee3a3d40d286c66f03959ad8d5b3",
+      "git_commit": "78fb94519123fa18622051561f1951137ffe2f91",
+      "git_timestamp": 1759488980,
+      "chunk_count": 13,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "docs/API_APP_REFACTOR_PLAN.md": {
+      "artifact_type": "doc",
+      "subsystem": null,
+      "digest": "c5bd48f07bea14ba3e982b27160bbc0e24d56c7c25149647701d6ee77bc4879b",
+      "git_commit": "4a114677b7cd514f2bacd2e8b0651f8a83f09ce7",
+      "git_timestamp": 1759397929,
+      "chunk_count": 4,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "docs/GRAPH_API_DESIGN.md": {
+      "artifact_type": "doc",
+      "subsystem": null,
+      "digest": "973968f5580a16260543fbfa7aaf1a4d9c43f14fe77fb3aaed515a1872ae6f2c",
+      "git_commit": "860da96c5199df140774d3bca902f2c7666c3cff",
+      "git_timestamp": 1759518057,
+      "chunk_count": 28,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    ".codacy/tools-configs/semgrep.yaml": {
+      "artifact_type": "config",
+      "subsystem": null,
+      "digest": "310e1bd32100583c3b129bc4e7af8fbb47e5764f142ed4aefcb3afd96faa41b8",
+      "git_commit": null,
+      "git_timestamp": null,
+      "chunk_count": 3806,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    ".codacy/tools-configs/pylint.rc": {
+      "artifact_type": "config",
+      "subsystem": null,
+      "digest": "b9e0f319b60e84021ccf959bae5dd77cbe2baddac56dafbb33d9d0a12892b084",
+      "git_commit": null,
+      "git_timestamp": null,
+      "chunk_count": 1,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    ".codacy/tools-configs/languages-config.yaml": {
+      "artifact_type": "config",
+      "subsystem": null,
+      "digest": "a8157ff54f380fd5646de9254d3d63cd8741b9edb0e21f6e6266db6badbe72fb",
+      "git_commit": null,
+      "git_timestamp": null,
+      "chunk_count": 2,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    ".codacy/tools-configs/lizard.yaml": {
+      "artifact_type": "config",
+      "subsystem": null,
+      "digest": "edff82a22b7c589f384cf09f38ce9814a4a8338b14e70e1a3c9a801c34e7247b",
+      "git_commit": null,
+      "git_timestamp": null,
+      "chunk_count": 4,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    ".codacy/tools-configs/eslint.config.mjs": {
+      "artifact_type": "config",
+      "subsystem": null,
+      "digest": "792383f992111513a41c5b8c3f57c05df901102b75b1b6656ec1c265377fe5ba",
+      "git_commit": null,
+      "git_timestamp": null,
+      "chunk_count": 4,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    ".codacy/tools-configs/ruleset.xml": {
+      "artifact_type": "config",
+      "subsystem": null,
+      "digest": "d7a46e8209d4274efdde6dfce5d017575810a51866b69f52cfb43bafe5eae7aa",
+      "git_commit": null,
+      "git_timestamp": null,
+      "chunk_count": 10,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    ".codacy/tools-configs/trivy.yaml": {
+      "artifact_type": "config",
+      "subsystem": null,
+      "digest": "11f651209bdd9f9dad62d567f43ff615ab5b1d099f9eb7c4212f8549fbe7b1b3",
+      "git_commit": null,
+      "git_timestamp": null,
+      "chunk_count": 1,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    ".codacy/logs/codacy-cli.log": {
+      "artifact_type": "config",
+      "subsystem": null,
+      "digest": "915d0e6e260bd3eda1658f5a1f9c66aa1aaa3425c3cb7af8e04710f1b80f0c5d",
+      "git_commit": null,
+      "git_timestamp": null,
+      "chunk_count": 221,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/mcp/test_utils_files.py": {
+      "artifact_type": "test",
+      "subsystem": null,
+      "digest": "fc7496c2fc467aad3aa83341ccb5ab52d961b34e013ade08484d6afc0ae38ac7",
+      "git_commit": "ba6fb3d9eb22d0a772f3e7f51fe24c6b6f0172d2",
+      "git_timestamp": 1759198032,
+      "chunk_count": 3,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/mcp/test_server_tools.py": {
+      "artifact_type": "test",
+      "subsystem": null,
+      "digest": "ece4699b61173e967e0f33e00934dbfa1ba60b772ffc5cd4b399d13238208f47",
+      "git_commit": "860da96c5199df140774d3bca902f2c7666c3cff",
+      "git_timestamp": 1759518057,
+      "chunk_count": 36,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/search/test_vector_retriever.py": {
+      "artifact_type": "test",
+      "subsystem": "GatewayCore",
+      "digest": "0ee0d8f2fba88300ff74d0588367b91666e7a9d5d97dd6884946e38eb8b687b6",
+      "git_commit": "78fb94519123fa18622051561f1951137ffe2f91",
+      "git_timestamp": 1759488980,
+      "chunk_count": 4,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/search/test_exporter.py": {
+      "artifact_type": "test",
+      "subsystem": "GatewayCore",
+      "digest": "351e8911fdcd1f145ad7b0803fe301d4a13f82eebe55df0bd5c38e8168bb64ca",
+      "git_commit": "78fb94519123fa18622051561f1951137ffe2f91",
+      "git_timestamp": 1759488980,
+      "chunk_count": 8,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/search/test_filtering.py": {
+      "artifact_type": "test",
+      "subsystem": "GatewayCore",
+      "digest": "3349e90255f24cd2ed172287f7711fdf986ce96073e30223a5b27c614db1b95e",
+      "git_commit": "860da96c5199df140774d3bca902f2c7666c3cff",
+      "git_timestamp": 1759518057,
+      "chunk_count": 5,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/search/test_scoring.py": {
+      "artifact_type": "test",
+      "subsystem": "GatewayCore",
+      "digest": "9c50623cf6712385eaa39454c669be28fa125eac2e9d6302051c062806377776",
+      "git_commit": "78fb94519123fa18622051561f1951137ffe2f91",
+      "git_timestamp": 1759488980,
+      "chunk_count": 4,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/search/test_graph_enricher.py": {
+      "artifact_type": "test",
+      "subsystem": "GatewayCore",
+      "digest": "be8648dd6d6148b807df5ba80f9f8c604e5ae981bd8c984c415dbade3fa14bb4",
+      "git_commit": "78fb94519123fa18622051561f1951137ffe2f91",
+      "git_timestamp": 1759488980,
+      "chunk_count": 7,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/search/test_ml_scorer.py": {
+      "artifact_type": "test",
+      "subsystem": "GatewayCore",
+      "digest": "7d5a15c7a68f2d4a97c27c4baa5632b3c93c56d571c9bc6c8ca9166157e8bc86",
+      "git_commit": "78fb94519123fa18622051561f1951137ffe2f91",
+      "git_timestamp": 1759488980,
+      "chunk_count": 2,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/fixtures/search/model.json": {
+      "artifact_type": "test",
+      "subsystem": null,
+      "digest": "7353c89df062a6d35d02bedf66f11e06e7d6643c920959a823c7ed6f4a7572e7",
+      "git_commit": "4efe369f29dfe843e75771aef7455258285976a4",
+      "git_timestamp": 1758951608,
+      "chunk_count": 1,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "tests/fixtures/search/dataset.csv": {
+      "artifact_type": "test",
+      "subsystem": null,
+      "digest": "e48e0736aa479c3fe8588e02c62fd64c09d764a95191e883a3c7bbf535ec7a57",
+      "git_commit": "4efe369f29dfe843e75771aef7455258285976a4",
+      "git_timestamp": 1758951608,
+      "chunk_count": 2,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "docs/archive/WORK_PACKAGES.md": {
+      "artifact_type": "doc",
+      "subsystem": null,
+      "digest": "963f202830023d579e0e6fa5fcb4ee491cc0a3c03ad28cc6e5637a633ab26fa0",
+      "git_commit": "e2129b0f42b377a3c3e16706149f5bb4acd624af",
+      "git_timestamp": 1759097926,
+      "chunk_count": 10,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "docs/archive/README.md": {
+      "artifact_type": "doc",
+      "subsystem": null,
+      "digest": "e46e711cc4e9ea6b57cdee6d0df6d95b1808aaba493b43c1848433615a143b7f",
+      "git_commit": "9d64999b8d68c87fcb1caee91abb39b1d386b9e9",
+      "git_timestamp": 1759030921,
+      "chunk_count": 1,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "docs/dashboards/gateway_overview.json": {
+      "artifact_type": "doc",
+      "subsystem": null,
+      "digest": "def1d1e85c704219cdc3df1bb75ae73ec5b6b3dce38d7617ec664ae9e3d04862",
+      "git_commit": "d429c76e5b72a3531f7341184b8f1fcdfc0f58ea",
+      "git_timestamp": 1759125755,
+      "chunk_count": 6,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "docs/dashboards/README.md": {
+      "artifact_type": "doc",
+      "subsystem": null,
+      "digest": "c34347d4b84f0354088412e627456741d6e699bdaf8a7bf68654a4990c4dfbd9",
+      "git_commit": "19381d0b39e75ad7fea47f85594e6811f76e33a0",
+      "git_timestamp": 1759065457,
+      "chunk_count": 1,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "docs/archive/WP6/WP6_RELEASE_TOOLING_PLAN.md": {
+      "artifact_type": "doc",
+      "subsystem": "ReleaseTooling",
+      "digest": "a27851b93997001a01a8ba927e29d7303f16cf1593661a1dafe9456dbe0064cc",
+      "git_commit": "9d64999b8d68c87fcb1caee91abb39b1d386b9e9",
+      "git_timestamp": 1759030921,
+      "chunk_count": 5,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "docs/archive/WP5/WP5_EXECUTION_PLAN.md": {
+      "artifact_type": "doc",
+      "subsystem": "Observability",
+      "digest": "27e95061aa0acab7bc28fdac75bb1bafb6bdf6e1d0f1aca7ae92adfa31d42fcc",
+      "git_commit": "9d64999b8d68c87fcb1caee91abb39b1d386b9e9",
+      "git_timestamp": 1759030921,
+      "chunk_count": 6,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    },
+    "docs/archive/WP5/WP5_OBSERVABILITY_PLAN.md": {
+      "artifact_type": "doc",
+      "subsystem": "Observability",
+      "digest": "169e35372107ea1094353f6458511d205e2adcceebd848a46f17bd6d350ab6c0",
+      "git_commit": "9d64999b8d68c87fcb1caee91abb39b1d386b9e9",
+      "git_timestamp": 1759030921,
+      "chunk_count": 3,
+      "coverage_ratio": 1.0,
+      "last_seen": 1759529441.070443
+    }
+  }
+}

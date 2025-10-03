@@ -229,6 +229,7 @@ Launch `gateway-mcp` to expose the gateway over the Model Context Protocol so ag
    | `km-graph-node` | reader | Fetch a node and relationships by ID (`DesignDoc:docs/...`). |
    | `km-graph-subsystem` | reader | Inspect subsystem metadata, related nodes, and artifacts. |
    | `km-graph-search` | reader | Term search across graph entities. |
+   | `km-graph-tests-of` | reader | List tests associated with a symbol via `EXERCISES` edges. |
    | `km-coverage-summary` | reader | Retrieve the latest ingestion coverage snapshot. |
 
 | `km-lifecycle-report` | maintainer | Summarise isolated graph nodes, stale docs, and subsystems missing tests. |

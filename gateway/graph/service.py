@@ -232,6 +232,23 @@ class GraphService:
             next_cursor = _encode_cursor(offset + limit)
         return {"nodes": nodes, "cursor": next_cursor}
 
+    def get_symbol_tests(self, symbol_id: str) -> dict[str, Any]:
+        """Return tests linked to the specified symbol identifier."""
+
+        def _operation(session: Session) -> dict[str, Any]:
+            record = session.execute_read(_fetch_symbol_tests, symbol_id)
+            if record is None:
+                raise GraphNotFoundError(f"Symbol '{symbol_id}' not found")
+            return record
+
+        data = self._run_with_session(_operation, readonly=True)
+        symbol_node = _ensure_node(data["symbol"])
+        tests = [_ensure_node(node) for node in data.get("tests", [])]
+        return {
+            "symbol": _serialize_node(symbol_node),
+            "tests": [_serialize_node(node) for node in tests],
+        }
+
     def _load_subsystem_snapshot(self, name: str, depth: int) -> SubsystemGraphSnapshot:
         depth = max(1, depth)
         cache_key = (name, depth)
@@ -715,6 +732,25 @@ def _search_entities(tx: ManagedTransaction, /, term: str, limit: int) -> list[d
         }
         for record in result
     ]
+
+
+def _fetch_symbol_tests(tx: ManagedTransaction, symbol_id: str) -> dict[str, Any] | None:
+    record = tx.run(
+        """
+        MATCH (sym:Symbol {id: $symbol_id})
+        OPTIONAL MATCH (test:TestCase)-[:EXERCISES]->(sym)
+        RETURN sym AS symbol, collect(test) AS tests
+        """,
+        symbol_id=symbol_id,
+    ).single()
+    if record is None:
+        return None
+    symbol = record.get("symbol")
+    if symbol is None:
+        return None
+    tests = [node for node in record.get("tests", []) if isinstance(node, Node)]
+    tests.sort(key=lambda node: str(node.get("path") or ""))
+    return {"symbol": symbol, "tests": tests}
 
 
 # --- Serialization helpers -------------------------------------------------

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterable, Mapping, Sequence
+
 from neo4j import Driver
 
 from gateway.ingest.artifacts import Artifact, ChunkEmbedding
@@ -112,6 +113,19 @@ class Neo4jWriter:
                         "MERGE (s)-[:EMITS]->(t)",
                         name=subsystem_name,
                         signals=telemetry_signals,
+                    )
+
+            if label == "TestCase":
+                exercises = metadata.get("exercises_symbols")
+                session.run(
+                    "MATCH (t:TestCase {path: $path})-[r:EXERCISES]->(:Symbol)\nDELETE r",
+                    path=artifact.path.as_posix(),
+                )
+                if exercises:
+                    session.run(
+                        "MATCH (t:TestCase {path: $path})\nUNWIND $symbols AS symbol_id\nMERGE (sym:Symbol {id: symbol_id})\nMERGE (t)-[:EXERCISES]->(sym)",
+                        path=artifact.path.as_posix(),
+                        symbols=list(dict.fromkeys(str(symbol_id) for symbol_id in exercises if symbol_id)),
                     )
 
             if label == "SourceFile" and message_entities:

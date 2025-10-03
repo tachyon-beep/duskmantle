@@ -92,6 +92,20 @@ def create_router(limiter: Limiter, metrics_limit: str) -> APIRouter:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return JSONResponse(payload)
 
+    @router.get("/graph/symbols/{symbol_id:path}/tests", dependencies=[Depends(require_reader)], tags=["graph"])
+    @limiter.limit(metrics_limit)
+    def graph_symbol_tests(
+        symbol_id: str,
+        request: Request,
+        service: GraphService = Depends(get_graph_service_dependency),  # noqa: B008
+    ) -> JSONResponse:
+        del request
+        try:
+            payload = service.get_symbol_tests(symbol_id)
+        except GraphNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return JSONResponse(payload)
+
     @router.get("/graph/search", dependencies=[Depends(require_reader)], tags=["graph"])
     @limiter.limit(metrics_limit)
     def graph_search(

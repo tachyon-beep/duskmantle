@@ -56,12 +56,15 @@ def write_lifecycle_report(
     stale_docs = _find_stale_docs(result.artifacts, config.stale_days, generated_at)
     missing_tests = _find_missing_tests(result.artifacts)
     removed_artifacts = list(result.removed_artifacts)
+    symbol_tests, symbol_test_gaps = _compute_symbol_test_coverage(result.artifacts)
 
     counts = _lifecycle_counts(
         isolated=isolated,
         stale_docs=stale_docs,
         missing_tests=missing_tests,
         removed=removed_artifacts,
+        symbol_tests=symbol_tests,
+        symbol_test_gaps=symbol_test_gaps,
     )
 
     payload = {
@@ -79,6 +82,8 @@ def write_lifecycle_report(
         "stale_docs": stale_docs,
         "missing_tests": missing_tests,
         "removed_artifacts": removed_artifacts,
+        "symbol_tests": symbol_tests,
+        "symbol_test_gaps": symbol_test_gaps,
         "summary": counts,
     }
 
@@ -116,6 +121,8 @@ def summarize_lifecycle(payload: dict[str, Any]) -> dict[str, Any]:
         stale_docs=payload.get("stale_docs") or [],
         missing_tests=payload.get("missing_tests") or [],
         removed=payload.get("removed_artifacts") or [],
+        symbol_tests=payload.get("symbol_tests") or [],
+        symbol_test_gaps=payload.get("symbol_test_gaps") or [],
     )
     return {
         "generated_at": payload.get("generated_at"),
@@ -199,6 +206,85 @@ def _find_missing_tests(artifacts: Iterable[dict[str, Any]]) -> list[dict[str, A
     return missing
 
 
+def _compute_symbol_test_coverage(artifacts: Iterable[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Derive symbol test coverage from ingestion artifact metadata."""
+
+    symbol_index: dict[str, dict[str, Any]] = {}
+    coverage: dict[str, list[str]] = defaultdict(list)
+
+    for artifact in artifacts:
+        artifact_type = str(artifact.get("artifact_type") or "").lower()
+        path = str(artifact.get("path") or "")
+        if artifact_type in {"code", "sourcefile"}:
+            symbols = artifact.get("symbols")
+            if not isinstance(symbols, list):
+                continue
+            for entry in symbols:
+                if not isinstance(entry, dict):
+                    continue
+                symbol_id = entry.get("id")
+                if not symbol_id:
+                    continue
+                qualified = (entry.get("qualified_name") or entry.get("name") or "").strip()
+                name = (entry.get("name") or qualified.split(".")[-1]).strip()
+                symbol_index[str(symbol_id)] = {
+                    "symbol_id": str(symbol_id),
+                    "qualified_name": qualified,
+                    "name": name,
+                    "source_path": path,
+                }
+        elif artifact_type in {"test", "testcase"}:
+            exercised = artifact.get("exercises_symbols")
+            if not isinstance(exercised, list):
+                continue
+            for symbol_id in exercised:
+                if not symbol_id:
+                    continue
+                coverage[str(symbol_id)].append(path)
+
+    symbol_tests: list[dict[str, Any]] = []
+    symbol_gaps: list[dict[str, Any]] = []
+
+    for symbol_id, info in symbol_index.items():
+        tests = sorted({test_path for test_path in coverage.get(symbol_id, []) if test_path})
+        entry = {
+            "symbol_id": symbol_id,
+            "qualified_name": info.get("qualified_name"),
+            "name": info.get("name"),
+            "source_path": info.get("source_path"),
+        }
+        if tests:
+            entry_with_tests = dict(entry)
+            entry_with_tests["tests"] = tests
+            entry_with_tests["status"] = "Covered"
+            symbol_tests.append(entry_with_tests)
+        else:
+            entry_missing = dict(entry)
+            entry_missing["status"] = "Missing"
+            symbol_gaps.append(entry_missing)
+
+    for symbol_id, tests in coverage.items():
+        if symbol_id in symbol_index:
+            continue
+        cleaned = sorted({test_path for test_path in tests if test_path})
+        if not cleaned:
+            continue
+        symbol_tests.append(
+            {
+                "symbol_id": symbol_id,
+                "qualified_name": symbol_id.split("::")[-1],
+                "name": symbol_id.split("::")[-1],
+                "source_path": symbol_id.split("::")[0],
+                "tests": cleaned,
+                "status": "Covered",
+            }
+        )
+
+    symbol_tests.sort(key=lambda item: (item.get("source_path") or "", item.get("qualified_name") or ""))
+    symbol_gaps.sort(key=lambda item: (item.get("source_path") or "", item.get("qualified_name") or ""))
+    return symbol_tests, symbol_gaps
+
+
 def _write_history_snapshot(payload: dict[str, Any], reports_dir: Path, history_limit: int) -> list[Path]:
     """Write lifecycle history to disk while enforcing retention."""
     history_dir = reports_dir / "lifecycle_history"
@@ -232,6 +318,8 @@ def _lifecycle_counts(
     stale_docs: list[dict[str, Any]],
     missing_tests: list[dict[str, Any]],
     removed: list[dict[str, Any]],
+    symbol_tests: list[dict[str, Any]] | None = None,
+    symbol_test_gaps: list[dict[str, Any]] | None = None,
 ) -> dict[str, int]:
     """Aggregate lifecycle metrics into counters."""
     isolated_count = sum(len(entries) for entries in isolated.values())
@@ -240,4 +328,6 @@ def _lifecycle_counts(
         "isolated_nodes": isolated_count,
         "subsystems_missing_tests": len(missing_tests),
         "removed_artifacts": len(removed),
+        "symbol_tests": len(symbol_tests or []),
+        "symbol_test_gaps": len(symbol_test_gaps or []),
     }

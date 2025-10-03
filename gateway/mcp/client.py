@@ -108,6 +108,16 @@ class GatewayClient:
         )
         return _expect_dict(data, "graph-search")
 
+    async def symbol_tests(self, symbol_id: str) -> dict[str, Any]:
+        """Return tests linked to the provided symbol identifier."""
+        path = _quote_segment(symbol_id)
+        data = await self._request(
+            "GET",
+            f"{API_V1_PREFIX}/graph/symbols/{path}/tests",
+            require_reader=True,
+        )
+        return _expect_dict(data, "symbol-tests")
+
     async def coverage_summary(self) -> dict[str, Any]:
         """Fetch the coverage summary endpoint as a dict."""
         data = await self._request(

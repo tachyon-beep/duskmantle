@@ -178,6 +178,7 @@ def test_sync_chunks_links_chunk_to_artifact() -> None:
     assert "MERGE (c:Chunk" in cypher_text
     assert "HAS_CHUNK" in cypher_text
 
+
 def test_sync_artifact_ignores_missing_symbols() -> None:
     """Artifacts without symbol metadata should not emit symbol queries."""
     writer, driver = _make_writer()
@@ -207,3 +208,25 @@ def test_delete_artifact_removes_declared_symbols() -> None:
     queries = driver.sessions[0].queries
     delete_query = "\n".join(q for q, _ in queries)
     assert "DECLARES_SYMBOL" in delete_query
+
+
+def test_sync_artifact_creates_exercises_relationships() -> None:
+    writer, driver = _make_writer()
+    artifact = Artifact(
+        path=Path("tests/test_example.py"),
+        artifact_type="test",
+        subsystem=None,
+        content="",
+        git_commit=None,
+        git_timestamp=None,
+        extra_metadata={
+            "exercises_symbols": ["src/project/module.py::Example.method"],
+        },
+    )
+
+    writer.sync_artifact(artifact)
+
+    queries = driver.sessions[0].queries
+    assert any("EXERCISES" in query for query, _ in queries)
+    delete_queries = [query for query, _ in queries if "DELETE r" in query]
+    assert delete_queries, "expected existing EXERCISES edges to be cleared before insertion"

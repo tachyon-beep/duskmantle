@@ -6,10 +6,11 @@ import hashlib
 import json
 import logging
 import os
+import re
 import subprocess
 import time
 import uuid
-from collections import deque
+from collections import defaultdict, deque
 from collections.abc import Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import suppress
@@ -20,7 +21,7 @@ from filelock import FileLock, Timeout
 from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode
 
-from gateway.ingest.artifacts import Chunk, ChunkEmbedding
+from gateway.ingest.artifacts import Artifact, Chunk, ChunkEmbedding
 from gateway.ingest.chunking import Chunker
 from gateway.ingest.discovery import DiscoveryConfig, discover
 from gateway.ingest.embedding import DummyEmbedder, Embedder
@@ -146,6 +147,8 @@ class IngestionPipeline:
                             )
                         )
                     )
+                    if self.config.symbols_enabled:
+                        _annotate_test_symbol_links(artifacts)
                     discover_span.set_attribute("km.ingest.artifact_total", len(artifacts))
 
                 logger.info(
@@ -207,6 +210,8 @@ class IngestionPipeline:
                                         "coverage_ratio": coverage_ratio_existing,
                                         "content_digest": artifact_digest,
                                         "skipped": True,
+                                        "symbols": artifact.extra_metadata.get("symbols"),
+                                        "exercises_symbols": artifact.extra_metadata.get("exercises_symbols"),
                                     }
                                 )
                                 current_ledger_entries[path_text] = {
@@ -247,6 +252,8 @@ class IngestionPipeline:
                                     "coverage_ratio": coverage_ratio,
                                     "content_digest": artifact_digest,
                                     "skipped": False,
+                                    "symbols": artifact.extra_metadata.get("symbols"),
+                                    "exercises_symbols": artifact.extra_metadata.get("exercises_symbols"),
                                 }
                             )
                             current_ledger_entries[path_text] = {
@@ -488,6 +495,158 @@ class IngestionPipeline:
         finally:
             with suppress(FileNotFoundError):
                 tmp_path.unlink()
+
+
+_SYMBOL_TOKEN_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_.]*")
+
+
+def _annotate_test_symbol_links(artifacts: list[Artifact]) -> None:
+    """Annotate test artifacts with symbol relationships derived from heuristics."""
+
+    symbol_index, alias_map = _build_symbol_index(artifacts)
+    if not symbol_index or not alias_map:
+        return
+
+    for artifact in artifacts:
+        if artifact.artifact_type != "test" or artifact.path.suffix.lower() != ".py":
+            continue
+        matches = _match_symbol_aliases(artifact, symbol_index, alias_map)
+        if not matches:
+            continue
+        sorted_ids = sorted(matches)
+        artifact.extra_metadata["exercises_symbols"] = sorted_ids
+        artifact.extra_metadata["exercises_symbol_details"] = [
+            {
+                "symbol_id": symbol_id,
+                "qualified_name": symbol_index[symbol_id]["qualified_name"],
+                "name": symbol_index[symbol_id]["name"],
+                "source_path": symbol_index[symbol_id]["path"],
+            }
+            for symbol_id in sorted_ids
+        ]
+
+
+def _build_symbol_index(artifacts: list[Artifact]) -> tuple[dict[str, dict[str, str]], dict[str, set[str]]]:
+    index: dict[str, dict[str, str]] = {}
+    alias_map: dict[str, set[str]] = defaultdict(set)
+
+    for artifact in artifacts:
+        metadata = artifact.extra_metadata or {}
+        symbols = metadata.get("symbols")
+        if not isinstance(symbols, list):
+            continue
+        for raw_symbol in symbols:
+            if not isinstance(raw_symbol, dict):
+                continue
+            symbol_id = raw_symbol.get("id")
+            qualified = str(raw_symbol.get("qualified_name") or raw_symbol.get("name") or "").strip()
+            if not symbol_id or not qualified:
+                continue
+            name = str(raw_symbol.get("name") or qualified.split(".")[-1]).strip()
+            language = str(raw_symbol.get("language") or "").strip().lower()
+            module_alias = _module_alias_for_path(artifact.path)
+            entry = {
+                "id": symbol_id,
+                "qualified_name": qualified,
+                "name": name,
+                "language": language,
+                "path": artifact.path.as_posix(),
+                "module_alias": module_alias,
+            }
+            aliases = _symbol_aliases(entry)
+            if not aliases:
+                continue
+            index[symbol_id] = entry
+            for alias in aliases:
+                alias_map.setdefault(alias, set()).add(symbol_id)
+
+    return index, alias_map
+
+
+def _symbol_aliases(entry: dict[str, str]) -> set[str]:
+    aliases: set[str] = set()
+    qualified = entry["qualified_name"]
+    name = entry["name"]
+    module_alias = entry.get("module_alias") or ""
+
+    for candidate in (qualified, name, qualified.split(".")[-1]):
+        if candidate:
+            aliases.add(candidate)
+
+    if module_alias:
+        if name:
+            aliases.add(f"{module_alias}.{name}")
+        if qualified:
+            aliases.add(f"{module_alias}.{qualified}")
+
+    return {alias for alias in aliases if alias and len(alias) >= 3}
+
+
+def _module_alias_for_path(path: Path) -> str:
+    parts = list(path.with_suffix("").parts)
+    if parts and parts[0] in {"src", "source", "lib"}:
+        parts = parts[1:]
+    return ".".join(parts)
+
+
+def _match_symbol_aliases(
+    artifact: Artifact,
+    symbol_index: dict[str, dict[str, str]],
+    alias_map: dict[str, set[str]],
+) -> set[str]:
+    content = artifact.content
+    if not content.strip():
+        return set()
+
+    matches: set[str] = set()
+    for match in _SYMBOL_TOKEN_PATTERN.finditer(content):
+        token = match.group()
+        if token not in alias_map:
+            continue
+        if not _token_context_valid(content, match):
+            continue
+        for symbol_id in alias_map[token]:
+            entry = symbol_index[symbol_id]
+            language = entry.get("language") or ""
+            if language and language != "python":
+                continue
+            if not _paths_related(artifact.path, entry["path"], token):
+                continue
+            matches.add(symbol_id)
+    return matches
+
+
+def _token_context_valid(content: str, match: re.Match[str]) -> bool:
+    start, end = match.span()
+    if start > 0:
+        preceding = content[start - 1]
+        if preceding in {'"', "'", "#"}:
+            return False
+        if preceding == "@":
+            return True
+    tail = content[end:]
+    stripped = tail.lstrip()
+    token = match.group()
+    if "." in token:
+        return True
+    if stripped.startswith(("(", ".", "=", ",", ")", ":")):
+        return True
+    return False
+
+
+def _paths_related(test_path: Path, symbol_path: str, alias: str) -> bool:
+    try:
+        symbol_parts = Path(symbol_path).with_suffix("").parts
+    except Exception:  # pragma: no cover - defensive
+        symbol_parts = ()
+    test_parts = test_path.with_suffix("").parts
+
+    test_tokens = {part for part in test_parts if part not in {"tests", "src", "test"}}
+    symbol_tokens = {part for part in symbol_parts if part not in {"src", "lib"}}
+
+    if test_tokens & symbol_tokens:
+        return True
+    return "." in alias
 
 
 def _current_repo_head(repo_root: Path) -> str | None:

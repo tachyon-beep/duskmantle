@@ -16,6 +16,7 @@ This specification defines the Model Context Protocol (MCP) surface for the Dusk
 | `km-graph-node` | reader | Fetch a graph node and relationships by canonical ID (e.g., `DesignDoc:docs/README.md`). |
 | `km-graph-subsystem` | reader | Inspect subsystem details, related nodes, and artifacts. |
 | `km-graph-search` | reader | Search graph entities by term (subsystems, design docs, source files). |
+| `km-graph-tests-of` | reader | List tests linked to a symbol via `EXERCISES` relationships. |
 | `km-coverage-summary` | reader | Retrieve latest coverage summary (artifacts, chunks, missing list). |
 | `km-lifecycle-report` | maintainer | Summarise isolated graph nodes, stale design docs, and subsystems missing tests. |
 | `km-ingest-status` | maintainer | Report last ingest run (run ID, success, counts, timestamp). |
@@ -48,6 +49,10 @@ The MCP server exposes the following helper summaries. These mirror the metadata
   - Required: `term`.
   - Optional: `limit` (default 20, max 50).
   - Example: `/sys mcp run duskmantle km-graph-search --term coverage`.
+- `km-graph-tests-of`
+  - Required: `symbol_id` such as `src/service.py::handler`.
+  - Example: `/sys mcp run duskmantle km-graph-tests-of --symbol-id "src/service.py::handler"`.
+  - Response includes the symbol metadata plus sorted `TestCase` nodes.
 - `km-coverage-summary`
   - No parameters. Mirrors `/api/v1/coverage` and returns artifact/chunk counts plus freshness stats.
   - Example: `/sys mcp run duskmantle km-coverage-summary`.
@@ -122,15 +127,20 @@ The MCP server exposes the following helper summaries. These mirror the metadata
 - **Request:** `{ "term": "ingest", "limit": 10 }`
 - **Response:** `results` array with `id`, `label`, `score`, `snippet`.
 
-### 3.5 `km-coverage-summary`
+### 3.5 `km-graph-tests-of`
+- **Request:** `{ "symbol_id": "src/service.py::handler" }`
+- **Response:** `symbol` metadata plus `tests` array of `TestCase` nodes (empty when no coverage).
+- **Errors:** `not_found` when the symbol identifier is absent.
+
+### 3.6 `km-coverage-summary`
 - **Request:** `{}`
 - **Response:** coverage summary (artifact totals, chunk count, missing artifacts).
 
-### 3.6 `km-ingest-status`
+### 3.7 `km-ingest-status`
 - **Request:** `{ "profile": "scheduled" }` (default `"scheduled"`; allow `"demo"`, `"local"`, or custom).
 - **Response:** `{ "run_id": "...", "profile": "demo", "started_at": 1699999999.0, "success": true, "artifact_counts": {...}, "chunk_count": 320 }` plus `duration_seconds` and optional `repo_head`.
 
-### 3.7 `km-ingest-trigger`
+### 3.8 `km-ingest-trigger`
 - **Request:**
 ```json
 {
@@ -146,12 +156,12 @@ The MCP server exposes the following helper summaries. These mirror the metadata
 - **Response:** accepts once the job is queued/completed. For synchronous call, return the resulting `km-ingest-status` payload; for async call (future enhancement), return a job ID.
 - **Errors:** `upstream_error`, `unsupported_operation` (if incremental ingest not supported), `unauthorized`.
 
-### 3.8 `km-feedback-submit`
+### 3.9 `km-feedback-submit`
 - **Request:** `{ "request_id": "uuid", "chunk_id": "docs/README.md::3", "vote": 1, "note": "useful", "context": {"task": "demo"} }`
 - **Response:** acknowledgement with timestamp.
 
-### 3.9 `km-backup-trigger`
-### 3.10 `km-recipe-run`
+### 3.10 `km-backup-trigger`
+### 3.11 `km-recipe-run`
 - **Request:** `{ "recipe": "release-prep", "vars": {"profile": "release"} }`
 - **Response:** `{ "status": "success", "outputs": {...}, "steps": [...] }` where `steps` describes each tool invocation.
 - **Errors:** `recipe_not_found`, `tool_failed`, `assert_failed`, `timeout`.
@@ -159,7 +169,7 @@ The MCP server exposes the following helper summaries. These mirror the metadata
 - **Request:** `{ "destination": null }`
 - **Response:** `{ "archive": "backups/archives/km-backup-20250927T195120.tgz" }`
 
-### 3.10 `km-upload`
+### 3.12 `km-upload`
 - **Request:**
 ```json
 {
@@ -186,7 +196,7 @@ The MCP server exposes the following helper summaries. These mirror the metadata
 ```
 - **Errors:** `invalid_request` (missing/invalid path), `forbidden` (insufficient scope), `upstream_error` (ingest failure).
 
-### 3.11 `km-storetext`
+### 3.13 `km-storetext`
 - **Request:**
 ```json
 {

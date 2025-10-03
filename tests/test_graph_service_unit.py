@@ -446,3 +446,40 @@ def test_run_cypher_rejects_disallowed_procedure(dummy_driver: DriverFixture) ->
 
     after = _metric_value("procedure")
     assert after == pytest.approx(before + 1)
+
+
+def test_get_symbol_tests_returns_serialized_payload(monkeypatch: pytest.MonkeyPatch, dummy_driver: DriverFixture) -> None:
+    service, _session, _driver = dummy_driver
+
+    symbol_node = DummyNode(
+        ["Symbol"],
+        "Symbol:src/module.py::Example.method",
+        id="src/module.py::Example.method",
+        name="Example",
+        qualified_name="Example.method",
+    )
+    test_node = DummyNode(["TestCase"], "TestCase:tests/test_example.py", path="tests/test_example.py", subsystem="Example")
+
+    def fake_fetch_symbol_tests(_tx: object, symbol_id: str) -> dict[str, object] | None:
+        assert symbol_id == "src/module.py::Example.method"
+        return {"symbol": symbol_node, "tests": [test_node]}
+
+    monkeypatch.setattr(graph_service, "_fetch_symbol_tests", fake_fetch_symbol_tests)
+
+    payload = service.get_symbol_tests("src/module.py::Example.method")
+
+    assert payload["symbol"]["id"] == "Symbol:src/module.py::Example.method"
+    assert payload["symbol"]["properties"]["qualified_name"] == "Example.method"
+    assert payload["tests"][0]["id"] == "TestCase:tests/test_example.py"
+
+
+def test_get_symbol_tests_missing_symbol_raises(monkeypatch: pytest.MonkeyPatch, dummy_driver: DriverFixture) -> None:
+    service, _session, _driver = dummy_driver
+
+    def fake_fetch_symbol_tests(_tx: object, symbol_id: str) -> dict[str, object] | None:
+        return None
+
+    monkeypatch.setattr(graph_service, "_fetch_symbol_tests", fake_fetch_symbol_tests)
+
+    with pytest.raises(GraphNotFoundError):
+        service.get_symbol_tests("missing::symbol")

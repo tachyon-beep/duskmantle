@@ -41,6 +41,11 @@ class DummyGraphService:
     def get_subsystem_graph(self, name: str, *, depth: int) -> dict[str, Any]:
         return self._responses["subsystem_graph"]
 
+    def get_symbol_tests(self, symbol_id: str) -> dict[str, Any]:
+        if symbol_id == "missing":
+            raise GraphNotFoundError("Symbol 'missing' not found")
+        return self._responses["symbol_tests"]
+
     def list_orphan_nodes(self, *, label: str | None, cursor: str | None, limit: int) -> dict[str, Any]:
         return self._responses["orphans"]
 
@@ -154,6 +159,24 @@ def app(monkeypatch: pytest.MonkeyPatch) -> FastAPI:
                             "labels": ["IntegrationMessage"],
                             "properties": {"name": "IntegrationSync"},
                         },
+                    }
+                ],
+            },
+            "symbol_tests": {
+                "symbol": {
+                    "id": "Symbol:src/service.py::handler",
+                    "labels": ["Symbol"],
+                    "properties": {
+                        "id": "src/service.py::handler",
+                        "qualified_name": "handler",
+                        "name": "handler",
+                    },
+                },
+                "tests": [
+                    {
+                        "id": "TestCase:tests/test_service.py",
+                        "labels": ["TestCase"],
+                        "properties": {"path": "tests/test_service.py", "subsystem": "Kasmina"},
                     }
                 ],
             },
@@ -404,3 +427,18 @@ def test_graph_reader_scope(monkeypatch: pytest.MonkeyPatch) -> None:
         headers={"Authorization": "Bearer admin-token"},
     )
     assert ok_admin.status_code == 200
+
+
+def test_graph_symbol_tests_endpoint(app: FastAPI) -> None:
+    client = TestClient(app)
+    response = client.get(f"{GRAPH_PREFIX}/symbols/src/service.py::handler/tests")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["symbol"]["properties"]["id"] == "src/service.py::handler"
+    assert data["tests"][0]["id"] == "TestCase:tests/test_service.py"
+
+
+def test_graph_symbol_tests_not_found(app: FastAPI) -> None:
+    client = TestClient(app)
+    response = client.get(f"{GRAPH_PREFIX}/symbols/missing/tests")
+    assert response.status_code == 404

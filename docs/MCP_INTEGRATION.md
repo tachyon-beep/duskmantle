@@ -38,6 +38,7 @@ gateway-mcp --transport stdio
   - `km-graph-node`
   - `km-graph-subsystem`
   - `km-graph-search`
+  - `km-graph-tests-of`
   - `km-coverage-summary`
   - `km-ingest-status`
   - `km-ingest-trigger`

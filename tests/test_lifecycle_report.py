@@ -72,6 +72,22 @@ def _ingestion_result() -> IngestionResult:
             "subsystem": "Kasmina",
             "git_timestamp": now,
             "chunk_count": 5,
+            "symbols": [
+                {
+                    "id": "src/service.py::handler",
+                    "qualified_name": "handler",
+                    "name": "handler",
+                    "language": "python",
+                }
+            ],
+        },
+        {
+            "path": "tests/test_service.py",
+            "artifact_type": "TestCase",
+            "subsystem": "Kasmina",
+            "git_timestamp": now,
+            "chunk_count": 1,
+            "exercises_symbols": ["src/service.py::handler"],
         },
     ]
     result = IngestionResult(
@@ -111,12 +127,17 @@ def test_write_lifecycle_report_without_graph(tmp_path: Path, ingestion_result: 
     assert payload["run"]["run_id"] == "test"
     stale_docs = payload["stale_docs"]
     assert any(entry["path"] == "docs/old.md" for entry in stale_docs)
-    assert payload["missing_tests"][0]["subsystem"] == "Kasmina"
+    assert payload["missing_tests"] == []
+    coverage = payload["symbol_tests"]
+    assert coverage[0]["symbol_id"] == "src/service.py::handler"
+    assert coverage[0]["status"] == "Covered"
     assert payload["isolated"] == {}
     assert payload["removed_artifacts"][0]["path"] == "docs/removed.md"
     summary = payload["summary"]
     assert summary["stale_docs"] == pytest.approx(1)
     assert summary["removed_artifacts"] == pytest.approx(1)
+    assert summary["symbol_tests"] == pytest.approx(1)
+    assert summary["symbol_test_gaps"] == pytest.approx(0)
 
     history_dir = output_path.parent / "lifecycle_history"
     snapshots = list(history_dir.glob("lifecycle_*.json"))
