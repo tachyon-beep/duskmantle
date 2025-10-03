@@ -388,8 +388,10 @@ def create_app() -> FastAPI:
 
     app.state.search_feedback_store = _init_feedback_store(settings)
     app.state.search_model_artifact = _load_search_model(settings)
-    connection_utils.GRAPH_DRIVER_FACTORY = GraphDatabase.driver
-    connection_utils.QDRANT_CLIENT_FACTORY = QdrantClient
+    if getattr(connection_utils, "GRAPH_DRIVER_FACTORY", None) is None:
+        connection_utils.GRAPH_DRIVER_FACTORY = GraphDatabase.driver
+    if getattr(connection_utils, "QDRANT_CLIENT_FACTORY", None) is None:
+        connection_utils.QDRANT_CLIENT_FACTORY = QdrantClient
 
     graph_manager = Neo4jConnectionManager(settings, logger)
     qdrant_manager = QdrantConnectionManager(settings, logger)
