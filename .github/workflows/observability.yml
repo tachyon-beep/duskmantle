@@ -95,6 +95,7 @@ jobs:
           import os
           import sqlite3
           import time
+          from datetime import datetime, timedelta, timezone
 
           state_dir = os.path.abspath("observability-data")
           reports_dir = os.path.join(state_dir, "reports")
@@ -114,6 +115,50 @@ jobs:
           }
           with open(os.path.join(reports_dir, "coverage_report.json"), "w", encoding="utf-8") as fh:
               json.dump(coverage, fh)
+
+          now = datetime.now(timezone.utc)
+          lifecycle = {
+              "generated_at": now.timestamp(),
+              "generated_at_iso": now.isoformat(),
+              "run": {
+                  "run_id": "ci-playwright",
+                  "profile": "observability",
+                  "repo_head": "${{ github.sha }}",
+              },
+              "thresholds": {
+                  "stale_days": 30
+              },
+              "summary": {
+                  "stale_docs": 0,
+                  "isolated_nodes": 0,
+                  "subsystems_missing_tests": 0,
+                  "removed_artifacts": 0
+              },
+              "counts": {
+                  "stale_docs": 0,
+                  "isolated_nodes": 0,
+                  "subsystems_missing_tests": 0,
+                  "removed_artifacts": 0
+              },
+              "stale_docs": [],
+              "isolated": {},
+              "missing_tests": [],
+              "removed_artifacts": [],
+          }
+          with open(os.path.join(reports_dir, "lifecycle_report.json"), "w", encoding="utf-8") as fh:
+              json.dump(lifecycle, fh)
+
+          history_dir = os.path.join(reports_dir, "lifecycle_history")
+          os.makedirs(history_dir, exist_ok=True)
+          history_payload = lifecycle.copy()
+          older = now - timedelta(days=1)
+          history_payload.update({
+              "generated_at": older.timestamp(),
+              "generated_at_iso": older.isoformat(),
+          })
+          history_name = older.strftime("lifecycle_%Y%m%dT%H%M%S000000.json")
+          with open(os.path.join(history_dir, history_name), "w", encoding="utf-8") as fh:
+              json.dump(history_payload, fh)
 
           audit_path = os.path.join(audit_dir, "audit.db")
           conn = sqlite3.connect(audit_path)
