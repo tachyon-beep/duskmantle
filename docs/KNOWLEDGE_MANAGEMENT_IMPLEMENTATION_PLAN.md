@@ -28,7 +28,7 @@ This plan translates the turnkey single-container design into concrete implement
 - Task 2.4 Enhance `/search` to include graph context; expose `/graph/...` endpoints; add contract tests.
 - Task 2.5 Generate nightly coverage report and store under `/opt/knowledge/var/reports/`.
 - **Exit Criteria:** End-to-end ingestion populates both stores; search payloads include subsystem metadata; graph endpoints return expected relationships.
-- **Status (Sept 2025):** Complete — ingestion writes full graph/linkage, coverage reports surface via `/coverage`, and graph/search contract tests exercise the enriched payloads.
+- **Status (Sept 2025):** Complete — ingestion writes full graph/linkage, coverage reports surface via `/api/v1/coverage`, and graph/search contract tests exercise the enriched payloads.
 
 ### Phase 3: Turnkey Hardening (Weeks 5-6)
 

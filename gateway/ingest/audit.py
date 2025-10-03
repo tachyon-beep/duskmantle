@@ -76,8 +76,16 @@ class AuditLogger:
 
     def recent(self, limit: int = 20) -> list[dict[str, Any]]:
         """Return the most recent ingestion runs up to ``limit`` entries."""
+
+        try:
+            normalized_limit = int(limit)
+        except (TypeError, ValueError):
+            normalized_limit = 20
+        if normalized_limit < 1:
+            normalized_limit = 1
+
         with sqlite3.connect(self.db_path) as conn:
-            rows = conn.execute(_SELECT_RECENT, (limit,)).fetchall()
+            rows = conn.execute(_SELECT_RECENT, (normalized_limit,)).fetchall()
         columns = [
             "run_id",
             "profile",

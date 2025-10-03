@@ -84,6 +84,7 @@ class AppSettings(BaseSettings):
     scheduler_cron: str | None = Field(None, alias="KM_SCHEDULER_CRON")
     coverage_enabled: bool = Field(True, alias="KM_COVERAGE_ENABLED")
     coverage_history_limit: int = Field(5, alias="KM_COVERAGE_HISTORY_LIMIT")
+    audit_history_max_limit: int = Field(100, alias="KM_AUDIT_HISTORY_MAX_LIMIT")
     backup_enabled: bool = Field(False, alias="KM_BACKUP_ENABLED")
     backup_interval_minutes: int = Field(720, alias="KM_BACKUP_INTERVAL_MINUTES")
     backup_cron: str | None = Field(None, alias="KM_BACKUP_CRON")
@@ -124,6 +125,8 @@ class AppSettings(BaseSettings):
     search_vector_weight: float = Field(1.0, alias="KM_SEARCH_VECTOR_WEIGHT")
     search_lexical_weight: float = Field(0.25, alias="KM_SEARCH_LEXICAL_WEIGHT")
     search_hnsw_ef_search: int | None = Field(128, alias="KM_SEARCH_HNSW_EF_SEARCH")
+    search_graph_max_results: int = Field(20, alias="KM_SEARCH_GRAPH_MAX_RESULTS")
+    search_graph_time_budget_ms: int = Field(750, alias="KM_SEARCH_GRAPH_TIME_BUDGET_MS")
 
     feedback_log_max_bytes: int = Field(5 * 1024 * 1024, alias="KM_FEEDBACK_LOG_MAX_BYTES")
     feedback_log_max_files: int = Field(5, alias="KM_FEEDBACK_LOG_MAX_FILES")
@@ -218,6 +221,20 @@ class AppSettings(BaseSettings):
             return 20
         return value
 
+    @field_validator("search_graph_max_results")
+    @classmethod
+    def _sanitize_graph_max_results(cls, value: int) -> int:
+        if value < 1:
+            return 1
+        return value
+
+    @field_validator("search_graph_time_budget_ms")
+    @classmethod
+    def _sanitize_graph_budget(cls, value: int) -> int:
+        if value < 50:
+            return 50
+        return value
+
     def resolved_search_weights(self) -> tuple[str, dict[str, float]]:
         """Return the active search weight profile name and resolved weights."""
 
@@ -272,6 +289,15 @@ class AppSettings(BaseSettings):
             return 1
         if value > 100:
             return 100
+        return value
+
+    @field_validator("audit_history_max_limit")
+    @classmethod
+    def _validate_audit_history_limit(cls, value: int) -> int:
+        if value < 1:
+            return 1
+        if value > 500:
+            return 500
         return value
 
     @field_validator("lifecycle_stale_days")

@@ -172,8 +172,8 @@ All MCP usage is mirrored to Prometheus (`km_mcp_requests_total`, `km_mcp_reques
 
 ### Observability & Automation
 
-- Metrics exposed at `/metrics` (Prometheus format); audit history available at `/audit/history` (maintainer scope).
-- Coverage reports downloadable via `/coverage` or from `/opt/knowledge/var/reports/coverage_report.json`. Lifecycle summaries live at `/lifecycle` and the matching JSON under `/opt/knowledge/var/reports/lifecycle_report.json`.
+- Metrics exposed at `/metrics` (Prometheus format); the REST surface lives under `/api/v1` (for example `/api/v1/audit/history`, `/api/v1/coverage`, `/api/v1/graph/*`).
+- Coverage reports downloadable via `/api/v1/coverage` or from `/opt/knowledge/var/reports/coverage_report.json`. Lifecycle summaries live at `/api/v1/lifecycle` and the matching JSON under `/opt/knowledge/var/reports/lifecycle_report.json`.
 - Run `gateway-recipes list` (or `bin/km-recipe-run --help`) to discover automation bundles such as `release-prep` or `stale-audit`.
 - `bin/km-watch` (host) or the internal watcher provides continuous ingestion; adjust cadence with `KM_WATCH_INTERVAL` / `--interval`, and expose metrics via `KM_WATCH_METRICS_PORT` or `--metrics-port`.
 - Enable OpenTelemetry tracing with `KM_TRACING_ENABLED=true`; set `KM_TRACING_ENDPOINT` for remote collectors.

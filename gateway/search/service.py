@@ -16,7 +16,12 @@ from qdrant_client.http.models import ScoredPoint, SearchParams
 
 from gateway.graph.service import GraphService, GraphServiceError
 from gateway.ingest.embedding import Embedder
-from gateway.observability import SEARCH_GRAPH_CACHE_EVENTS, SEARCH_GRAPH_LOOKUP_SECONDS, SEARCH_SCORE_DELTA
+from gateway.observability import (
+    SEARCH_GRAPH_CACHE_EVENTS,
+    SEARCH_GRAPH_LOOKUP_SECONDS,
+    SEARCH_GRAPH_SKIPPED_TOTAL,
+    SEARCH_SCORE_DELTA,
+)
 from gateway.search.trainer import ModelArtifact
 
 logger = logging.getLogger(__name__)
@@ -46,6 +51,8 @@ class SearchOptions:
 
     max_limit: int = 25
     graph_timeout_seconds: float = 0.25
+    graph_time_budget_seconds: float = 0.75
+    graph_max_results: int = 20
     hnsw_ef_search: int | None = None
     scoring_mode: Literal["heuristic", "ml"] = "heuristic"
     weight_profile: str = "custom"
@@ -111,6 +118,8 @@ class SearchService:
 
         self.max_limit = resolved_options.max_limit
         self.graph_timeout_seconds = resolved_options.graph_timeout_seconds
+        self.graph_time_budget_seconds = max(0.0, resolved_options.graph_time_budget_seconds)
+        self.graph_max_results = max(0, resolved_options.graph_max_results)
         self.weight_subsystem = resolved_weights.subsystem
         self.weight_relationship = resolved_weights.relationship
         self.weight_support = resolved_weights.support
@@ -194,6 +203,14 @@ class SearchService:
         query_tokens = _detect_query_subsystems(query)
         graph_context_included = include_graph and graph_service is not None
         recency_required = filter_state.recency_cutoff is not None
+        graph_slots_remaining = self.graph_max_results if graph_service is not None else 0
+        graph_budget_deadline = (
+            time.perf_counter() + self.graph_time_budget_seconds
+            if graph_context_included and self.graph_time_budget_seconds > 0
+            else None
+        )
+        graph_slots_exhausted = False
+        graph_budget_exhausted = False
 
         for point in hits:
             payload = point.payload or {}
@@ -211,18 +228,52 @@ class SearchService:
 
             subsystem_value = (payload.get("subsystem") or "").lower()
             subsystem_direct_match = bool(filter_state.allowed_subsystems and subsystem_value in filter_state.allowed_subsystems)
-
-            graph_context_internal, path_depth_value = self._resolve_graph_context(
-                payload=payload,
-                graph_service=graph_service,
-                include_graph=include_graph,
-                graph_cache=graph_cache,
-                recency_required=recency_required,
-                allowed_subsystems=filter_state.allowed_subsystems,
-                subsystem_match=subsystem_direct_match,
-                request_id=request_id,
-                warnings=warnings,
+            needs_timestamp = recency_required and not payload.get("git_timestamp") and include_graph
+            fetch_required = graph_service is not None and (
+                include_graph
+                or (filter_state.allowed_subsystems and not subsystem_direct_match)
+                or needs_timestamp
             )
+
+            graph_context_internal: dict[str, Any] | None = None
+            path_depth_value: float | None = None
+            if fetch_required:
+                if graph_budget_exhausted:
+                    SEARCH_GRAPH_SKIPPED_TOTAL.labels(reason="time").inc()
+                elif graph_slots_remaining <= 0:
+                    graph_slots_exhausted = True
+                    SEARCH_GRAPH_SKIPPED_TOTAL.labels(reason="limit").inc()
+                elif graph_budget_deadline is not None and time.perf_counter() >= graph_budget_deadline:
+                    graph_budget_exhausted = True
+                    SEARCH_GRAPH_SKIPPED_TOTAL.labels(reason="time").inc()
+                else:
+                    graph_context_internal, path_depth_value = self._resolve_graph_context(
+                        payload=payload,
+                        graph_service=graph_service,
+                        include_graph=include_graph,
+                        graph_cache=graph_cache,
+                        recency_required=recency_required,
+                        allowed_subsystems=filter_state.allowed_subsystems,
+                        subsystem_match=subsystem_direct_match,
+                        request_id=request_id,
+                        warnings=warnings,
+                    )
+                    if graph_slots_remaining > 0:
+                        graph_slots_remaining -= 1
+                    if graph_budget_deadline is not None and time.perf_counter() > graph_budget_deadline:
+                        graph_budget_exhausted = True
+            else:
+                graph_context_internal, path_depth_value = self._resolve_graph_context(
+                    payload=payload,
+                    graph_service=graph_service,
+                    include_graph=include_graph,
+                    graph_cache=graph_cache,
+                    recency_required=recency_required,
+                    allowed_subsystems=filter_state.allowed_subsystems,
+                    subsystem_match=subsystem_direct_match,
+                    request_id=request_id,
+                    warnings=warnings,
+                )
 
             if filter_state.allowed_subsystems:
                 if not subsystem_direct_match:
@@ -334,6 +385,12 @@ class SearchService:
             metadata["filters_applied"] = filter_state.filters_applied
         if request_id:
             metadata["request_id"] = request_id
+        if graph_slots_exhausted:
+            metadata["warnings"].append(
+                f"graph context limited to first {max(1, self.graph_max_results)} results",
+            )
+        if graph_budget_exhausted:
+            metadata["warnings"].append("graph context skipped after exceeding time budget")
         return SearchResponse(query=query, results=results, metadata=metadata)
 
     def _resolve_graph_context(

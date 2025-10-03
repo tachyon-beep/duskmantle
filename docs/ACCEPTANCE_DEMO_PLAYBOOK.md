@@ -99,10 +99,10 @@ Capture any discrepancies for debugging.
 
 ## 6. Coverage Report
 
-Confirm `/coverage` is available:
+Confirm `/api/v1/coverage` is available:
 
 ```bash
-curl -s http://localhost:8000/coverage | jq '.summary'
+curl -s http://localhost:8000/api/v1/coverage | jq '.summary'
 ```
 
 Record total artifacts and chunk counts.
@@ -130,7 +130,7 @@ Record total artifacts and chunk counts.
    tar -xzf backups/archives/<archive>.tgz -C .duskmantle/config
    ```
 
-4. Relaunch the container and rerun health checks (`/readyz`, `/healthz`, `/coverage`).
+4. Relaunch the container and rerun health checks (`/readyz`, `/healthz`, `/api/v1/coverage`).
 
 ## 8. Smoke Test (Automated)
 
@@ -138,7 +138,7 @@ Record total artifacts and chunk counts.
 ./infra/smoke-test.sh duskmantle/km:<demo-tag>
 ```
 
-This script builds the image, runs a container, triggers a smoke ingest (dummy embeddings), validates `/coverage`, and tears down.
+This script builds the image, runs a container, triggers a smoke ingest (dummy embeddings), validates `/api/v1/coverage`, and tears down.
 
 ## 9. Capture Results for Release Notes
 

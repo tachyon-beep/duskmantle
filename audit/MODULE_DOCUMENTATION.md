@@ -91,19 +91,19 @@
 - `_build_lifespan(settings: AppSettings) -> Callable[[FastAPI], AbstractAsyncContextManager[None]]` (line 106) — No docstring provided.
 - `_configure_rate_limits(app: FastAPI, settings: AppSettings) -> Limiter` (line 145) — No docstring provided.
 - `_init_feedback_store(settings: AppSettings) -> SearchFeedbackStore | None` (line 156) — No docstring provided.
-- `_load_search_model(settings: AppSettings) -> ModelArtifact | None` (line 164) — No docstring provided.
-- `_initialise_graph_manager(manager: Neo4jConnectionManager, settings: AppSettings) -> None` (line 182) — No docstring provided.
-- `_initialise_qdrant_manager(manager: QdrantConnectionManager) -> None` (line 217) — No docstring provided.
-- `async _dependency_heartbeat_loop(app: FastAPI, interval: float) -> None` (line 221) — No docstring provided.
-- `_verify_graph_database(driver: Driver, database: str) -> bool` (line 232) — No docstring provided.
-- `_ensure_graph_database(settings: AppSettings) -> bool` (line 255) — Ensure the configured Neo4j database exists, creating it if missing.
-- `_run_graph_auto_migration(driver: Driver, database: str) -> None` (line 285) — No docstring provided.
-- `_fetch_pending_migrations(runner: MigrationRunner) -> list[str] | None` (line 301) — No docstring provided.
-- `_log_migration_plan(pending: list[str] | None) -> None` (line 312) — No docstring provided.
-- `_log_migration_completion(pending: list[str] | None) -> None` (line 325) — No docstring provided.
-- `_set_migration_metrics(status: int, timestamp: float | None) -> None` (line 337) — No docstring provided.
-- `create_app() -> FastAPI` (line 342) — Create the FastAPI application instance.
-- `_rate_limit_handler(_request: Request, exc: Exception) -> JSONResponse` (line 416) — No docstring provided.
+- `_load_search_model(settings: AppSettings) -> ModelArtifact | None` (line 168) — No docstring provided.
+- `_initialise_graph_manager(manager: Neo4jConnectionManager, settings: AppSettings) -> None` (line 186) — No docstring provided.
+- `_initialise_qdrant_manager(manager: QdrantConnectionManager) -> None` (line 221) — No docstring provided.
+- `async _dependency_heartbeat_loop(app: FastAPI, interval: float) -> None` (line 225) — No docstring provided.
+- `_verify_graph_database(driver: Driver, database: str) -> bool` (line 236) — No docstring provided.
+- `_ensure_graph_database(settings: AppSettings) -> bool` (line 259) — Ensure the configured Neo4j database exists, creating it if missing.
+- `_run_graph_auto_migration(driver: Driver, database: str) -> None` (line 289) — No docstring provided.
+- `_fetch_pending_migrations(runner: MigrationRunner) -> list[str] | None` (line 305) — No docstring provided.
+- `_log_migration_plan(pending: list[str] | None) -> None` (line 316) — No docstring provided.
+- `_log_migration_completion(pending: list[str] | None) -> None` (line 329) — No docstring provided.
+- `_set_migration_metrics(status: int, timestamp: float | None) -> None` (line 341) — No docstring provided.
+- `create_app() -> FastAPI` (line 346) — Create the FastAPI application instance.
+- `_rate_limit_handler(_request: Request, exc: Exception) -> JSONResponse` (line 420) — No docstring provided.
 
 ### Constants and Configuration
 - DEPENDENCY_HEARTBEAT_INTERVAL_SECONDS = 30.0 (line 50)
@@ -212,7 +212,7 @@
 - `get_search_model(request: Request) -> ModelArtifact | None` (line 38) — Return the cached search ranking model from application state.
 - `get_graph_service_dependency(request: Request) -> GraphService` (line 43) — Return a memoised graph service bound to the current FastAPI app.
 - `get_search_service_dependency(request: Request) -> SearchService | None` (line 74) — Construct (and cache) the hybrid search service for the application.
-- `get_feedback_store(request: Request) -> SearchFeedbackStore | None` (line 132) — Return the configured search feedback store, if any.
+- `get_feedback_store(request: Request) -> SearchFeedbackStore | None` (line 134) — Return the configured search feedback store, if any.
 
 ### Constants and Configuration
 - No module-level constants detected.
@@ -313,7 +313,7 @@
 
 **File path**: `gateway/api/routes/reporting.py`
 **Purpose**: Observability and reporting routes.
-**Dependencies**: External – __future__.annotations, fastapi.APIRouter, fastapi.Depends, fastapi.HTTPException, fastapi.Request, fastapi.responses.JSONResponse, json, pathlib.Path, slowapi.Limiter, typing.Any; Internal – gateway.api.auth.require_maintainer, gateway.api.dependencies.get_app_settings, gateway.config.settings.AppSettings, gateway.ingest.audit.AuditLogger, gateway.ingest.lifecycle.summarize_lifecycle
+**Dependencies**: External – __future__.annotations, fastapi.APIRouter, fastapi.Depends, fastapi.HTTPException, fastapi.Request, fastapi.responses.JSONResponse, json, logging, pathlib.Path, slowapi.Limiter, typing.Any; Internal – gateway.api.auth.require_maintainer, gateway.api.dependencies.get_app_settings, gateway.config.settings.AppSettings, gateway.ingest.audit.AuditLogger, gateway.ingest.lifecycle.summarize_lifecycle
 **Related modules**: gateway.api.auth.require_maintainer, gateway.api.dependencies.get_app_settings, gateway.config.settings.AppSettings, gateway.ingest.audit.AuditLogger, gateway.ingest.lifecycle.summarize_lifecycle
 
 ### Classes
@@ -327,6 +327,7 @@
 
 ### Data Flow
 - Defines FastAPI routes or dependencies responding to HTTP requests.
+- Maintainer audit history requests clamp to `AppSettings.audit_history_max_limit`, emit `Warning`/`X-KM-Audit-Limit` headers on adjustments, and log the sanitized limits.
 
 ### Integration Points
 - fastapi, json, pathlib, slowapi, typing
@@ -482,24 +483,28 @@
 
 ### Classes
 - `AppSettings` (line 44) — Runtime configuration for the knowledge gateway. Inherits from BaseSettings.
-  - Attributes: api_host: str = Field('0.0.0.0', alias='KM_API_HOST'), api_port: int = Field(8000, alias='KM_API_PORT'), auth_mode: Literal['secure', 'insecure'] = Field('secure', alias='KM_AUTH_MODE'), auth_enabled: bool = Field(True, alias='KM_AUTH_ENABLED'), reader_token: str | None = Field(None, alias='KM_READER_TOKEN'), maintainer_token: str | None = Field(None, alias='KM_ADMIN_TOKEN'), rate_limit_requests: int = Field(120, alias='KM_RATE_LIMIT_REQUESTS'), rate_limit_window_seconds: int = Field(60, alias='KM_RATE_LIMIT_WINDOW'), repo_root: Path = Field(Path('/workspace/repo'), alias='KM_REPO_PATH'), state_path: Path = Field(Path('/opt/knowledge/var'), alias='KM_STATE_PATH'), content_root: Path = Field(Path('/workspace/repo'), alias='KM_CONTENT_ROOT'), content_docs_subdir: Path = Field(Path('docs'), alias='KM_CONTENT_DOCS_SUBDIR'), upload_default_overwrite: bool = Field(False, alias='KM_UPLOAD_DEFAULT_OVERWRITE'), upload_default_ingest: bool = Field(False, alias='KM_UPLOAD_DEFAULT_INGEST'), qdrant_url: str = Field('http://localhost:6333', alias='KM_QDRANT_URL'), qdrant_api_key: str | None = Field(None, alias='KM_QDRANT_API_KEY'), qdrant_collection: str = Field('km_knowledge_v1', alias='KM_QDRANT_COLLECTION'), neo4j_uri: str = Field('bolt://localhost:7687', alias='KM_NEO4J_URI'), neo4j_user: str = Field('neo4j', alias='KM_NEO4J_USER'), neo4j_password: str = Field('neo4jadmin', alias='KM_NEO4J_PASSWORD'), neo4j_database: str = Field('neo4j', alias='KM_NEO4J_DATABASE'), neo4j_auth_enabled: bool = Field(True, alias='KM_NEO4J_AUTH_ENABLED'), neo4j_readonly_uri: str | None = Field(None, alias='KM_NEO4J_READONLY_URI'), neo4j_readonly_user: str | None = Field(None, alias='KM_NEO4J_READONLY_USER'), neo4j_readonly_password: str | None = Field(None, alias='KM_NEO4J_READONLY_PASSWORD'), embedding_model: str = Field('sentence-transformers/all-MiniLM-L6-v2', alias='KM_EMBEDDING_MODEL'), ingest_window: int = Field(1000, alias='KM_INGEST_WINDOW'), ingest_overlap: int = Field(200, alias='KM_INGEST_OVERLAP'), ingest_use_dummy_embeddings: bool = Field(False, alias='KM_INGEST_USE_DUMMY'), ingest_incremental_enabled: bool = Field(True, alias='KM_INGEST_INCREMENTAL'), ingest_parallel_workers: int = Field(2, alias='KM_INGEST_PARALLEL_WORKERS'), ingest_max_pending_batches: int = Field(4, alias='KM_INGEST_MAX_PENDING_BATCHES'), scheduler_enabled: bool = Field(False, alias='KM_SCHEDULER_ENABLED'), scheduler_interval_minutes: int = Field(30, alias='KM_SCHEDULER_INTERVAL_MINUTES'), scheduler_cron: str | None = Field(None, alias='KM_SCHEDULER_CRON'), coverage_enabled: bool = Field(True, alias='KM_COVERAGE_ENABLED'), coverage_history_limit: int = Field(5, alias='KM_COVERAGE_HISTORY_LIMIT'), backup_enabled: bool = Field(False, alias='KM_BACKUP_ENABLED'), backup_interval_minutes: int = Field(720, alias='KM_BACKUP_INTERVAL_MINUTES'), backup_cron: str | None = Field(None, alias='KM_BACKUP_CRON'), backup_retention_limit: int = Field(7, alias='KM_BACKUP_RETENTION_LIMIT'), backup_destination: Path | None = Field(None, alias='KM_BACKUP_DEST_PATH'), backup_script_path: Path | None = Field(None, alias='KM_BACKUP_SCRIPT'), lifecycle_report_enabled: bool = Field(True, alias='KM_LIFECYCLE_REPORT_ENABLED'), lifecycle_stale_days: int = Field(30, alias='KM_LIFECYCLE_STALE_DAYS'), lifecycle_history_limit: int = Field(10, alias='KM_LIFECYCLE_HISTORY_LIMIT'), tracing_enabled: bool = Field(False, alias='KM_TRACING_ENABLED'), tracing_endpoint: str | None = Field(None, alias='KM_TRACING_ENDPOINT'), tracing_headers: str | None = Field(None, alias='KM_TRACING_HEADERS'), tracing_service_name: str = Field('duskmantle-knowledge-gateway', alias='KM_TRACING_SERVICE_NAME'), tracing_sample_ratio: float = Field(1.0, alias='KM_TRACING_SAMPLE_RATIO'), tracing_console_export: bool = Field(False, alias='KM_TRACING_CONSOLE_EXPORT'), graph_auto_migrate: bool = Field(False, alias='KM_GRAPH_AUTO_MIGRATE'), graph_subsystem_cache_ttl_seconds: int = Field(30, alias='KM_GRAPH_SUBSYSTEM_CACHE_TTL'), graph_subsystem_cache_max_entries: int = Field(128, alias='KM_GRAPH_SUBSYSTEM_CACHE_MAX'), search_weight_profile: Literal['default', 'analysis', 'operations', 'docs-heavy'] = Field('default', alias='KM_SEARCH_WEIGHT_PROFILE'), search_weight_subsystem: float = Field(0.28, alias='KM_SEARCH_W_SUBSYSTEM'), search_weight_relationship: float = Field(0.05, alias='KM_SEARCH_W_RELATIONSHIP'), search_weight_support: float = Field(0.09, alias='KM_SEARCH_W_SUPPORT'), search_weight_coverage_penalty: float = Field(0.15, alias='KM_SEARCH_W_COVERAGE_PENALTY'), search_weight_criticality: float = Field(0.12, alias='KM_SEARCH_W_CRITICALITY'), search_sort_by_vector: bool = Field(False, alias='KM_SEARCH_SORT_BY_VECTOR'), search_scoring_mode: Literal['heuristic', 'ml'] = Field('heuristic', alias='KM_SEARCH_SCORING_MODE'), search_model_path: Path | None = Field(None, alias='KM_SEARCH_MODEL_PATH'), search_warn_slow_graph_ms: int = Field(250, alias='KM_SEARCH_WARN_GRAPH_MS'), search_vector_weight: float = Field(1.0, alias='KM_SEARCH_VECTOR_WEIGHT'), search_lexical_weight: float = Field(0.25, alias='KM_SEARCH_LEXICAL_WEIGHT'), search_hnsw_ef_search: int | None = Field(128, alias='KM_SEARCH_HNSW_EF_SEARCH'), dry_run: bool = Field(False, alias='KM_INGEST_DRY_RUN'), model_config = {'env_file': '.env', 'extra': 'ignore'}
+  - Attributes: api_host: str = Field('0.0.0.0', alias='KM_API_HOST'), api_port: int = Field(8000, alias='KM_API_PORT'), auth_mode: Literal['secure', 'insecure'] = Field('secure', alias='KM_AUTH_MODE'), auth_enabled: bool = Field(True, alias='KM_AUTH_ENABLED'), reader_token: str | None = Field(None, alias='KM_READER_TOKEN'), maintainer_token: str | None = Field(None, alias='KM_ADMIN_TOKEN'), rate_limit_requests: int = Field(120, alias='KM_RATE_LIMIT_REQUESTS'), rate_limit_window_seconds: int = Field(60, alias='KM_RATE_LIMIT_WINDOW'), repo_root: Path = Field(Path('/workspace/repo'), alias='KM_REPO_PATH'), state_path: Path = Field(Path('/opt/knowledge/var'), alias='KM_STATE_PATH'), content_root: Path = Field(Path('/workspace/repo'), alias='KM_CONTENT_ROOT'), content_docs_subdir: Path = Field(Path('docs'), alias='KM_CONTENT_DOCS_SUBDIR'), upload_default_overwrite: bool = Field(False, alias='KM_UPLOAD_DEFAULT_OVERWRITE'), upload_default_ingest: bool = Field(False, alias='KM_UPLOAD_DEFAULT_INGEST'), qdrant_url: str = Field('http://localhost:6333', alias='KM_QDRANT_URL'), qdrant_api_key: str | None = Field(None, alias='KM_QDRANT_API_KEY'), qdrant_collection: str = Field('km_knowledge_v1', alias='KM_QDRANT_COLLECTION'), neo4j_uri: str = Field('bolt://localhost:7687', alias='KM_NEO4J_URI'), neo4j_user: str = Field('neo4j', alias='KM_NEO4J_USER'), neo4j_password: str = Field('neo4jadmin', alias='KM_NEO4J_PASSWORD'), neo4j_database: str = Field('neo4j', alias='KM_NEO4J_DATABASE'), neo4j_auth_enabled: bool = Field(True, alias='KM_NEO4J_AUTH_ENABLED'), neo4j_readonly_uri: str | None = Field(None, alias='KM_NEO4J_READONLY_URI'), neo4j_readonly_user: str | None = Field(None, alias='KM_NEO4J_READONLY_USER'), neo4j_readonly_password: str | None = Field(None, alias='KM_NEO4J_READONLY_PASSWORD'), embedding_model: str = Field('sentence-transformers/all-MiniLM-L6-v2', alias='KM_EMBEDDING_MODEL'), ingest_window: int = Field(1000, alias='KM_INGEST_WINDOW'), ingest_overlap: int = Field(200, alias='KM_INGEST_OVERLAP'), ingest_use_dummy_embeddings: bool = Field(False, alias='KM_INGEST_USE_DUMMY'), ingest_incremental_enabled: bool = Field(True, alias='KM_INGEST_INCREMENTAL'), ingest_parallel_workers: int = Field(2, alias='KM_INGEST_PARALLEL_WORKERS'), ingest_max_pending_batches: int = Field(4, alias='KM_INGEST_MAX_PENDING_BATCHES'), scheduler_enabled: bool = Field(False, alias='KM_SCHEDULER_ENABLED'), scheduler_interval_minutes: int = Field(30, alias='KM_SCHEDULER_INTERVAL_MINUTES'), scheduler_cron: str | None = Field(None, alias='KM_SCHEDULER_CRON'), coverage_enabled: bool = Field(True, alias='KM_COVERAGE_ENABLED'), coverage_history_limit: int = Field(5, alias='KM_COVERAGE_HISTORY_LIMIT'), audit_history_max_limit: int = Field(100, alias='KM_AUDIT_HISTORY_MAX_LIMIT'), backup_enabled: bool = Field(False, alias='KM_BACKUP_ENABLED'), backup_interval_minutes: int = Field(720, alias='KM_BACKUP_INTERVAL_MINUTES'), backup_cron: str | None = Field(None, alias='KM_BACKUP_CRON'), backup_retention_limit: int = Field(7, alias='KM_BACKUP_RETENTION_LIMIT'), backup_destination: Path | None = Field(None, alias='KM_BACKUP_DEST_PATH'), backup_script_path: Path | None = Field(None, alias='KM_BACKUP_SCRIPT'), lifecycle_report_enabled: bool = Field(True, alias='KM_LIFECYCLE_REPORT_ENABLED'), lifecycle_stale_days: int = Field(30, alias='KM_LIFECYCLE_STALE_DAYS'), lifecycle_history_limit: int = Field(10, alias='KM_LIFECYCLE_HISTORY_LIMIT'), tracing_enabled: bool = Field(False, alias='KM_TRACING_ENABLED'), tracing_endpoint: str | None = Field(None, alias='KM_TRACING_ENDPOINT'), tracing_headers: str | None = Field(None, alias='KM_TRACING_HEADERS'), tracing_service_name: str = Field('duskmantle-knowledge-gateway', alias='KM_TRACING_SERVICE_NAME'), tracing_sample_ratio: float = Field(1.0, alias='KM_TRACING_SAMPLE_RATIO'), tracing_console_export: bool = Field(False, alias='KM_TRACING_CONSOLE_EXPORT'), graph_auto_migrate: bool = Field(False, alias='KM_GRAPH_AUTO_MIGRATE'), graph_subsystem_cache_ttl_seconds: int = Field(30, alias='KM_GRAPH_SUBSYSTEM_CACHE_TTL'), graph_subsystem_cache_max_entries: int = Field(128, alias='KM_GRAPH_SUBSYSTEM_CACHE_MAX'), search_weight_profile: Literal['default', 'analysis', 'operations', 'docs-heavy'] = Field('default', alias='KM_SEARCH_WEIGHT_PROFILE'), search_weight_subsystem: float = Field(0.28, alias='KM_SEARCH_W_SUBSYSTEM'), search_weight_relationship: float = Field(0.05, alias='KM_SEARCH_W_RELATIONSHIP'), search_weight_support: float = Field(0.09, alias='KM_SEARCH_W_SUPPORT'), search_weight_coverage_penalty: float = Field(0.15, alias='KM_SEARCH_W_COVERAGE_PENALTY'), search_weight_criticality: float = Field(0.12, alias='KM_SEARCH_W_CRITICALITY'), search_sort_by_vector: bool = Field(False, alias='KM_SEARCH_SORT_BY_VECTOR'), search_scoring_mode: Literal['heuristic', 'ml'] = Field('heuristic', alias='KM_SEARCH_SCORING_MODE'), search_model_path: Path | None = Field(None, alias='KM_SEARCH_MODEL_PATH'), search_warn_slow_graph_ms: int = Field(250, alias='KM_SEARCH_WARN_GRAPH_MS'), search_vector_weight: float = Field(1.0, alias='KM_SEARCH_VECTOR_WEIGHT'), search_lexical_weight: float = Field(0.25, alias='KM_SEARCH_LEXICAL_WEIGHT'), search_hnsw_ef_search: int | None = Field(128, alias='KM_SEARCH_HNSW_EF_SEARCH'), search_graph_max_results: int = Field(20, alias='KM_SEARCH_GRAPH_MAX_RESULTS'), search_graph_time_budget_ms: int = Field(750, alias='KM_SEARCH_GRAPH_TIME_BUDGET_MS'), feedback_log_max_bytes: int = Field(5 * 1024 * 1024, alias='KM_FEEDBACK_LOG_MAX_BYTES'), feedback_log_max_files: int = Field(5, alias='KM_FEEDBACK_LOG_MAX_FILES'), dry_run: bool = Field(False, alias='KM_INGEST_DRY_RUN'), model_config = {'env_file': '.env', 'extra': 'ignore'}
   - Methods:
-    - `_clamp_tracing_ratio(cls, value: float) -> float` (line 137) — Ensure the tracing sampling ratio stays within [0, 1].
-    - `_clamp_search_weights(cls, value: float) -> float` (line 156) — Clamp search weights to [0, 1] for stability.
-    - `_sanitize_hnsw_ef(cls, value: int | None) -> int | None` (line 167) — No method docstring provided.
-    - `_sanitize_graph_cache_ttl(cls, value: int) -> int` (line 176) — No method docstring provided.
-    - `_sanitize_graph_cache_max(cls, value: int) -> int` (line 183) — No method docstring provided.
-    - `_sanitize_backup_interval(cls, value: int) -> int` (line 190) — No method docstring provided.
-    - `_sanitize_backup_retention(cls, value: int) -> int` (line 197) — No method docstring provided.
-    - `resolved_search_weights(self) -> tuple[str, dict[str, float]]` (line 202) — Return the active search weight profile name and resolved weights.
-    - `backup_trigger_config(self) -> dict[str, object]` (line 229) — Return trigger configuration for the automated backup job.
-    - `scheduler_trigger_config(self) -> dict[str, object]` (line 239) — Return trigger configuration for the ingestion scheduler.
-    - `_validate_history_limit(cls, value: int) -> int` (line 251) — No method docstring provided.
-    - `_validate_lifecycle_stale(cls, value: int) -> int` (line 260) — No method docstring provided.
-    - `_ensure_positive_parallelism(cls, value: int) -> int` (line 269) — No method docstring provided.
+    - `_clamp_tracing_ratio(cls, value: float) -> float` (line 142) — Ensure the tracing sampling ratio stays within [0, 1].
+    - `_clamp_search_weights(cls, value: float) -> float` (line 161) — Clamp search weights to [0, 1] for stability.
+    - `_sanitize_hnsw_ef(cls, value: int | None) -> int | None` (line 172) — No method docstring provided.
+    - `_sanitize_graph_cache_ttl(cls, value: int) -> int` (line 181) — No method docstring provided.
+    - `_sanitize_graph_cache_max(cls, value: int) -> int` (line 188) — No method docstring provided.
+    - `_sanitize_backup_interval(cls, value: int) -> int` (line 195) — No method docstring provided.
+    - `_sanitize_backup_retention(cls, value: int) -> int` (line 202) — No method docstring provided.
+    - `_sanitize_feedback_bytes(cls, value: int) -> int` (line 209) — No method docstring provided.
+    - `_sanitize_feedback_files(cls, value: int) -> int` (line 216) — No method docstring provided.
+    - `_sanitize_graph_max_results(cls, value: int) -> int` (line 225) — No method docstring provided.
+    - `_sanitize_graph_budget(cls, value: int) -> int` (line 232) — No method docstring provided.
+    - `resolved_search_weights(self) -> tuple[str, dict[str, float]]` (line 237) — Return the active search weight profile name and resolved weights.
+    - `backup_trigger_config(self) -> dict[str, object]` (line 264) — Return trigger configuration for the automated backup job.
+    - `scheduler_trigger_config(self) -> dict[str, object]` (line 274) — Return trigger configuration for the ingestion scheduler.
+    - `_validate_history_limit(cls, value: int) -> int` (line 286) — No method docstring provided.
+    - `_validate_lifecycle_stale(cls, value: int) -> int` (line 295) — No method docstring provided.
+    - `_ensure_positive_parallelism(cls, value: int) -> int` (line 304) — No method docstring provided.
 
 ### Functions
-- `get_settings() -> AppSettings` (line 280) — Load settings from environment (cached).
+- `get_settings() -> AppSettings` (line 315) — Load settings from environment (cached).
 
 ### Constants and Configuration
 - SEARCH_WEIGHT_PROFILES : dict[str, dict[str, float]] = {'default': {'weight_subsystem': 0.28, 'weight_relationship': 0.05, 'weight_support': 0.09, 'weight_coverage_penalty': 0.15, 'weight_criticality': 0.12}, 'analysis': {'weight_subsystem': 0.38, 'weight_relationship': 0.1, 'weight_support': 0.08, 'weight_coverage_penalty': 0.18, 'weight_criticality': 0.18}, 'operations': {'weight_subsystem': 0.22, 'weight_relationship': 0.08, 'weight_support': 0.06, 'weight_coverage_penalty': 0.28, 'weight_criticality': 0.1}, 'docs-heavy': {'weight_subsystem': 0.26, 'weight_relationship': 0.04, 'weight_support': 0.22, 'weight_coverage_penalty': 0.12, 'weight_criticality': 0.08}} (line 12)
@@ -511,7 +516,7 @@
 - functools, pathlib, pydantic, pydantic_settings, typing
 
 ### Code Quality Notes
-- 8 public element(s) lack docstrings.
+- 12 public element(s) lack docstrings.
 
 ## gateway/graph/__init__.py
 
@@ -780,7 +785,7 @@
   - Methods:
     - `__init__(self, db_path: Path) -> None` (line 51) — Initialise the audit database and ensure the schema exists.
     - `record(self, result: IngestionResult) -> None` (line 58) — Insert a new ingestion run entry.
-    - `recent(self, limit: int = 20) -> list[dict[str, Any]]` (line 77) — Return the most recent ingestion runs up to ``limit`` entries.
+    - `recent(self, limit: int = 20) -> list[dict[str, Any]]` (line 77) — Return the most recent ingestion runs up to ``limit`` entries, coercing invalid/low values to at least 1 before querying SQLite.
 
 ### Functions
 - None
@@ -791,7 +796,7 @@
 - _INSERT_RUN = '\nINSERT INTO ingestion_runs (\n    run_id,\n    profile,\n    started_at,\n    duration_seconds,\n    artifact_count,\n    chunk_count,\n    repo_head,\n    success,\n    created_at\n) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)\n' (line 33)
 
 ### Data Flow
-- Handles in-process data transformations defined in this module.
+- Handles in-process data transformations defined in this module (limit sanitation, row-to-dict conversion).
 
 ### Integration Points
 - pathlib, sqlite3, time, typing
@@ -844,7 +849,7 @@
 - `_ensure_maintainer_scope(settings: AppSettings) -> None` (line 23) — Abort execution if maintainer credentials are missing during auth.
 - `build_parser() -> argparse.ArgumentParser` (line 29) — Create an argument parser for the ingestion CLI.
 - `rebuild(profile: str, repo: Path | None, dry_run: bool, dummy_embeddings: bool, incremental: bool | None, settings: AppSettings | None = None) -> None` (line 89) — Execute a full ingestion pass.
-- `audit_history(limit: int, output_json: bool, settings: AppSettings | None = None) -> None` (line 122) — Display recent ingestion runs from the audit ledger.
+- `audit_history(limit: int, output_json: bool, settings: AppSettings | None = None) -> None` (line 122) — Display recent ingestion runs from the audit ledger, clamping requests to `AppSettings.audit_history_max_limit` and notifying operators when limits are adjusted.
 - `_render_audit_table(entries: Iterable[dict[str, object]]) -> Table` (line 148) — Render recent audit entries as a Rich table.
 - `_format_timestamp(raw: object) -> str` (line 180) — Format timestamps from the audit ledger for display.
 - `_coerce_int(value: object) -> int | None` (line 188) — Attempt to interpret the value as an integer.
@@ -855,7 +860,7 @@
 - No module-level constants detected.
 
 ### Data Flow
-- Handles in-process data transformations defined in this module.
+- Handles in-process data transformations defined in this module and normalises CLI inputs (limit clamping, console warnings).
 
 ### Integration Points
 - argparse, collections, datetime, logging, pathlib, rich
@@ -1465,7 +1470,7 @@
 - `_initialise_metric_labels() -> None` (line 660) — No docstring provided.
 
 ### Constants and Configuration
-- TOOL_USAGE = {'km-search': {'description': 'Hybrid search across the knowledge base with optional filters and graph context', 'details': dedent('\n            Required: `query` text. Optional: `limit` (default 10, max 25), `include_graph`, structured `filters`, `sort_by_vector`.\n            Example: `/sys mcp run duskmantle km-search --query "ingest pipeline" --limit 5`.\n            Returns scored chunks with metadata and optional graph enrichments.\n            ').strip()}, 'km-graph-node': {'description': 'Fetch a graph node by ID and inspect incoming/outgoing relationships', 'details': dedent('\n            Required: `node_id` such as `DesignDoc:docs/archive/WP6/WP6_RELEASE_TOOLING_PLAN.md`.\n            Optional: `relationships` (`outgoing`, `incoming`, `all`, `none`) and `limit` (default 50, max 200).\n            Example: `/sys mcp run duskmantle km-graph-node --node-id "Code:gateway/mcp/server.py"`.\n            ').strip()}, 'km-graph-subsystem': {'description': 'Review a subsystem, related artifacts, and connected subsystems', 'details': dedent('\n            Required: `name` of the subsystem.\n            Optional: `depth` (default 1, max 5), `include_artifacts`, pagination `cursor`, `limit` (default 25, max 100).\n            Example: `/sys mcp run duskmantle km-graph-subsystem --name Kasmina --depth 2`.\n            ').strip()}, 'km-graph-search': {'description': 'Search graph entities (artifacts, subsystems, teams) by term', 'details': dedent('\n            Required: `term` to match against graph nodes.\n            Optional: `limit` (default 20, max 50).\n            Example: `/sys mcp run duskmantle km-graph-search --term coverage`.\n            ').strip()}, 'km-coverage-summary': {'description': 'Summarise ingestion coverage (artifact and chunk counts, freshness)', 'details': dedent('\n            No parameters. Returns the same payload as `/coverage` including summary counts and stale thresholds.\n            Example: `/sys mcp run duskmantle km-coverage-summary`.\n            ').strip()}, 'km-lifecycle-report': {'description': 'Summarise isolated nodes, stale docs, and missing tests', 'details': dedent('\n            No parameters. Mirrors the `/lifecycle` endpoint and highlights isolated graph nodes, stale design docs, and subsystems missing tests.\n            Example: `/sys mcp run duskmantle km-lifecycle-report`.\n            ').strip()}, 'km-ingest-status': {'description': 'Show the most recent ingest run (profile, status, timestamps)', 'details': dedent('\n            Optional: `profile` to scope results to a specific ingest profile.\n            Example: `/sys mcp run duskmantle km-ingest-status --profile demo`.\n            Returns `status: ok` with run metadata or `status: not_found` when history is empty.\n            ').strip()}, 'km-ingest-trigger': {'description': 'Kick off a manual ingest run (full rebuild via gateway-ingest)', 'details': dedent('\n            Optional: `profile` (defaults to MCP settings), `dry_run`, `use_dummy_embeddings`.\n            Example: `/sys mcp run duskmantle km-ingest-trigger --profile local --dry-run true`.\n            Requires maintainer token (`KM_ADMIN_TOKEN`).\n            ').strip()}, 'km-backup-trigger': {'description': 'Create a compressed backup of gateway state (Neo4j/Qdrant data)', 'details': dedent('\n            No parameters. Returns archive path and metadata.\n            Example: `/sys mcp run duskmantle km-backup-trigger`.\n            Requires maintainer token; mirrors the `bin/km-backup` helper.\n            ').strip()}, 'km-feedback-submit': {'description': 'Vote on a search result and attach optional notes for training data', 'details': dedent('\n            Required: `request_id` (search request) and `chunk_id` (result identifier).\n            Optional: numeric `vote` (-1.0 to 1.0) and freeform `note`.\n            Example: `/sys mcp run duskmantle km-feedback-submit --request-id req123 --chunk-id chunk456 --vote 1`.\n            Maintainer token required when auth is enforced.\n            ').strip()}, 'km-upload': {'description': 'Copy an existing file into the knowledge workspace and optionally trigger ingest', 'details': dedent('\n            Required: `source_path` (file visible to the MCP host). Optional: `destination` (relative path inside the\n            content root), `overwrite`, `ingest`. Default behaviour stores the file under the configured docs directory.\n            Example: `/sys mcp run duskmantle km-upload --source-path ./notes/design.md --destination docs/uploads/`.\n            Maintainer scope recommended because this writes to the repository volume and may trigger ingestion.\n            ').strip()}, 'km-storetext': {'description': 'Persist raw text as a document within the knowledge workspace', 'details': dedent('\n            Required: `content` (text body). Optional: `title`, `destination`, `subsystem`, `tags`, `metadata` map,\n            `overwrite`, `ingest`. Defaults write markdown into the configured docs directory with YAML front matter\n            derived from the provided metadata.\n            Example: `/sys mcp run duskmantle km-storetext --title "Release Notes" --content "## Summary"`.\n            Maintainer scope recommended because this writes to the repository volume.\n            ').strip()}} (line 29)
+- TOOL_USAGE = {'km-search': {'description': 'Hybrid search across the knowledge base with optional filters and graph context', 'details': dedent('\n            Required: `query` text. Optional: `limit` (default 10, max 25), `include_graph`, structured `filters`, `sort_by_vector`.\n            Example: `/sys mcp run duskmantle km-search --query "ingest pipeline" --limit 5`.\n            Returns scored chunks with metadata and optional graph enrichments.\n            ').strip()}, 'km-graph-node': {'description': 'Fetch a graph node by ID and inspect incoming/outgoing relationships', 'details': dedent('\n            Required: `node_id` such as `DesignDoc:docs/archive/WP6/WP6_RELEASE_TOOLING_PLAN.md`.\n            Optional: `relationships` (`outgoing`, `incoming`, `all`, `none`) and `limit` (default 50, max 200).\n            Example: `/sys mcp run duskmantle km-graph-node --node-id "Code:gateway/mcp/server.py"`.\n            ').strip()}, 'km-graph-subsystem': {'description': 'Review a subsystem, related artifacts, and connected subsystems', 'details': dedent('\n            Required: `name` of the subsystem.\n            Optional: `depth` (default 1, max 5), `include_artifacts`, pagination `cursor`, `limit` (default 25, max 100).\n            Example: `/sys mcp run duskmantle km-graph-subsystem --name Kasmina --depth 2`.\n            ').strip()}, 'km-graph-search': {'description': 'Search graph entities (artifacts, subsystems, teams) by term', 'details': dedent('\n            Required: `term` to match against graph nodes.\n            Optional: `limit` (default 20, max 50).\n            Example: `/sys mcp run duskmantle km-graph-search --term coverage`.\n            ').strip()}, 'km-coverage-summary': {'description': 'Summarise ingestion coverage (artifact and chunk counts, freshness)', 'details': dedent('\n            No parameters. Returns the same payload as `/api/v1/coverage` including summary counts and stale thresholds.\n            Example: `/sys mcp run duskmantle km-coverage-summary`.\n            ').strip()}, 'km-lifecycle-report': {'description': 'Summarise isolated nodes, stale docs, and missing tests', 'details': dedent('\n            No parameters. Mirrors the `/api/v1/lifecycle` endpoint and highlights isolated graph nodes, stale design docs, and subsystems missing tests.\n            Example: `/sys mcp run duskmantle km-lifecycle-report`.\n            ').strip()}, 'km-ingest-status': {'description': 'Show the most recent ingest run (profile, status, timestamps)', 'details': dedent('\n            Optional: `profile` to scope results to a specific ingest profile.\n            Example: `/sys mcp run duskmantle km-ingest-status --profile demo`.\n            Returns `status: ok` with run metadata or `status: not_found` when history is empty.\n            ').strip()}, 'km-ingest-trigger': {'description': 'Kick off a manual ingest run (full rebuild via gateway-ingest)', 'details': dedent('\n            Optional: `profile` (defaults to MCP settings), `dry_run`, `use_dummy_embeddings`.\n            Example: `/sys mcp run duskmantle km-ingest-trigger --profile local --dry-run true`.\n            Requires maintainer token (`KM_ADMIN_TOKEN`).\n            ').strip()}, 'km-backup-trigger': {'description': 'Create a compressed backup of gateway state (Neo4j/Qdrant data)', 'details': dedent('\n            No parameters. Returns archive path and metadata.\n            Example: `/sys mcp run duskmantle km-backup-trigger`.\n            Requires maintainer token; mirrors the `bin/km-backup` helper.\n            ').strip()}, 'km-feedback-submit': {'description': 'Vote on a search result and attach optional notes for training data', 'details': dedent('\n            Required: `request_id` (search request) and `chunk_id` (result identifier).\n            Optional: numeric `vote` (-1.0 to 1.0) and freeform `note`.\n            Example: `/sys mcp run duskmantle km-feedback-submit --request-id req123 --chunk-id chunk456 --vote 1`.\n            Maintainer token required when auth is enforced.\n            ').strip()}, 'km-upload': {'description': 'Copy an existing file into the knowledge workspace and optionally trigger ingest', 'details': dedent('\n            Required: `source_path` (file visible to the MCP host). Optional: `destination` (relative path inside the\n            content root), `overwrite`, `ingest`. Default behaviour stores the file under the configured docs directory.\n            Example: `/sys mcp run duskmantle km-upload --source-path ./notes/design.md --destination docs/uploads/`.\n            Maintainer scope recommended because this writes to the repository volume and may trigger ingestion.\n            ').strip()}, 'km-storetext': {'description': 'Persist raw text as a document within the knowledge workspace', 'details': dedent('\n            Required: `content` (text body). Optional: `title`, `destination`, `subsystem`, `tags`, `metadata` map,\n            `overwrite`, `ingest`. Defaults write markdown into the configured docs directory with YAML front matter\n            derived from the provided metadata.\n            Example: `/sys mcp run duskmantle km-storetext --title "Release Notes" --content "## Summary"`.\n            Maintainer scope recommended because this writes to the repository volume.\n            ').strip()}} (line 29)
 - HELP_DOC_PATH = Path(__file__).resolve().parents[2] / 'docs' / 'MCP_INTERFACE_SPEC.md' (line 154)
 
 ### Data Flow
@@ -1595,7 +1600,7 @@
 
 **File path**: `gateway/observability/__init__.py`
 **Purpose**: Observability utilities (metrics, logging, tracing).
-**Dependencies**: External – logging.configure_logging, metrics.BACKUP_LAST_STATUS, metrics.BACKUP_LAST_SUCCESS_TIMESTAMP, metrics.BACKUP_RUNS_TOTAL, metrics.COVERAGE_LAST_RUN_STATUS, metrics.COVERAGE_LAST_RUN_TIMESTAMP, metrics.COVERAGE_MISSING_ARTIFACTS, metrics.GRAPH_DEPENDENCY_LAST_SUCCESS, metrics.GRAPH_DEPENDENCY_STATUS, metrics.GRAPH_MIGRATION_LAST_STATUS, metrics.GRAPH_MIGRATION_LAST_TIMESTAMP, metrics.INGEST_ARTIFACTS_TOTAL, metrics.INGEST_CHUNKS_TOTAL, metrics.INGEST_DURATION_SECONDS, metrics.INGEST_LAST_RUN_STATUS, metrics.INGEST_LAST_RUN_TIMESTAMP, metrics.LIFECYCLE_HISTORY_SNAPSHOTS, metrics.LIFECYCLE_ISOLATED_NODES_TOTAL, metrics.LIFECYCLE_LAST_RUN_STATUS, metrics.LIFECYCLE_LAST_RUN_TIMESTAMP, metrics.LIFECYCLE_MISSING_TEST_SUBSYSTEMS_TOTAL, metrics.LIFECYCLE_REMOVED_ARTIFACTS_TOTAL, metrics.LIFECYCLE_STALE_DOCS_TOTAL, metrics.QDRANT_DEPENDENCY_LAST_SUCCESS, metrics.QDRANT_DEPENDENCY_STATUS, metrics.SEARCH_GRAPH_CACHE_EVENTS, metrics.SEARCH_GRAPH_LOOKUP_SECONDS, metrics.SEARCH_REQUESTS_TOTAL, metrics.SEARCH_SCORE_DELTA, metrics.UI_EVENTS_TOTAL, metrics.UI_REQUESTS_TOTAL, tracing.configure_tracing; Internal – None
+**Dependencies**: External – logging.configure_logging, metrics.BACKUP_LAST_STATUS, metrics.BACKUP_LAST_SUCCESS_TIMESTAMP, metrics.BACKUP_RUNS_TOTAL, metrics.COVERAGE_LAST_RUN_STATUS, metrics.COVERAGE_LAST_RUN_TIMESTAMP, metrics.COVERAGE_MISSING_ARTIFACTS, metrics.GRAPH_DEPENDENCY_LAST_SUCCESS, metrics.GRAPH_DEPENDENCY_STATUS, metrics.GRAPH_MIGRATION_LAST_STATUS, metrics.GRAPH_MIGRATION_LAST_TIMESTAMP, metrics.INGEST_ARTIFACTS_TOTAL, metrics.INGEST_CHUNKS_TOTAL, metrics.INGEST_DURATION_SECONDS, metrics.INGEST_LAST_RUN_STATUS, metrics.INGEST_LAST_RUN_TIMESTAMP, metrics.LIFECYCLE_HISTORY_SNAPSHOTS, metrics.LIFECYCLE_ISOLATED_NODES_TOTAL, metrics.LIFECYCLE_LAST_RUN_STATUS, metrics.LIFECYCLE_LAST_RUN_TIMESTAMP, metrics.LIFECYCLE_MISSING_TEST_SUBSYSTEMS_TOTAL, metrics.LIFECYCLE_REMOVED_ARTIFACTS_TOTAL, metrics.LIFECYCLE_STALE_DOCS_TOTAL, metrics.QDRANT_DEPENDENCY_LAST_SUCCESS, metrics.QDRANT_DEPENDENCY_STATUS, metrics.SEARCH_GRAPH_CACHE_EVENTS, metrics.SEARCH_GRAPH_LOOKUP_SECONDS, metrics.SEARCH_GRAPH_SKIPPED_TOTAL, metrics.SEARCH_REQUESTS_TOTAL, metrics.SEARCH_SCORE_DELTA, metrics.UI_EVENTS_TOTAL, metrics.UI_REQUESTS_TOTAL, tracing.configure_tracing; Internal – None
 **Related modules**: None
 
 ### Classes
@@ -1678,29 +1683,32 @@
 - INGEST_SKIPS_TOTAL = Counter('km_ingest_skips_total', 'Ingestion runs skipped partitioned by reason', labelnames=['reason']) (line 109)
 - SEARCH_REQUESTS_TOTAL = Counter('km_search_requests_total', 'Search API requests partitioned by outcome', labelnames=['status']) (line 115)
 - SEARCH_GRAPH_CACHE_EVENTS = Counter('km_search_graph_cache_events_total', 'Graph context cache events during search', labelnames=['status']) (line 121)
-- SEARCH_GRAPH_LOOKUP_SECONDS = Histogram('km_search_graph_lookup_seconds', 'Latency of graph lookups for search enrichment') (line 127)
-- SEARCH_SCORE_DELTA = Histogram('km_search_adjusted_minus_vector', 'Distribution of adjusted minus vector scores') (line 132)
-- GRAPH_CYPHER_DENIED_TOTAL = Counter('km_graph_cypher_denied_total', 'Maintainer Cypher requests blocked by read-only safeguards', labelnames=['reason']) (line 137)
-- GRAPH_MIGRATION_LAST_STATUS = Gauge('km_graph_migration_last_status', 'Graph migration result (1=success, 0=failure, -1=skipped)') (line 143)
-- GRAPH_MIGRATION_LAST_TIMESTAMP = Gauge('km_graph_migration_last_timestamp', 'Unix timestamp of the last graph migration attempt') (line 148)
-- SCHEDULER_RUNS_TOTAL = Counter('km_scheduler_runs_total', 'Scheduled ingestion job outcomes partitioned by result', labelnames=['result']) (line 153)
-- SCHEDULER_LAST_SUCCESS_TIMESTAMP = Gauge('km_scheduler_last_success_timestamp', 'Unix timestamp of the last successful scheduled ingestion run') (line 159)
-- COVERAGE_HISTORY_SNAPSHOTS = Gauge('km_coverage_history_snapshots', 'Number of retained coverage history snapshots', labelnames=['profile']) (line 164)
-- WATCH_RUNS_TOTAL = Counter('km_watch_runs_total', 'Watcher outcomes partitioned by result', labelnames=['result']) (line 170)
-- LIFECYCLE_LAST_RUN_STATUS = Gauge('km_lifecycle_last_run_status', 'Lifecycle report generation status (1=success,0=failure)', labelnames=['profile']) (line 177)
-- LIFECYCLE_LAST_RUN_TIMESTAMP = Gauge('km_lifecycle_last_run_timestamp', 'Unix timestamp of the last lifecycle report', labelnames=['profile']) (line 183)
-- LIFECYCLE_STALE_DOCS_TOTAL = Gauge('km_lifecycle_stale_docs_total', 'Number of stale design docs in the latest lifecycle report', labelnames=['profile']) (line 189)
-- LIFECYCLE_ISOLATED_NODES_TOTAL = Gauge('km_lifecycle_isolated_nodes_total', 'Number of isolated graph nodes recorded in the latest lifecycle report', labelnames=['profile']) (line 195)
-- LIFECYCLE_MISSING_TEST_SUBSYSTEMS_TOTAL = Gauge('km_lifecycle_missing_test_subsystems_total', 'Number of subsystems missing tests in the latest lifecycle report', labelnames=['profile']) (line 201)
-- LIFECYCLE_REMOVED_ARTIFACTS_TOTAL = Gauge('km_lifecycle_removed_artifacts_total', 'Number of recently removed artifacts recorded in the latest lifecycle report', labelnames=['profile']) (line 207)
-- LIFECYCLE_HISTORY_SNAPSHOTS = Gauge('km_lifecycle_history_snapshots', 'Number of retained lifecycle history snapshots', labelnames=['profile']) (line 213)
-- MCP_REQUESTS_TOTAL = Counter('km_mcp_requests_total', 'MCP tool invocations partitioned by result', labelnames=['tool', 'result']) (line 219)
-- MCP_REQUEST_SECONDS = Histogram('km_mcp_request_seconds', 'Latency of MCP tool handlers', labelnames=['tool']) (line 225)
-- MCP_FAILURES_TOTAL = Counter('km_mcp_failures_total', 'MCP tool failures partitioned by error type', labelnames=['tool', 'error']) (line 231)
-- MCP_UPLOAD_TOTAL = Counter('km_mcp_upload_total', 'MCP upload tool invocations partitioned by result', labelnames=['result']) (line 237)
-- MCP_STORETEXT_TOTAL = Counter('km_mcp_storetext_total', 'MCP storetext tool invocations partitioned by result', labelnames=['result']) (line 243)
-- UI_REQUESTS_TOTAL = Counter('km_ui_requests_total', 'Embedded UI visits partitioned by view', labelnames=['view']) (line 250)
-- UI_EVENTS_TOTAL = Counter('km_ui_events_total', 'Embedded UI events partitioned by event label', labelnames=['event']) (line 257)
+- SEARCH_GRAPH_SKIPPED_TOTAL = Counter('km_search_graph_skipped_total', 'Number of search results where graph enrichment was skipped', labelnames=['reason']) (line 127)
+- SEARCH_FEEDBACK_ROTATIONS_TOTAL = Counter('km_feedback_rotations_total', 'Number of times the search feedback log rotated due to size limits') (line 133)
+- SEARCH_FEEDBACK_LOG_BYTES = Gauge('km_feedback_log_bytes', 'Current size of the primary search feedback log in bytes') (line 138)
+- SEARCH_GRAPH_LOOKUP_SECONDS = Histogram('km_search_graph_lookup_seconds', 'Latency of graph lookups for search enrichment') (line 143)
+- SEARCH_SCORE_DELTA = Histogram('km_search_adjusted_minus_vector', 'Distribution of adjusted minus vector scores') (line 148)
+- GRAPH_CYPHER_DENIED_TOTAL = Counter('km_graph_cypher_denied_total', 'Maintainer Cypher requests blocked by read-only safeguards', labelnames=['reason']) (line 153)
+- GRAPH_MIGRATION_LAST_STATUS = Gauge('km_graph_migration_last_status', 'Graph migration result (1=success, 0=failure, -1=skipped)') (line 159)
+- GRAPH_MIGRATION_LAST_TIMESTAMP = Gauge('km_graph_migration_last_timestamp', 'Unix timestamp of the last graph migration attempt') (line 164)
+- SCHEDULER_RUNS_TOTAL = Counter('km_scheduler_runs_total', 'Scheduled ingestion job outcomes partitioned by result', labelnames=['result']) (line 169)
+- SCHEDULER_LAST_SUCCESS_TIMESTAMP = Gauge('km_scheduler_last_success_timestamp', 'Unix timestamp of the last successful scheduled ingestion run') (line 175)
+- COVERAGE_HISTORY_SNAPSHOTS = Gauge('km_coverage_history_snapshots', 'Number of retained coverage history snapshots', labelnames=['profile']) (line 180)
+- WATCH_RUNS_TOTAL = Counter('km_watch_runs_total', 'Watcher outcomes partitioned by result', labelnames=['result']) (line 186)
+- LIFECYCLE_LAST_RUN_STATUS = Gauge('km_lifecycle_last_run_status', 'Lifecycle report generation status (1=success,0=failure)', labelnames=['profile']) (line 193)
+- LIFECYCLE_LAST_RUN_TIMESTAMP = Gauge('km_lifecycle_last_run_timestamp', 'Unix timestamp of the last lifecycle report', labelnames=['profile']) (line 199)
+- LIFECYCLE_STALE_DOCS_TOTAL = Gauge('km_lifecycle_stale_docs_total', 'Number of stale design docs in the latest lifecycle report', labelnames=['profile']) (line 205)
+- LIFECYCLE_ISOLATED_NODES_TOTAL = Gauge('km_lifecycle_isolated_nodes_total', 'Number of isolated graph nodes recorded in the latest lifecycle report', labelnames=['profile']) (line 211)
+- LIFECYCLE_MISSING_TEST_SUBSYSTEMS_TOTAL = Gauge('km_lifecycle_missing_test_subsystems_total', 'Number of subsystems missing tests in the latest lifecycle report', labelnames=['profile']) (line 217)
+- LIFECYCLE_REMOVED_ARTIFACTS_TOTAL = Gauge('km_lifecycle_removed_artifacts_total', 'Number of recently removed artifacts recorded in the latest lifecycle report', labelnames=['profile']) (line 223)
+- LIFECYCLE_HISTORY_SNAPSHOTS = Gauge('km_lifecycle_history_snapshots', 'Number of retained lifecycle history snapshots', labelnames=['profile']) (line 229)
+- MCP_REQUESTS_TOTAL = Counter('km_mcp_requests_total', 'MCP tool invocations partitioned by result', labelnames=['tool', 'result']) (line 235)
+- MCP_REQUEST_SECONDS = Histogram('km_mcp_request_seconds', 'Latency of MCP tool handlers', labelnames=['tool']) (line 241)
+- MCP_FAILURES_TOTAL = Counter('km_mcp_failures_total', 'MCP tool failures partitioned by error type', labelnames=['tool', 'error']) (line 247)
+- MCP_UPLOAD_TOTAL = Counter('km_mcp_upload_total', 'MCP upload tool invocations partitioned by result', labelnames=['result']) (line 253)
+- MCP_STORETEXT_TOTAL = Counter('km_mcp_storetext_total', 'MCP storetext tool invocations partitioned by result', labelnames=['result']) (line 259)
+- UI_REQUESTS_TOTAL = Counter('km_ui_requests_total', 'Embedded UI visits partitioned by view', labelnames=['view']) (line 266)
+- UI_EVENTS_TOTAL = Counter('km_ui_events_total', 'Embedded UI events partitioned by event label', labelnames=['event']) (line 273)
 
 ### Data Flow
 - Handles in-process data transformations defined in this module.
@@ -2119,18 +2127,24 @@
 
 **File path**: `gateway/search/feedback.py`
 **Purpose**: Persistent storage helpers for search feedback events.
-**Dependencies**: External – __future__.annotations, collections.abc.Mapping, collections.abc.Sequence, datetime.UTC, datetime.datetime, json, pathlib.Path, threading, uuid; Internal – gateway.search.service.SearchResponse
-**Related modules**: gateway.search.service.SearchResponse
+**Dependencies**: External – __future__.annotations, collections.abc.Mapping, collections.abc.Sequence, datetime.UTC, datetime.datetime, json, pathlib.Path, threading, typing.Final, uuid; Internal – gateway.observability.metrics.SEARCH_FEEDBACK_LOG_BYTES, gateway.observability.metrics.SEARCH_FEEDBACK_ROTATIONS_TOTAL, gateway.search.service.SearchResponse
+**Related modules**: gateway.observability.metrics.SEARCH_FEEDBACK_LOG_BYTES, gateway.observability.metrics.SEARCH_FEEDBACK_ROTATIONS_TOTAL, gateway.search.service.SearchResponse
 
 ### Classes
-- `SearchFeedbackStore` (line 15) — Append-only store for search telemetry and feedback. Inherits from object.
+- `SearchFeedbackStore` (line 20) — Append-only store for search telemetry and feedback. Inherits from object.
+  - Attributes: LOG_SUFFIX_TEMPLATE: Final[str] = 'events.log.{}'
   - Methods:
-    - `__init__(self, root: Path) -> None` (line 18) — Initialise the feedback store beneath the given directory.
-    - `record(self, response: SearchResponse, feedback: Mapping[str, object] | None, context: object = None, request_id: str | None = None) -> None` (line 25) — Persist a feedback event for the supplied search response.
-    - `_append(self, rows: Sequence[Mapping[str, object]]) -> None` (line 68) — No method docstring provided.
+    - `__init__(self, root: Path, max_bytes: int, max_files: int) -> None` (line 25) — Initialise the feedback store beneath the given directory.
+    - `record(self, response: SearchResponse, feedback: Mapping[str, object] | None, context: object = None, request_id: str | None = None) -> None` (line 34) — Persist a feedback event for the supplied search response.
+    - `_append(self, rows: Sequence[Mapping[str, object]]) -> None` (line 77) — No method docstring provided.
+    - `_rotate_if_needed(self, incoming_size: int) -> None` (line 90) — No method docstring provided.
+    - `_perform_rotation(self) -> None` (line 97) — No method docstring provided.
+    - `_suffix_path(self, index: int) -> Path` (line 117) — No method docstring provided.
+    - `_current_size(self) -> int` (line 122) — No method docstring provided.
+    - `_update_metrics(self) -> None` (line 128) — No method docstring provided.
 
 ### Functions
-- `_serialize_results(response: SearchResponse, request_id: str, timestamp: str, vote: float | None, note: str | None, context: object, feedback: Mapping[str, object] | None) -> list[dict[str, object]]` (line 78) — No docstring provided.
+- `_serialize_results(response: SearchResponse, request_id: str, timestamp: str, vote: float | None, note: str | None, context: object, feedback: Mapping[str, object] | None) -> list[dict[str, object]]` (line 136) — No docstring provided.
 
 ### Constants and Configuration
 - No module-level constants detected.
@@ -2139,10 +2153,10 @@
 - Handles in-process data transformations defined in this module.
 
 ### Integration Points
-- collections, datetime, json, pathlib, threading, uuid
+- collections, datetime, json, pathlib, threading, typing, uuid
 
 ### Code Quality Notes
-- 2 public element(s) lack docstrings.
+- 7 public element(s) lack docstrings.
 
 ## gateway/search/maintenance.py
 
@@ -2191,74 +2205,74 @@
 - collections, csv, dataclasses, datetime, json, logging, pathlib, shutil
 
 ### Code Quality Notes
-- 9 public element(s) lack docstrings.
+- 11 public element(s) lack docstrings.
 
 ## gateway/search/service.py
 
 **File path**: `gateway/search/service.py`
 **Purpose**: Hybrid search orchestration for Duskmantle's knowledge gateway.
-**Dependencies**: External – __future__.annotations, collections.abc.Callable, collections.abc.Iterable, collections.abc.Sequence, dataclasses.dataclass, datetime.UTC, datetime.datetime, datetime.timedelta, logging, neo4j.exceptions.Neo4jError, qdrant_client.QdrantClient, qdrant_client.http.models.ScoredPoint, qdrant_client.http.models.SearchParams, re, time, typing.Any, typing.Literal; Internal – gateway.graph.service.GraphService, gateway.graph.service.GraphServiceError, gateway.ingest.embedding.Embedder, gateway.observability.SEARCH_GRAPH_CACHE_EVENTS, gateway.observability.SEARCH_GRAPH_LOOKUP_SECONDS, gateway.observability.SEARCH_SCORE_DELTA, gateway.search.trainer.ModelArtifact
-**Related modules**: gateway.graph.service.GraphService, gateway.graph.service.GraphServiceError, gateway.ingest.embedding.Embedder, gateway.observability.SEARCH_GRAPH_CACHE_EVENTS, gateway.observability.SEARCH_GRAPH_LOOKUP_SECONDS, gateway.observability.SEARCH_SCORE_DELTA, gateway.search.trainer.ModelArtifact
+**Dependencies**: External – __future__.annotations, collections.abc.Callable, collections.abc.Iterable, collections.abc.Sequence, dataclasses.dataclass, datetime.UTC, datetime.datetime, datetime.timedelta, logging, neo4j.exceptions.Neo4jError, qdrant_client.QdrantClient, qdrant_client.http.models.ScoredPoint, qdrant_client.http.models.SearchParams, re, time, typing.Any, typing.Literal; Internal – gateway.graph.service.GraphService, gateway.graph.service.GraphServiceError, gateway.ingest.embedding.Embedder, gateway.observability.SEARCH_GRAPH_CACHE_EVENTS, gateway.observability.SEARCH_GRAPH_LOOKUP_SECONDS, gateway.observability.SEARCH_GRAPH_SKIPPED_TOTAL, gateway.observability.SEARCH_SCORE_DELTA, gateway.search.trainer.ModelArtifact
+**Related modules**: gateway.graph.service.GraphService, gateway.graph.service.GraphServiceError, gateway.ingest.embedding.Embedder, gateway.observability.SEARCH_GRAPH_CACHE_EVENTS, gateway.observability.SEARCH_GRAPH_LOOKUP_SECONDS, gateway.observability.SEARCH_GRAPH_SKIPPED_TOTAL, gateway.observability.SEARCH_SCORE_DELTA, gateway.search.trainer.ModelArtifact
 
 ### Classes
-- `SearchResult` (line 26) — Single ranked chunk returned from the search pipeline. Inherits from object.
+- `SearchResult` (line 31) — Single ranked chunk returned from the search pipeline. Inherits from object.
   - Attributes: chunk: dict[str, Any], graph_context: dict[str, Any] | None, scoring: dict[str, Any]
   - Methods: None
-- `SearchResponse` (line 35) — API-friendly container for search results and metadata. Inherits from object.
+- `SearchResponse` (line 40) — API-friendly container for search results and metadata. Inherits from object.
   - Attributes: query: str, results: list[SearchResult], metadata: dict[str, Any]
   - Methods: None
-- `SearchOptions` (line 44) — Runtime options controlling the search service behaviour. Inherits from object.
-  - Attributes: max_limit: int = 25, graph_timeout_seconds: float = 0.25, hnsw_ef_search: int | None = None, scoring_mode: Literal['heuristic', 'ml'] = 'heuristic', weight_profile: str = 'custom', slow_graph_warn_seconds: float = 0.25
+- `SearchOptions` (line 49) — Runtime options controlling the search service behaviour. Inherits from object.
+  - Attributes: max_limit: int = 25, graph_timeout_seconds: float = 0.25, graph_time_budget_seconds: float = 0.75, graph_max_results: int = 20, hnsw_ef_search: int | None = None, scoring_mode: Literal['heuristic', 'ml'] = 'heuristic', weight_profile: str = 'custom', slow_graph_warn_seconds: float = 0.25
   - Methods: None
-- `SearchWeights` (line 56) — Weighting configuration for hybrid scoring. Inherits from object.
+- `SearchWeights` (line 63) — Weighting configuration for hybrid scoring. Inherits from object.
   - Attributes: subsystem: float = 0.3, relationship: float = 0.05, support: float = 0.1, coverage_penalty: float = 0.15, criticality: float = 0.12, vector: float = 1.0, lexical: float = 0.25
   - Methods: None
-- `FilterState` (line 69) — Preprocessed filter collections derived from request parameters. Inherits from object.
+- `FilterState` (line 76) — Preprocessed filter collections derived from request parameters. Inherits from object.
   - Attributes: allowed_subsystems: set[str], allowed_types: set[str], allowed_namespaces: set[str], allowed_tags: set[str], filters_applied: dict[str, Any], recency_cutoff: datetime | None, recency_warning_emitted: bool = False
   - Methods: None
-- `CoverageInfo` (line 82) — Coverage characteristics used during scoring. Inherits from object.
+- `CoverageInfo` (line 89) — Coverage characteristics used during scoring. Inherits from object.
   - Attributes: ratio: float, penalty: float, missing_flag: float
   - Methods: None
-- `SearchService` (line 90) — Execute hybrid vector/graph search with heuristic or ML scoring. Inherits from object.
+- `SearchService` (line 97) — Execute hybrid vector/graph search with heuristic or ML scoring. Inherits from object.
   - Methods:
-    - `__init__(self, qdrant_client: QdrantClient, collection_name: str, embedder: Embedder, options: SearchOptions | None = None, weights: SearchWeights | None = None, model_artifact: ModelArtifact | None = None, failure_callback: Callable[[Exception], None] | None = None) -> None` (line 93) — Initialise the search service with vector and scoring options.
-    - `search(self, query: str, limit: int, include_graph: bool, graph_service: GraphService | None, sort_by_vector: bool = False, request_id: str | None = None, filters: dict[str, Any] | None = None) -> SearchResponse` (line 155) — Execute a hybrid search request and return ranked results.
-    - `_resolve_graph_context(self, payload: dict[str, Any], graph_service: GraphService | None, include_graph: bool, graph_cache: dict[str, dict[str, Any]], recency_required: bool, allowed_subsystems: set[str], subsystem_match: bool, request_id: str | None, warnings: list[str]) -> tuple[dict[str, Any] | None, float | None]` (line 339) — Fetch and cache graph context for a search result chunk.
-    - `_build_model_features(self, scoring: dict[str, Any], graph_context: dict[str, Any] | None, graph_context_included: bool, warnings_count: int) -> dict[str, float]` (line 469) — No method docstring provided.
-    - `_apply_model(self, features: dict[str, float]) -> tuple[float, dict[str, float]]` (line 496) — No method docstring provided.
+    - `__init__(self, qdrant_client: QdrantClient, collection_name: str, embedder: Embedder, options: SearchOptions | None = None, weights: SearchWeights | None = None, model_artifact: ModelArtifact | None = None, failure_callback: Callable[[Exception], None] | None = None) -> None` (line 100) — Initialise the search service with vector and scoring options.
+    - `search(self, query: str, limit: int, include_graph: bool, graph_service: GraphService | None, sort_by_vector: bool = False, request_id: str | None = None, filters: dict[str, Any] | None = None) -> SearchResponse` (line 164) — Execute a hybrid search request and return ranked results.
+    - `_resolve_graph_context(self, payload: dict[str, Any], graph_service: GraphService | None, include_graph: bool, graph_cache: dict[str, dict[str, Any]], recency_required: bool, allowed_subsystems: set[str], subsystem_match: bool, request_id: str | None, warnings: list[str]) -> tuple[dict[str, Any] | None, float | None]` (line 396) — Fetch and cache graph context for a search result chunk.
+    - `_build_model_features(self, scoring: dict[str, Any], graph_context: dict[str, Any] | None, graph_context_included: bool, warnings_count: int) -> dict[str, float]` (line 526) — No method docstring provided.
+    - `_apply_model(self, features: dict[str, float]) -> tuple[float, dict[str, float]]` (line 553) — No method docstring provided.
 
 ### Functions
-- `_label_for_artifact(artifact_type: str | None) -> str` (line 510) — No docstring provided.
-- `_summarize_graph_context(data: dict[str, Any]) -> dict[str, Any]` (line 521) — No docstring provided.
-- `_subsystems_from_context(graph_context: dict[str, Any] | None) -> set[str]` (line 551) — No docstring provided.
-- `_detect_query_subsystems(query: str) -> set[str]` (line 569) — No docstring provided.
-- `_normalise_hybrid_weights(vector_weight: float, lexical_weight: float) -> tuple[float, float]` (line 574) — No docstring provided.
-- `_prepare_filter_state(filters: dict[str, Any]) -> FilterState` (line 582) — No docstring provided.
-- `_passes_payload_filters(payload: dict[str, Any], state: FilterState) -> bool` (line 652) — No docstring provided.
-- `_normalise_payload_tags(raw_tags: Sequence[object] | set[object] | None) -> set[str]` (line 669) — No docstring provided.
-- `_build_chunk(payload: dict[str, Any], score: float) -> dict[str, Any]` (line 675) — No docstring provided.
-- `_calculate_subsystem_affinity(subsystem: str, query_tokens: set[str]) -> float` (line 692) — No docstring provided.
-- `_calculate_supporting_bonus(related_artifacts: Iterable[dict[str, Any]]) -> float` (line 702) — No docstring provided.
-- `_calculate_coverage_info(chunk: dict[str, Any], weight_coverage_penalty: float) -> CoverageInfo` (line 714) — No docstring provided.
-- `_coerce_ratio_value(value: object) -> float | None` (line 724) — No docstring provided.
-- `_calculate_criticality_score(chunk: dict[str, Any], graph_context: dict[str, Any] | None) -> float` (line 742) — No docstring provided.
-- `_update_path_depth_signal(signals: dict[str, Any], path_depth: float | None, graph_context: dict[str, Any] | None) -> None` (line 749) — No docstring provided.
-- `_ensure_criticality_signal(signals: dict[str, Any], chunk: dict[str, Any], graph_context: dict[str, Any] | None) -> None` (line 764) — No docstring provided.
-- `_ensure_freshness_signal(signals: dict[str, Any], chunk: dict[str, Any], graph_context: dict[str, Any] | None, freshness_days: float | None) -> None` (line 774) — No docstring provided.
-- `_ensure_coverage_ratio_signal(signals: dict[str, Any], chunk: dict[str, Any]) -> None` (line 785) — No docstring provided.
-- `_lexical_score(query: str, chunk: dict[str, Any]) -> float` (line 800) — No docstring provided.
-- `_base_scoring(vector_score: float, lexical_score: float, vector_weight: float, lexical_weight: float) -> dict[str, Any]` (line 833) — No docstring provided.
-- `_compute_scoring(base_scoring: dict[str, Any], vector_score: float, lexical_score: float, vector_weight: float, lexical_weight: float, query_tokens: set[str], chunk: dict[str, Any], graph_context: dict[str, Any], weight_subsystem: float, weight_relationship: float, weight_support: float, weight_coverage_penalty: float, weight_criticality: float) -> dict[str, Any]` (line 856) — No docstring provided.
-- `_populate_additional_signals(scoring: dict[str, Any], chunk: dict[str, Any], graph_context: dict[str, Any] | None, path_depth: float | None, freshness_days: float | None) -> dict[str, Any]` (line 914) — No docstring provided.
-- `_estimate_path_depth(graph_context: dict[str, Any] | None) -> float` (line 932) — No docstring provided.
-- `_extract_subsystem_criticality(graph_context: dict[str, Any] | None) -> str | None` (line 941) — No docstring provided.
-- `_normalise_criticality(value: str | float | None) -> float` (line 956) — No docstring provided.
-- `_compute_freshness_days(chunk: dict[str, Any], graph_context: dict[str, Any] | None) -> float | None` (line 970) — No docstring provided.
-- `_resolve_chunk_datetime(chunk: dict[str, Any], graph_context: dict[str, Any] | None) -> datetime | None` (line 986) — No docstring provided.
-- `_parse_iso_datetime(value: object) -> datetime | None` (line 1013) — No docstring provided.
+- `_label_for_artifact(artifact_type: str | None) -> str` (line 567) — No docstring provided.
+- `_summarize_graph_context(data: dict[str, Any]) -> dict[str, Any]` (line 578) — No docstring provided.
+- `_subsystems_from_context(graph_context: dict[str, Any] | None) -> set[str]` (line 608) — No docstring provided.
+- `_detect_query_subsystems(query: str) -> set[str]` (line 626) — No docstring provided.
+- `_normalise_hybrid_weights(vector_weight: float, lexical_weight: float) -> tuple[float, float]` (line 631) — No docstring provided.
+- `_prepare_filter_state(filters: dict[str, Any]) -> FilterState` (line 639) — No docstring provided.
+- `_passes_payload_filters(payload: dict[str, Any], state: FilterState) -> bool` (line 709) — No docstring provided.
+- `_normalise_payload_tags(raw_tags: Sequence[object] | set[object] | None) -> set[str]` (line 726) — No docstring provided.
+- `_build_chunk(payload: dict[str, Any], score: float) -> dict[str, Any]` (line 732) — No docstring provided.
+- `_calculate_subsystem_affinity(subsystem: str, query_tokens: set[str]) -> float` (line 749) — No docstring provided.
+- `_calculate_supporting_bonus(related_artifacts: Iterable[dict[str, Any]]) -> float` (line 759) — No docstring provided.
+- `_calculate_coverage_info(chunk: dict[str, Any], weight_coverage_penalty: float) -> CoverageInfo` (line 771) — No docstring provided.
+- `_coerce_ratio_value(value: object) -> float | None` (line 781) — No docstring provided.
+- `_calculate_criticality_score(chunk: dict[str, Any], graph_context: dict[str, Any] | None) -> float` (line 799) — No docstring provided.
+- `_update_path_depth_signal(signals: dict[str, Any], path_depth: float | None, graph_context: dict[str, Any] | None) -> None` (line 806) — No docstring provided.
+- `_ensure_criticality_signal(signals: dict[str, Any], chunk: dict[str, Any], graph_context: dict[str, Any] | None) -> None` (line 821) — No docstring provided.
+- `_ensure_freshness_signal(signals: dict[str, Any], chunk: dict[str, Any], graph_context: dict[str, Any] | None, freshness_days: float | None) -> None` (line 831) — No docstring provided.
+- `_ensure_coverage_ratio_signal(signals: dict[str, Any], chunk: dict[str, Any]) -> None` (line 842) — No docstring provided.
+- `_lexical_score(query: str, chunk: dict[str, Any]) -> float` (line 857) — No docstring provided.
+- `_base_scoring(vector_score: float, lexical_score: float, vector_weight: float, lexical_weight: float) -> dict[str, Any]` (line 890) — No docstring provided.
+- `_compute_scoring(base_scoring: dict[str, Any], vector_score: float, lexical_score: float, vector_weight: float, lexical_weight: float, query_tokens: set[str], chunk: dict[str, Any], graph_context: dict[str, Any], weight_subsystem: float, weight_relationship: float, weight_support: float, weight_coverage_penalty: float, weight_criticality: float) -> dict[str, Any]` (line 913) — No docstring provided.
+- `_populate_additional_signals(scoring: dict[str, Any], chunk: dict[str, Any], graph_context: dict[str, Any] | None, path_depth: float | None, freshness_days: float | None) -> dict[str, Any]` (line 971) — No docstring provided.
+- `_estimate_path_depth(graph_context: dict[str, Any] | None) -> float` (line 989) — No docstring provided.
+- `_extract_subsystem_criticality(graph_context: dict[str, Any] | None) -> str | None` (line 998) — No docstring provided.
+- `_normalise_criticality(value: str | float | None) -> float` (line 1013) — No docstring provided.
+- `_compute_freshness_days(chunk: dict[str, Any], graph_context: dict[str, Any] | None) -> float | None` (line 1027) — No docstring provided.
+- `_resolve_chunk_datetime(chunk: dict[str, Any], graph_context: dict[str, Any] | None) -> datetime | None` (line 1043) — No docstring provided.
+- `_parse_iso_datetime(value: object) -> datetime | None` (line 1070) — No docstring provided.
 
 ### Constants and Configuration
-- _TOKEN_PATTERN = re.compile('\\w+', flags=re.ASCII) (line 797)
+- _TOKEN_PATTERN = re.compile('\\w+', flags=re.ASCII) (line 854)
 
 ### Data Flow
 - Issues Cypher queries against Neo4j and returns structured dictionaries.
@@ -2569,22 +2583,24 @@
 
 **File path**: `tests/test_api_security.py`
 **Purpose**: Module tests/test_api_security.py lacks docstring; review source for intent.
-**Dependencies**: External – __future__.annotations, fastapi.testclient.TestClient, json, logging, pathlib.Path, pytest, typing.Any; Internal – gateway.api.app.create_app, gateway.config.settings.get_settings, gateway.get_version, gateway.graph.service.GraphService, gateway.search.service.SearchResponse
-**Related modules**: gateway.api.app.create_app, gateway.config.settings.get_settings, gateway.get_version, gateway.graph.service.GraphService, gateway.search.service.SearchResponse
+**Dependencies**: External – __future__.annotations, fastapi.testclient.TestClient, json, logging, pathlib.Path, pytest, typing.Any; Internal – gateway.api.app.create_app, gateway.config.settings.get_settings, gateway.get_version, gateway.graph.service.GraphService, gateway.ingest.audit.AuditLogger, gateway.ingest.pipeline.IngestionResult, gateway.search.service.SearchResponse
+**Related modules**: gateway.api.app.create_app, gateway.config.settings.get_settings, gateway.get_version, gateway.graph.service.GraphService, gateway.ingest.audit.AuditLogger, gateway.ingest.pipeline.IngestionResult, gateway.search.service.SearchResponse
 
 ### Classes
 - None
 
 ### Functions
-- `reset_settings_cache() -> None` (line 19) — No docstring provided.
-- `test_audit_requires_token(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None` (line 25) — No docstring provided.
-- `test_coverage_endpoint(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None` (line 52) — No docstring provided.
-- `test_coverage_missing_report(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None` (line 82) — No docstring provided.
-- `test_rate_limiting(monkeypatch: pytest.MonkeyPatch) -> None` (line 99) — No docstring provided.
-- `test_startup_logs_configuration(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None` (line 113) — No docstring provided.
-- `test_secure_mode_without_admin_token_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None` (line 129) — No docstring provided.
-- `test_secure_mode_requires_custom_neo4j_password(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None` (line 139) — No docstring provided.
-- `test_rate_limiting_search(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None` (line 149) — No docstring provided.
+- `reset_settings_cache() -> None` (line 20) — No docstring provided.
+- `test_audit_requires_token(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None` (line 27) — No docstring provided.
+- `test_audit_history_limit_clamped(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None` (line 55) — No docstring provided.
+- `test_audit_history_limit_too_low_normalized(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None` (line 93) — No docstring provided.
+- `test_coverage_endpoint(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None` (line 129) — No docstring provided.
+- `test_coverage_missing_report(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None` (line 159) — No docstring provided.
+- `test_rate_limiting(monkeypatch: pytest.MonkeyPatch) -> None` (line 176) — No docstring provided.
+- `test_startup_logs_configuration(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None` (line 190) — No docstring provided.
+- `test_secure_mode_without_admin_token_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None` (line 206) — No docstring provided.
+- `test_secure_mode_requires_custom_neo4j_password(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None` (line 216) — No docstring provided.
+- `test_rate_limiting_search(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None` (line 226) — No docstring provided.
 
 ### Constants and Configuration
 - No module-level constants detected.
@@ -2597,7 +2613,7 @@
 - fastapi, json, logging, pathlib, pytest, typing
 
 ### Code Quality Notes
-- 9 public element(s) lack docstrings.
+- 11 public element(s) lack docstrings.
 
 ## tests/test_app_smoke.py
 
@@ -3024,14 +3040,16 @@
 
 ### Functions
 - `reset_settings_cache() -> None` (line 16) — No docstring provided.
-- `sample_repo(tmp_path: Path) -> Path` (line 23) — No docstring provided.
+- `sample_repo(tmp_path: Path) -> Path` (line 22) — No docstring provided.
 - `test_cli_rebuild_dry_run(sample_repo: Path, monkeypatch: pytest.MonkeyPatch) -> None` (line 31) — No docstring provided.
 - `test_cli_rebuild_requires_maintainer_token(sample_repo: Path, monkeypatch: pytest.MonkeyPatch) -> None` (line 50) — No docstring provided.
 - `test_cli_rebuild_with_maintainer_token(sample_repo: Path, monkeypatch: pytest.MonkeyPatch) -> None` (line 60) — No docstring provided.
 - `test_cli_rebuild_full_rebuild_flag(sample_repo: Path, monkeypatch: pytest.MonkeyPatch) -> None` (line 75) — No docstring provided.
 - `test_cli_rebuild_incremental_flag(sample_repo: Path, monkeypatch: pytest.MonkeyPatch) -> None` (line 85) — No docstring provided.
 - `test_cli_audit_history_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None` (line 99) — No docstring provided.
-- `test_cli_audit_history_no_entries(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None` (line 123) — No docstring provided.
+- `test_cli_audit_history_limit_clamped(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None` (line 123) — No docstring provided.
+- `test_cli_audit_history_no_entries(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None` (line 153) — No docstring provided.
+- `test_audit_logger_recent_normalizes_limit(tmp_path: Path) -> None` (line 163) — No docstring provided.
 
 ### Constants and Configuration
 - No module-level constants detected.
@@ -3513,6 +3531,33 @@
 ### Code Quality Notes
 - 6 public element(s) lack docstrings.
 
+## tests/test_search_feedback.py
+
+**File path**: `tests/test_search_feedback.py`
+**Purpose**: Module tests/test_search_feedback.py lacks docstring; review source for intent.
+**Dependencies**: External – __future__.annotations, pathlib.Path, pytest, typing.Any; Internal – gateway.observability.metrics.SEARCH_FEEDBACK_LOG_BYTES, gateway.observability.metrics.SEARCH_FEEDBACK_ROTATIONS_TOTAL, gateway.search.feedback.SearchFeedbackStore, gateway.search.service.SearchResponse, gateway.search.service.SearchResult
+**Related modules**: gateway.observability.metrics.SEARCH_FEEDBACK_LOG_BYTES, gateway.observability.metrics.SEARCH_FEEDBACK_ROTATIONS_TOTAL, gateway.search.feedback.SearchFeedbackStore, gateway.search.service.SearchResponse, gateway.search.service.SearchResult
+
+### Classes
+- None
+
+### Functions
+- `_make_response(query: str, note: str) -> SearchResponse` (line 16) — No docstring provided.
+- `test_feedback_store_writes_entries(tmp_path: Path) -> None` (line 44) — No docstring provided.
+- `test_feedback_store_rotates_when_threshold_exceeded(tmp_path: Path) -> None` (line 55) — No docstring provided.
+
+### Constants and Configuration
+- No module-level constants detected.
+
+### Data Flow
+- Executes pytest fixtures or assertions to validate behaviour.
+
+### Integration Points
+- pathlib, pytest, typing
+
+### Code Quality Notes
+- 3 public element(s) lack docstrings.
+
 ## tests/test_search_maintenance.py
 
 **File path**: `tests/test_search_maintenance.py`
@@ -3585,62 +3630,68 @@
 
 **File path**: `tests/test_search_service.py`
 **Purpose**: Module tests/test_search_service.py lacks docstring; review source for intent.
-**Dependencies**: External – __future__.annotations, collections.abc.Sequence, datetime.UTC, datetime.datetime, datetime.timedelta, prometheus_client.REGISTRY, pytest, typing.Any; Internal – gateway.graph.service.GraphService, gateway.search.SearchOptions, gateway.search.SearchService, gateway.search.SearchWeights, gateway.search.trainer.ModelArtifact
+**Dependencies**: External – __future__.annotations, collections.abc.Sequence, datetime.UTC, datetime.datetime, datetime.timedelta, prometheus_client.REGISTRY, pytest, time, typing.Any; Internal – gateway.graph.service.GraphService, gateway.search.SearchOptions, gateway.search.SearchService, gateway.search.SearchWeights, gateway.search.trainer.ModelArtifact
 **Related modules**: gateway.graph.service.GraphService, gateway.search.SearchOptions, gateway.search.SearchService, gateway.search.SearchWeights, gateway.search.trainer.ModelArtifact
 
 ### Classes
-- `FakeEmbedder` (line 20) — No class docstring provided. Inherits from object.
+- `FakeEmbedder` (line 21) — No class docstring provided. Inherits from object.
   - Methods:
-    - `encode(self, texts: Sequence[str]) -> list[list[float]]` (line 21) — No method docstring provided.
-- `FakePoint` (line 25) — No class docstring provided. Inherits from object.
+    - `encode(self, texts: Sequence[str]) -> list[list[float]]` (line 22) — No method docstring provided.
+- `FakePoint` (line 26) — No class docstring provided. Inherits from object.
   - Methods:
-    - `__init__(self, payload: dict[str, Any], score: float) -> None` (line 26) — No method docstring provided.
-- `FakeQdrantClient` (line 31) — No class docstring provided. Inherits from object.
+    - `__init__(self, payload: dict[str, Any], score: float) -> None` (line 27) — No method docstring provided.
+- `FakeQdrantClient` (line 32) — No class docstring provided. Inherits from object.
   - Methods:
-    - `__init__(self, points: list[FakePoint]) -> None` (line 32) — No method docstring provided.
-    - `search(self, **kwargs: object) -> list[FakePoint]` (line 36) — No method docstring provided.
-- `DummyGraphService` (line 41) — No class docstring provided. Inherits from GraphService.
+    - `__init__(self, points: list[FakePoint]) -> None` (line 33) — No method docstring provided.
+    - `search(self, **kwargs: object) -> list[FakePoint]` (line 37) — No method docstring provided.
+- `DummyGraphService` (line 42) — No class docstring provided. Inherits from GraphService.
   - Methods:
-    - `__init__(self, response: dict[str, Any]) -> None` (line 42) — No method docstring provided.
-    - `get_node(self, node_id: str, relationships: str, limit: int) -> dict[str, Any]` (line 45) — No method docstring provided.
-    - `get_subsystem(self, *args: object, **kwargs: object) -> dict[str, Any]` (line 48) — No method docstring provided.
-    - `search(self, term: str, limit: int) -> dict[str, Any]` (line 51) — No method docstring provided.
-    - `run_cypher(self, query: str, parameters: dict[str, Any] | None) -> dict[str, Any]` (line 54) — No method docstring provided.
-    - `shortest_path_depth(self, node_id: str, max_depth: int = 4) -> int | None` (line 57) — No method docstring provided.
-- `MapGraphService` (line 178) — No class docstring provided. Inherits from GraphService.
+    - `__init__(self, response: dict[str, Any]) -> None` (line 43) — No method docstring provided.
+    - `get_node(self, node_id: str, relationships: str, limit: int) -> dict[str, Any]` (line 46) — No method docstring provided.
+    - `get_subsystem(self, *args: object, **kwargs: object) -> dict[str, Any]` (line 49) — No method docstring provided.
+    - `search(self, term: str, limit: int) -> dict[str, Any]` (line 52) — No method docstring provided.
+    - `run_cypher(self, query: str, parameters: dict[str, Any] | None) -> dict[str, Any]` (line 55) — No method docstring provided.
+    - `shortest_path_depth(self, node_id: str, max_depth: int = 4) -> int | None` (line 58) — No method docstring provided.
+- `SlowGraphService` (line 62) — No class docstring provided. Inherits from DummyGraphService.
   - Methods:
-    - `__init__(self, data: dict[str, dict[str, Any]]) -> None` (line 179) — No method docstring provided.
-    - `get_node(self, node_id: str, relationships: str, limit: int) -> dict[str, Any]` (line 182) — No method docstring provided.
-    - `get_subsystem(self, *args: object, **kwargs: object) -> dict[str, Any]` (line 185) — No method docstring provided.
-    - `search(self, term: str, limit: int) -> dict[str, Any]` (line 188) — No method docstring provided.
-    - `run_cypher(self, query: str, parameters: dict[str, Any] | None) -> dict[str, Any]` (line 191) — No method docstring provided.
-    - `shortest_path_depth(self, node_id: str, max_depth: int = 4) -> int | None` (line 194) — No method docstring provided.
-- `CountingGraphService` (line 198) — No class docstring provided. Inherits from GraphService.
+    - `__init__(self, response: dict[str, Any], delay: float) -> None` (line 63) — No method docstring provided.
+    - `get_node(self, node_id: str, relationships: str, limit: int) -> dict[str, Any]` (line 67) — No method docstring provided.
+- `MapGraphService` (line 189) — No class docstring provided. Inherits from GraphService.
   - Methods:
-    - `__init__(self, response: dict[str, Any], depth: int = 2) -> None` (line 199) — No method docstring provided.
-    - `get_node(self, node_id: str, relationships: str, limit: int) -> dict[str, Any]` (line 205) — No method docstring provided.
-    - `shortest_path_depth(self, node_id: str, max_depth: int = 4) -> int | None` (line 209) — No method docstring provided.
-    - `get_subsystem(self, *args: object, **kwargs: object) -> dict[str, Any]` (line 213) — No method docstring provided.
-    - `search(self, term: str, limit: int) -> dict[str, Any]` (line 216) — No method docstring provided.
-    - `run_cypher(self, query: str, parameters: dict[str, Any] | None) -> dict[str, Any]` (line 219) — No method docstring provided.
+    - `__init__(self, data: dict[str, dict[str, Any]]) -> None` (line 190) — No method docstring provided.
+    - `get_node(self, node_id: str, relationships: str, limit: int) -> dict[str, Any]` (line 193) — No method docstring provided.
+    - `get_subsystem(self, *args: object, **kwargs: object) -> dict[str, Any]` (line 196) — No method docstring provided.
+    - `search(self, term: str, limit: int) -> dict[str, Any]` (line 199) — No method docstring provided.
+    - `run_cypher(self, query: str, parameters: dict[str, Any] | None) -> dict[str, Any]` (line 202) — No method docstring provided.
+    - `shortest_path_depth(self, node_id: str, max_depth: int = 4) -> int | None` (line 205) — No method docstring provided.
+- `CountingGraphService` (line 209) — No class docstring provided. Inherits from GraphService.
+  - Methods:
+    - `__init__(self, response: dict[str, Any], depth: int = 2) -> None` (line 210) — No method docstring provided.
+    - `get_node(self, node_id: str, relationships: str, limit: int) -> dict[str, Any]` (line 216) — No method docstring provided.
+    - `shortest_path_depth(self, node_id: str, max_depth: int = 4) -> int | None` (line 220) — No method docstring provided.
+    - `get_subsystem(self, *args: object, **kwargs: object) -> dict[str, Any]` (line 224) — No method docstring provided.
+    - `search(self, term: str, limit: int) -> dict[str, Any]` (line 227) — No method docstring provided.
+    - `run_cypher(self, query: str, parameters: dict[str, Any] | None) -> dict[str, Any]` (line 230) — No method docstring provided.
 
 ### Functions
-- `_metric_value(name: str, labels: dict[str, str] | None = None) -> float` (line 15) — No docstring provided.
-- `sample_points() -> list[FakePoint]` (line 62) — No docstring provided.
-- `graph_response() -> dict[str, Any]` (line 81) — No docstring provided.
-- `test_search_service_enriches_with_graph(sample_points: list[FakePoint], graph_response: dict[str, Any]) -> None` (line 112) — No docstring provided.
-- `test_search_service_handles_missing_graph(sample_points: list[FakePoint]) -> None` (line 150) — No docstring provided.
-- `test_search_hnsw_search_params(sample_points: list[FakePoint]) -> None` (line 223) — No docstring provided.
-- `test_lexical_score_affects_ranking() -> None` (line 245) — No docstring provided.
-- `test_search_service_orders_by_adjusted_score() -> None` (line 289) — No docstring provided.
-- `test_search_service_caches_graph_lookups(sample_points: list[FakePoint], graph_response: dict[str, Any]) -> None` (line 373) — No docstring provided.
-- `test_search_service_filters_artifact_types() -> None` (line 434) — No docstring provided.
-- `test_search_service_filters_namespaces() -> None` (line 483) — No docstring provided.
-- `test_search_service_filters_tags() -> None` (line 532) — No docstring provided.
-- `test_search_service_filters_recency_updated_after() -> None` (line 581) — No docstring provided.
-- `test_search_service_filters_recency_max_age_days() -> None` (line 636) — No docstring provided.
-- `test_search_service_filters_subsystem_via_graph(graph_response: dict[str, Any]) -> None` (line 686) — No docstring provided.
-- `test_search_service_ml_model_reorders_results() -> None` (line 741) — No docstring provided.
+- `_metric_value(name: str, labels: dict[str, str] | None = None) -> float` (line 16) — No docstring provided.
+- `sample_points() -> list[FakePoint]` (line 73) — No docstring provided.
+- `graph_response() -> dict[str, Any]` (line 92) — No docstring provided.
+- `test_search_service_enriches_with_graph(sample_points: list[FakePoint], graph_response: dict[str, Any]) -> None` (line 123) — No docstring provided.
+- `test_search_service_handles_missing_graph(sample_points: list[FakePoint]) -> None` (line 161) — No docstring provided.
+- `test_search_hnsw_search_params(sample_points: list[FakePoint]) -> None` (line 234) — No docstring provided.
+- `test_lexical_score_affects_ranking() -> None` (line 256) — No docstring provided.
+- `test_search_service_orders_by_adjusted_score() -> None` (line 300) — No docstring provided.
+- `test_search_service_caches_graph_lookups(sample_points: list[FakePoint], graph_response: dict[str, Any]) -> None` (line 384) — No docstring provided.
+- `test_search_service_filters_artifact_types() -> None` (line 445) — No docstring provided.
+- `test_search_service_filters_namespaces() -> None` (line 494) — No docstring provided.
+- `test_search_service_filters_tags() -> None` (line 543) — No docstring provided.
+- `test_search_service_filters_recency_updated_after() -> None` (line 592) — No docstring provided.
+- `test_search_service_filters_recency_max_age_days() -> None` (line 647) — No docstring provided.
+- `test_search_service_filters_subsystem_via_graph(graph_response: dict[str, Any]) -> None` (line 697) — No docstring provided.
+- `test_search_service_ml_model_reorders_results() -> None` (line 752) — No docstring provided.
+- `test_search_service_limits_graph_results(graph_response: dict[str, Any]) -> None` (line 822) — No docstring provided.
+- `test_search_service_respects_graph_time_budget(graph_response: dict[str, Any]) -> None` (line 856) — No docstring provided.
 
 ### Constants and Configuration
 - No module-level constants detected.
@@ -3649,10 +3700,10 @@
 - Executes pytest fixtures or assertions to validate behaviour.
 
 ### Integration Points
-- collections, datetime, prometheus_client, pytest, typing
+- collections, datetime, prometheus_client, pytest, time, typing
 
 ### Code Quality Notes
-- 44 public element(s) lack docstrings.
+- 49 public element(s) lack docstrings.
 
 ## tests/test_settings_defaults.py
 

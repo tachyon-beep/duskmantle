@@ -30,21 +30,21 @@
 
 ## RISK-004: Neo4j Tail Latency Stalls Search Responses
 - **Category**: Performance
-- **Likelihood**: Medium
-- **Impact**: Medium-High
-- **Description**: Search enrichment performs two sequential Cypher queries per hit (`gateway/search/service.py:150-430`), so a slow node degrades the entire response.
-- **Mitigation Strategy**: Complete WP-204 (bounded graph budget) and WP-206 (refactor) to parallelise lookups, enforce timeouts, and improve observability.
+- **Likelihood**: Low
+- **Impact**: Medium
+- **Description**: Graph enrichment now enforces result/time budgets, but mis-tuned limits or persistent Neo4j slowness can still degrade relevance when many results skip graph context.
+- **Mitigation Strategy**: Maintain WP-204 budgets and continue the planned WP-206 refactor to isolate enrichment. Tune `KM_SEARCH_GRAPH_MAX_RESULTS` / `KM_SEARCH_GRAPH_TIME_BUDGET_MS` based on telemetry and add dashboards for skip counters.
 - **Risk Owner**: Gateway maintainers / Performance engineer
-- **Monitoring & Review**: Watch `SEARCH_GRAPH_LOOKUP_SECONDS` for P95 spikes; if over 500ms for two consecutive days, prioritise mitigation work.
+- **Monitoring & Review**: Track `km_search_graph_skipped_total` and `SEARCH_GRAPH_LOOKUP_SECONDS` for sustained increases; revisit settings quarterly or whenever Neo4j topology changes.
 
 ## RISK-005: Artifact Ledger Corruption Breaks Incremental Ingest
 - **Category**: Technical Debt
-- **Likelihood**: Low-Medium
+- **Likelihood**: Low
 - **Impact**: Medium
-- **Description**: Ledger writes are non-atomic (`gateway/ingest/pipeline.py:432-444`), so concurrent runs or crashes can corrupt incremental state.
-- **Mitigation Strategy**: Implement WP-205 for atomic writes, locking, and validation; add recovery tooling.
+- **Description**: Ledger writes now use file locks and atomic rename; residual risk stems from operators overriding ledger paths or persistent lock contention.
+- **Mitigation Strategy**: Maintain WP-205 changes, monitor ingest logs for lock timeout warnings, and include ledger validation in smoke tests.
 - **Risk Owner**: Gateway maintainers
-- **Monitoring & Review**: Run ingestion smoke tests after each release and check for ledger read warnings in logs.
+- **Monitoring & Review**: Run ingestion smoke tests after each release, audit logs for `Timed out waiting for ledger lock`, and review retention policies quarterly.
 
 ## RISK-006: Lack Of API Versioning Breaks External Clients
 - **Category**: Best Practice
@@ -57,12 +57,12 @@
 
 ## RISK-007: Audit History Endpoint Can Exhaust Memory
 - **Category**: Operational
-- **Likelihood**: Low
-- **Impact**: Medium
-- **Description**: `/audit/history` accepts arbitrary `limit` values (`gateway/api/routes/reporting.py:25-38`), allowing a single request to dump the full SQLite table.
-- **Mitigation Strategy**: Apply WP-208 to clamp limits, validate inputs, and document ceilings.
+- **Likelihood**: Very Low
+- **Impact**: Low
+- **Description**: `/api/v1/audit/history` now clamps requests to `KM_AUDIT_HISTORY_MAX_LIMIT` (default 100) and emits warning headers when the cap is exceeded, significantly reducing the chance of accidental large dumps.
+- **Mitigation Strategy**: WP-208 completed — maintain sensible defaults, expose the limit in docs, and keep warning headers so operators can tune the cap consciously.
 - **Risk Owner**: Operations / API owners
-- **Monitoring & Review**: Once limit clamping is in place, log when requests hit the ceiling; review monthly.
+- **Monitoring & Review**: Track occurrences of the warning header in access logs and revisit the configured limit quarterly or when workloads change.
 
 ## RISK-008: Feedback Insights Never Reach ML Scoring
 - **Category**: Enhancement Opportunity

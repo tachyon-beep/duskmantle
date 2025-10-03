@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Iterable
 from pathlib import Path
 
@@ -169,3 +170,59 @@ def test_pipeline_skips_unchanged_artifacts(tmp_path: Path) -> None:
     # Full rebuild should bypass incremental skip
     third = _run(incremental=False)
     assert all(not entry.get("skipped") for entry in third.artifacts)
+
+
+def test_artifact_ledger_writes_atomically(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    (repo / "docs").mkdir(parents=True)
+    (repo / "docs" / "file.md").write_text("content")
+
+    ledger_path = tmp_path / "state" / "reports" / "artifact_ledger.json"
+    config = IngestionConfig(
+        repo_root=repo,
+        dry_run=True,
+        use_dummy_embeddings=True,
+        ledger_path=ledger_path,
+    )
+    pipeline = IngestionPipeline(
+        qdrant_writer=StubQdrantWriter(),
+        neo4j_writer=StubNeo4jWriter(),
+        config=config,
+    )
+
+    entries = {
+        "docs/file.md": {
+            "digest": "abc123",
+            "artifact_type": "doc",
+            "chunk_count": 1,
+        }
+    }
+    pipeline._write_artifact_ledger(entries)
+
+    data = json.loads(ledger_path.read_text(encoding="utf-8"))
+    assert data["artifacts"]["docs/file.md"]["digest"] == "abc123"
+    temp_files = list(ledger_path.parent.glob("artifact_ledger.json.*.tmp"))
+    assert not temp_files
+
+
+def test_artifact_ledger_loads_gracefully_on_corruption(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    ledger_path = tmp_path / "state" / "reports" / "artifact_ledger.json"
+    ledger_path.parent.mkdir(parents=True, exist_ok=True)
+    ledger_path.write_text("not-json", encoding="utf-8")
+
+    config = IngestionConfig(
+        repo_root=repo,
+        dry_run=True,
+        use_dummy_embeddings=True,
+        ledger_path=ledger_path,
+    )
+    pipeline = IngestionPipeline(
+        qdrant_writer=StubQdrantWriter(),
+        neo4j_writer=StubNeo4jWriter(),
+        config=config,
+    )
+
+    ledger_entries = pipeline._load_artifact_ledger()
+    assert ledger_entries == {}

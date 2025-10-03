@@ -130,7 +130,7 @@ The runtime is a trio of co-located services managed inside the container by a l
 
 ### 6.3 API Surface
 
-- `GET /healthz`, `/readyz`, `/metrics`, `/coverage`, `/audit/history`.
+- `GET /healthz`, `/readyz`, `/metrics`, `/api/v1/coverage`, `/api/v1/audit/history`.
 - `POST /ingest/run` for ad-hoc ingestion (maintainer scope).
 - JSON schemas published under `/openapi.json` for client generation.
 

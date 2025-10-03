@@ -18,7 +18,7 @@ graph TD
     REST -->|Dependencies| APIDeps[Dependency Layer]
     REST -->|Routes| SearchRoute[/search]
     REST --> GraphRoute[/graph]
-    REST --> ReportRoute[/coverage,/lifecycle]
+    REST --> ReportRoute[/api/v1/coverage,/api/v1/lifecycle]
     REST --> HealthRoute[/healthz,/metrics]
 
     MCP -->|HTTP calls| REST
@@ -61,6 +61,7 @@ graph TD
 
 ## Key Features & Capabilities
 - Hybrid search combining vector similarity with graph-derived heuristics, optional machine-learned reranking, and subsystem filters (`gateway/search/service.py`).
+- Graph enrichment obeys configurable budgets (`KM_SEARCH_GRAPH_MAX_RESULTS`, `KM_SEARCH_GRAPH_TIME_BUDGET_MS`) and records skip metrics so operators can balance latency vs context fidelity.
 - Graph introspection APIs that paginate subsystem neighbourhoods, fetch node detail, list orphans, and run read-only Cypher (`gateway/api/routes/graph.py`).
 - Reporting endpoints for coverage and lifecycle health, backed by offline JSON reports generated during ingestion (`gateway/ingest/coverage.py`, `gateway/ingest/lifecycle.py`).
 - Ingestion pipeline that discovers repository artifacts, chunks content, produces embeddings, and persists to both stores with incremental update support (`gateway/ingest/pipeline.py`).
@@ -102,12 +103,12 @@ graph TD
   - `GET /graph/orphans` enumerates nodes lacking relationships (label filter optional).
   - `POST /graph/search` performs term search across subsystems, nodes, and artifacts; returns summary hits.
   - `POST /graph/cypher` (maintainer scope) executes read-only Cypher after validation (procedure whitelist, summary counters). Optional read-only driver ensures server-side enforcement.
-- **Reporting** – `GET /coverage`, `/lifecycle`, `/lifecycle/history`, `/audit/history` serve JSON documents from `KM_STATE_PATH/reports` and the ingest audit SQLite ledger. Maintainer scope required.
+- **Reporting** – `GET /api/v1/coverage`, `/api/v1/lifecycle`, `/api/v1/lifecycle/history`, `/api/v1/audit/history` serve JSON documents from `KM_STATE_PATH/reports` and the ingest audit SQLite ledger. Maintainer scope required; requests exceeding `KM_AUDIT_HISTORY_MAX_LIMIT` (default 100) return a warning header indicating the clamp.
 - **Operations** – `GET /healthz` exposes dependency heartbeat gauge (last success/failure, revisions), `GET /readyz` checks scheduler and model load, `/metrics` exports Prometheus registry. Static assets under `/ui/*` host the preview console and documentation.
 - **FastMCP Surface** – Tools defined in `gateway/mcp/server.py` provide equivalent operations over MCP transport: `km-search`, `km-graph-*`, `km-ingest-*`, `km-backup-trigger`, `km-feedback-submit`, `km-upload`, `km-storetext`. Requests are proxied through `GatewayClient` using scoped bearer tokens and consistent output schemas (documented in `docs/MCP_INTERFACE_SPEC.md`).
 
 ## Configuration & Deployment
-- **Runtime Settings:** Centralised in `gateway/config/settings.py` using Pydantic `AppSettings`. Environment variables prefixed with `KM_` control auth, data stores, scheduler, search weights, tracing, and ingest behaviour. Optional `KM_NEO4J_READONLY_{URI,USER,PASSWORD}` credentials force `/graph/cypher` traffic through a read-only Neo4j account. Helper methods clamp values and derive scheduler triggers and weight profiles.
+- **Runtime Settings:** Centralised in `gateway/config/settings.py` using Pydantic `AppSettings`. Environment variables prefixed with `KM_` control auth, data stores, scheduler, search weights, tracing, and ingest behaviour. Optional `KM_NEO4J_READONLY_{URI,USER,PASSWORD}` credentials force `/graph/cypher` traffic through a read-only Neo4j account. Helper methods clamp values, including `KM_AUDIT_HISTORY_MAX_LIMIT` for `/audit/history`, and derive scheduler triggers and weight profiles.
 - **Startup Sequence:** `docker-entrypoint.sh` seeds sample repo content on first boot, generates reader/maintainer tokens when absent (unless `KM_ALLOW_INSECURE_BOOT=true`), verifies `KM_NEO4J_PASSWORD`, exports default service URLs (`KM_QDRANT_URL=http://qdrant:6333`, `KM_NEO4J_URI=bolt://neo4j:7687`), and finally execs the configured command (default `uvicorn`).
 - **Docker Image:** Builds a Python 3.12 slim runtime containing the gateway application plus CLI tooling (`Dockerfile`, `infra/docker-entrypoint.sh`). It expects Qdrant and Neo4j to run as sibling containers (Compose brings official images) and only exposes port 8000 from the gateway container.
 - **Compose Scaffold:** `.duskmantle/compose/docker-compose.yml` (mirrors `infra/examples/docker-compose.sample.yml`) launches `gateway`, `neo4j`, and `qdrant` services on a private bridge network, mounts `.duskmantle/{config,repo}` volumes, and surfaces core env vars (`KM_ADMIN_TOKEN`, `KM_NEO4J_PASSWORD`, seed toggles). Only the gateway's 8000/tcp is published by default.

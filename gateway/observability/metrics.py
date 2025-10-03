@@ -124,6 +124,12 @@ SEARCH_GRAPH_CACHE_EVENTS = Counter(
     labelnames=["status"],
 )
 
+SEARCH_GRAPH_SKIPPED_TOTAL = Counter(
+    "km_search_graph_skipped_total",
+    "Number of search results where graph enrichment was skipped",
+    labelnames=["reason"],
+)
+
 SEARCH_FEEDBACK_ROTATIONS_TOTAL = Counter(
     "km_feedback_rotations_total",
     "Number of times the search feedback log rotated due to size limits",

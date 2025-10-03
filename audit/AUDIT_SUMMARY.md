@@ -13,24 +13,20 @@ The Duskmantle gateway remains a well-structured platform with clear service bou
 
 ## Findings By Category
 - **Security** – Auth boots are now secure by default (`gateway/config/settings.py:50`), but direct CREATE_APP users still need to supply non-default credentials when disabling auth; continue monitoring for credential hygiene gaps. (WP-201 completed)
-- **Operational** – `/audit/history` still accepts unbounded limits while feedback log rotation now ships with configurable caps and metrics. (WP-208)
-- **Performance** – Search graph enrichment executes two serial Cypher calls per result with no timeout budget, creating tail-latency spikes under Neo4j load (`gateway/search/service.py:150-430`). (WP-204)
+- **Operational** – `/api/v1/audit/history` clamps requests to `KM_AUDIT_HISTORY_MAX_LIMIT`; operators can monitor clamp warnings via `Warning` headers. (WP-208 completed)
+- **Performance** – Graph enrichment now honours configurable result/time budgets; continue monitoring metrics (`km_search_graph_skipped_total`) to ensure operators tune limits appropriately. (WP-204 completed)
 - **Code Quality** – `SearchService` has grown past 1k LOC combining vector search, graph enrichment, and ML ranking, complicating reviews and targeted testing. (WP-206)
 - **Best Practice** – REST routes lack versioning, so protocol changes break MCP clients with no migration path (`gateway/api/routes/*.py`). (WP-207)
 - **Enhancement** – Collected feedback never feeds the ML scoring pipeline; no tooling exports datasets for `gateway/search/trainer.py`. (WP-209)
-- **Technical Debt** – Artifact ledger writes are non-atomic and risk corruption on crashes or concurrent ingest runs (`gateway/ingest/pipeline.py:432-444`). (WP-205)
+- **Technical Debt** – Artifact ledger writes are now atomic and locked; continue monitoring for lock timeouts during heavy ingest. (WP-205 completed)
 
 ## Top Priority Actions
-1. **WP-204** – Bound graph enrichment latency with concurrency limits and timeouts.
-2. **WP-203** – Rotate and monitor search feedback logs before disks fill.
-3. **WP-205** – Make artifact ledger updates atomic with locking and temp files.
-4. **WP-207** – Introduce a versioned REST prefix to stabilise external integrations.
-5. **WP-206** – Decompose `SearchService` for maintainability and clearer extensibility.
-6. **WP-208** – Clamp `/audit/history` limits to prevent accidental DoS.
-7. **WP-209** – Export feedback logs into the training pipeline to revive ML scoring.
+1. **WP-206** – Decompose `SearchService` for maintainability and clearer extensibility.
+2. **WP-209** – Export feedback logs into the training pipeline to revive ML scoring.
+3. Expand integration coverage for search graph skip metrics to validate the new enrichment budgets under load.
 
 ## Overall System Health
 - **Score**: 7/10 (Amber) – Core functionality is dependable and well tested, but tightening auth defaults, backup safety, and graph/search performance is necessary before scaling to less supervised environments.
 
 ## Recommended Immediate Actions
-- With auth defaults hardened, focus on WP-204 alongside telemetry review to stabilise search latency under Neo4j drift; run `pytest tests/test_search_service.py` after changes.
+- Focus next on WP-206 (search service refactor) while planning WP-209 (feedback export) and scheduling integration coverage for the new search graph budgets.

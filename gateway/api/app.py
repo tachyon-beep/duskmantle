@@ -26,6 +26,7 @@ from slowapi.util import get_remote_address
 from gateway import get_version
 from gateway.api import connections as connection_utils
 from gateway.api.connections import Neo4jConnectionManager, QdrantConnectionManager
+from gateway.api.constants import API_V1_PREFIX
 from gateway.api.routes import graph as graph_routes
 from gateway.api.routes import health as health_routes
 from gateway.api.routes import reporting as reporting_routes
@@ -48,8 +49,6 @@ from gateway.ui import router as ui_router
 logger = logging.getLogger(__name__)
 
 DEPENDENCY_HEARTBEAT_INTERVAL_SECONDS = 30.0
-
-
 def _validate_auth_settings(settings: AppSettings) -> None:
     if not settings.neo4j_auth_enabled:
         logger.warning(
@@ -145,7 +144,8 @@ def _build_lifespan(settings: AppSettings) -> Callable[[FastAPI], AbstractAsyncC
 def _configure_rate_limits(app: FastAPI, settings: AppSettings) -> Limiter:
     limiter = Limiter(
         key_func=get_remote_address,
-        default_limits=[f"{settings.rate_limit_requests} per {settings.rate_limit_window_seconds} seconds"],
+        default_limits=[],
+        storage_uri=f"memory://{uuid4()}",
     )
     app.state.limiter = limiter
     app.add_middleware(SlowAPIMiddleware)
@@ -409,10 +409,16 @@ def create_app() -> FastAPI:
     app.state.graph_service_dependency = get_graph_service_dependency
     app.state.search_service_dependency = get_search_service_dependency
 
+    router_factories = [
+        lambda: reporting_routes.create_router(limiter),
+        lambda: search_routes.create_router(limiter, metrics_limit),
+        lambda: graph_routes.create_router(limiter, metrics_limit),
+    ]
+
+    for factory in router_factories:
+        app.include_router(factory(), prefix=API_V1_PREFIX)
+
     app.include_router(health_routes.create_router(limiter, metrics_limit))
-    app.include_router(reporting_routes.create_router(limiter))
-    app.include_router(search_routes.create_router(limiter, metrics_limit))
-    app.include_router(graph_routes.create_router(limiter, metrics_limit))
 
     return app
 

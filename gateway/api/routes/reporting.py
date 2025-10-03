@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,8 @@ from gateway.api.dependencies import get_app_settings
 from gateway.config.settings import AppSettings
 from gateway.ingest.audit import AuditLogger
 from gateway.ingest.lifecycle import summarize_lifecycle
+
+logger = logging.getLogger(__name__)
 
 
 def create_router(limiter: Limiter) -> APIRouter:
@@ -31,7 +34,35 @@ def create_router(limiter: Limiter) -> APIRouter:
         del request
         audit_path = settings.state_path / "audit" / "audit.db"
         audit_logger = AuditLogger(audit_path)
-        return JSONResponse(audit_logger.recent(limit=limit))
+
+        requested_limit = limit
+        try:
+            requested_limit = int(limit)
+        except (TypeError, ValueError):  # pragma: no cover - FastAPI guards, defensive
+            requested_limit = 20
+
+        max_limit = settings.audit_history_max_limit
+        limit_normalized = max(1, min(requested_limit, max_limit))
+        warning: str | None = None
+        if requested_limit != limit_normalized:
+            if requested_limit > max_limit:
+                warning = f"requested audit history limit {requested_limit} exceeds cap {max_limit}; " f"using {limit_normalized}"
+            else:
+                warning = f"requested audit history limit {requested_limit} is below minimum 1; " f"using {limit_normalized}"
+            logger.warning(
+                "Adjusted audit history limit",
+                extra={
+                    "requested_limit": requested_limit,
+                    "effective_limit": limit_normalized,
+                    "limit_cap": max_limit,
+                },
+            )
+
+        response = JSONResponse(audit_logger.recent(limit=limit_normalized))
+        response.headers["X-KM-Audit-Limit"] = str(limit_normalized)
+        if warning is not None:
+            response.headers["Warning"] = f'299 duskmantle-gateway "{warning}"'
+        return response
 
     @router.get("/coverage", dependencies=[Depends(require_maintainer)], tags=["observability"])
     @limiter.limit("30/minute")

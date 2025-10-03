@@ -49,10 +49,10 @@ The MCP server exposes the following helper summaries. These mirror the metadata
   - Optional: `limit` (default 20, max 50).
   - Example: `/sys mcp run duskmantle km-graph-search --term coverage`.
 - `km-coverage-summary`
-  - No parameters. Mirrors `/coverage` and returns artifact/chunk counts plus freshness stats.
+  - No parameters. Mirrors `/api/v1/coverage` and returns artifact/chunk counts plus freshness stats.
   - Example: `/sys mcp run duskmantle km-coverage-summary`.
 - `km-lifecycle-report`
-  - No parameters. Mirrors `/lifecycle` and lists isolated graph nodes, stale design docs (by age threshold), and subsystems missing tests.
+  - No parameters. Mirrors `/api/v1/lifecycle` and lists isolated graph nodes, stale design docs (by age threshold), and subsystems missing tests.
   - Example: `/sys mcp run duskmantle km-lifecycle-report`.
 - `km-ingest-status`
   - Optional: `profile` filter (default: latest run regardless of profile).

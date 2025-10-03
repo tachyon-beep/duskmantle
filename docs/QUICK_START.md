@@ -126,7 +126,7 @@ hardening so all automation now runs outside the gateway process.
 
 - `curl http://localhost:8000/healthz` — overall status plus coverage/audit/scheduler details.
 - `curl http://localhost:8000/metrics` — Prometheus metrics (requires `KM_ADMIN_TOKEN` if auth enabled).
-- `curl http://localhost:8000/coverage` — latest coverage report (maintainer scope).
+- `curl http://localhost:8000/api/v1/coverage` — latest coverage report (maintainer scope).
 - `curl http://localhost:8000/lifecycle` — lifecycle snapshot (isolated nodes, stale docs, missing tests; maintainer scope).
 - `gateway-recipes list` — enumerate available automation recipes (use `km-recipe-run <name>` to execute).
 
@@ -142,7 +142,7 @@ Run the full pipeline locally before publishing:
 
 or simply `make smoke` (uses the same script with the default image tag).
 
-The script builds the image, launches a disposable container, triggers a smoke ingest, validates `/coverage`, and tears down resources.
+The script builds the image, launches a disposable container, triggers a smoke ingest, validates `/api/v1/coverage`, and tears down resources.
 Pair it with `bin/km-watch` if you want continuous ingestion whenever `.duskmantle/data` changes.
 
 ## 7. Backups & Restore
@@ -193,7 +193,7 @@ For more detail, consult `docs/OBSERVABILITY_GUIDE.md` and the release playbook 
 4. Pull or build the new image (`docker pull duskmantle/km:<tag>` or `scripts/build-image.sh`). Relaunch with the same env vars
 (`KM_NEO4J_DATABASE=neo4j`, tokens, mounts).
 5. Run ingest if needed (`docker exec duskmantle gateway-ingest rebuild --profile production`).
-6. Validate `/healthz`, `/coverage`, the smoke script, and `pytest -m mcp_smoke`.
+6. Validate `/healthz`, `/api/v1/coverage`, the smoke script, and `pytest -m mcp_smoke`.
 7. For rollback: stop the container, restore the archived backup to `.duskmantle/config/`, and start the previous image tag.
 
 See `docs/UPGRADE_ROLLBACK.md` for the detailed checklist.

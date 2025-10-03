@@ -115,6 +115,8 @@ def get_search_service_dependency(
         scoring_mode=settings.search_scoring_mode,
         weight_profile=weight_profile,
         slow_graph_warn_seconds=max(settings.search_warn_slow_graph_ms, 0) / 1000.0,
+        graph_time_budget_seconds=max(settings.search_graph_time_budget_ms, 0) / 1000.0,
+        graph_max_results=max(1, settings.search_graph_max_results),
     )
 
     model_artifact = getattr(request.app.state, "search_model_artifact", None)

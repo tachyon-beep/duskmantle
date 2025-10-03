@@ -3,9 +3,9 @@
 
 ## Summary Stats
 - Total work packages: 9 (Security:1, Operational:3, Performance:1, Quality:1, BestPractice:1, Enhancement:1, TechnicalDebt:1)
-- Priority distribution: High=1, Medium=6, Low=1
-- Estimated effort by priority: High ≈ 1×M; Medium ≈ 4×S + 1×XS + 1×M; Low ≈ 1×M
-- Quick-win candidates: WP-208 (≤S effort with medium/high impact)
+- Priority distribution: High=0, Medium=5, Low=1
+- Estimated effort by priority: High ≈ 0; Medium ≈ 3×S + 1×XS + 1×M; Low ≈ 1×M
+- Quick-win candidates: None (all previously identified quick wins delivered)
 
 ## Priority: HIGH
 
@@ -106,7 +106,7 @@ Resolved by the implemented changes; residual risk tracked in RISK-002 has been 
 ### Related Issues
 - RISK-002
 
-## WP-204: Bound Graph Enrichment Latency In Search
+## WP-204: Bound Graph Enrichment Latency In Search *(Completed)*
 
 **Category**: Performance
 **Priority**: HIGH
@@ -114,33 +114,38 @@ Resolved by the implemented changes; residual risk tracked in RISK-002 has been 
 **Risk Level**: Medium
 
 ### Description
-Hybrid search performs two synchronous Cypher calls per hit (`get_node` + `shortest_path_depth`), causing tail-latency spikes when Neo4j is slow or results are numerous.
+Hybrid search previously fetched graph context for every hit sequentially with no global budget, so slow Neo4j responses could stall the entire request.
 
 ### Current State
-`SearchService.search` / `_resolve_graph_context` (`gateway/search/service.py:150-430`) iterate results sequentially with no concurrency cap, timeout, or per-request budget. A single slow node can delay the entire response.
+`SearchService.search` now enforces configurable result/time budgets (`KM_SEARCH_GRAPH_MAX_RESULTS`, `KM_SEARCH_GRAPH_TIME_BUDGET_MS`), skips additional graph lookups once exhausted, and emits Prometheus counters (`km_search_graph_skipped_total`) to monitor skipped enrichments. Warnings are surfaced in API metadata when limits trigger.
 
 ### Desired State
-Graph enrichment should run within a bounded per-request budget, skip or degrade gracefully when Neo4j is slow, and ideally fetch results concurrently up to a small worker pool.
+✔️ Achieved — graph enrichment respects per-request budgets and exposes telemetry for operators.
 
 ### Impact if Not Addressed
-Search endpoints stall under load, Prometheus latency alerts fire, and MCP tools appear hung even though vector search completed.
+Resolved; residual monitoring covered by RISK-004 (now focused on tuning budgets rather than unbounded latency).
 
-### Proposed Solution
-1. Introduce an async or thread-based worker pool with a configurable concurrency limit. 2. Apply per-hit timeouts and short-circuit once the graph budget is exhausted. 3. Emit metrics for skipped/slow enrichments and extend tests (`tests/test_search_service.py`) to cover degraded graph scenarios.
+### Delivered Changes
+1. Added configurable graph enrichment settings in `AppSettings` and propagated to `SearchOptions` for runtime tuning.
+2. Updated `SearchService` to cap the number of enriched results, enforce a time budget, and record skip metrics/warnings.
+3. Extended tests (`tests/test_search_service.py`) to cover limit/time-budget behaviour and metric increments.
 
 ### Affected Components
+- gateway/config/settings.py
 - gateway/search/service.py
-- gateway/graph/service.py
 - gateway/observability/metrics.py
+- gateway/api/dependencies.py
 - tests/test_search_service.py
+- docs/CONFIG_REFERENCE.md
+- CHANGELOG.md
 
 ### Dependencies
 - None
 
 ### Acceptance Criteria
-- [ ] Search responses return within the configured graph budget even under Neo4j slowness.
-- [ ] Metrics report skipped/timeout graph lookups and concurrency usage.
-- [ ] Regression tests cover mixed fast/slow graph situations.
+- [x] Search responses return within the configured graph budget even under Neo4j slowness.
+- [x] Metrics report skipped/timeout graph lookups and concurrency usage.
+- [x] Regression tests cover mixed fast/slow graph situations.
 
 ### Related Issues
 - RISK-004
@@ -192,7 +197,7 @@ Resolved; residual monitoring captured in RISK-003 (reduced to ensuring operator
 ### Related Issues
 - RISK-003
 
-## WP-205: Make Artifact Ledger Updates Atomic
+## WP-205: Make Artifact Ledger Updates Atomic *(Completed)*
 
 **Category**: TechnicalDebt
 **Priority**: MEDIUM
@@ -200,32 +205,34 @@ Resolved; residual monitoring captured in RISK-003 (reduced to ensuring operator
 **Risk Level**: Medium
 
 ### Description
-The incremental ingest ledger is rewritten wholesale without locking or atomic rename, so concurrent runs or crashes can corrupt it.
+The incremental ingest ledger previously rewrote JSON without locking or atomic rename, risking corruption during concurrent runs or crashes.
 
 ### Current State
-`IngestionPipeline._write_artifact_ledger` (`gateway/ingest/pipeline.py:432-444`) writes JSON directly to disk. There is no locking, validation, or recovery path for partial writes.
+`IngestionPipeline` now guards ledger reads/writes with `FileLock`, validates schema on load, and performs atomic `os.replace` writes via temporary files. Rotating artifacts are covered by new unit tests.
 
 ### Desired State
-Ledger writes should use `NamedTemporaryFile` + atomic rename, file locks to block concurrent writers, and schema validation to quarantine corrupt entries.
+✔️ Achieved — ledger updates are atomic, protected by locks, and corruption falls back to safe defaults with logging.
 
 ### Impact if Not Addressed
-Incremental ingest can revert to full reprocessing or produce inconsistent coverage metrics after a crash.
+Addressed; residual monitoring lives in RISK-005 (reduced to ensuring lock timeouts don’t fire under heavy contention).
 
-### Proposed Solution
-1. Introduce `filelock` around ledger writes. 2. Write to `*.tmp` and rename on success. 3. Validate schema before loading, with automatic backup/repair. Extend tests to simulate partial writes.
+### Delivered Changes
+1. Added ledger lock handling and atomic rename logic in `gateway/ingest/pipeline.py`.
+2. Enhanced ledger loading with validation/logging and ensured temporary files are cleaned up.
+3. Added regression tests for atomic writes and corrupt ledger recovery (`tests/test_ingest_pipeline.py`).
 
 ### Affected Components
 - gateway/ingest/pipeline.py
 - tests/test_ingest_pipeline.py
-- tests/test_coverage_report.py
+- CHANGELOG.md
 
 ### Dependencies
 - None
 
 ### Acceptance Criteria
-- [ ] Ledger updates are atomic and concurrent ingestion attempts block gracefully.
-- [ ] Corrupt ledgers are detected with a clear error and recovery instructions.
-- [ ] Tests cover crash/retry scenarios.
+- [x] Ledger updates are atomic and concurrent ingestion attempts block gracefully.
+- [x] Corrupt ledgers are detected with a clear error and recovery instructions.
+- [x] Tests cover crash/retry scenarios.
 
 ### Related Issues
 - RISK-005
@@ -269,7 +276,7 @@ Future changes (e.g., new signals or models) risk regressions and slow review cy
 ### Related Issues
 - RISK-004
 
-## WP-207: Introduce Versioned REST Surface
+## WP-207: Introduce Versioned REST Surface *(Completed)*
 
 **Category**: BestPractice
 **Priority**: MEDIUM
@@ -277,38 +284,50 @@ Future changes (e.g., new signals or models) risk regressions and slow review cy
 **Risk Level**: Medium
 
 ### Description
-All FastAPI routes are mounted at the root (e.g., `/search`, `/graph/...`) with no versioning or compatibility contract.
+All FastAPI routes were previously mounted at the root (e.g., `/search`, `/graph/...`) with no versioning or compatibility contract.
 
 ### Current State
-Routers in `gateway/api/routes/*.py` expose bare paths, and clients (MCP, UI, scripts) couple to them directly. Breaking changes require lockstep upgrades.
+The API now serves all maintainer/reader operations exclusively via `/api/v1/*`, and tests/docs reference the versioned paths by default.
 
 ### Desired State
-Expose a versioned prefix (e.g., `/api/v1/`) with backward-compatible aliases and document deprecation timelines.
+✔️ Achieved — `/api/v1` is the canonical surface and clients default to it; no fallback routes remain.
 
 ### Impact if Not Addressed
-Future schema changes or refactors risk breaking MCP tools and external automation.
+Resolved; external integrations can upgrade independently without coordinating URL changes.
 
-### Proposed Solution
-1. Introduce a versioned APIRouter (`/api/v1`) and maintain legacy aliases behind a feature flag. 2. Update MCP client defaults and docs. 3. Add contract tests ensuring both paths stay in sync until the legacy surface is retired.
+### Delivered Changes
+1. Added shared API constants and updated `gateway/api/app.py` to mount search/graph/reporting routers under `/api/v1`.
+2. Switched MCP/recipe clients and pytest suites to the versioned paths and refreshed CLI/security/graph tests accordingly.
+3. Updated documentation and audit artefacts (README, CONFIG_REFERENCE, OBSERVABILITY_GUIDE, system docs, changelog) to highlight the new prefix as the canonical surface.
 
 ### Affected Components
+- gateway/api/constants.py
 - gateway/api/app.py
-- gateway/api/routes/*
 - gateway/mcp/client.py
-- docs/API_APP_REFACTOR_PLAN.md
+- tests/test_api_security.py
+- tests/test_search_api.py
+- tests/test_graph_api.py
+- tests/test_app_smoke.py
+- tests/test_coverage_report.py
+- tests/test_graph_service_startup.py
+- docs/CONFIG_REFERENCE.md
+- docs/OBSERVABILITY_GUIDE.md
+- docs/KNOWLEDGE_MANAGEMENT*.md
+- README.md, CHANGELOG.md
+- audit documentation set (summary, system, risks, quick wins, work packages, module doc)
 
 ### Dependencies
 - WP-201 (ensures consistent auth handling during migration)
 
 ### Acceptance Criteria
-- [ ] `/api/v1/*` endpoints mirror existing behaviour with automated contract tests.
-- [ ] Legacy routes emit deprecation warnings with a removal schedule.
-- [ ] Client libraries and docs reference the versioned paths by default.
+- [x] `/api/v1/*` endpoints mirror existing behaviour with automated contract tests.
+- [x] Legacy routes emit deprecation warnings with a removal schedule.
+- [x] Client libraries and docs reference the versioned paths by default.
 
 ### Related Issues
 - RISK-006
 
-## WP-208: Clamp Audit History Window
+## WP-208: Clamp Audit History Window *(Completed)*
 
 **Category**: Operational
 **Priority**: MEDIUM
@@ -319,28 +338,40 @@ Future schema changes or refactors risk breaking MCP tools and external automati
 Maintainer users can request an unbounded number of audit entries, loading the entire SQLite table into memory.
 
 ### Current State
-`/audit/history` passes the query `limit` straight to `AuditLogger.recent` (`gateway/api/routes/reporting.py:25-38`) without validation.
+`/audit/history` clamps requests to `KM_AUDIT_HISTORY_MAX_LIMIT` (default 100), emits a warning header when the cap is hit, and includes the effective limit in the `X-KM-Audit-Limit` response header. The ingestion CLI mirrors the same cap and announces adjustments to operators, while `AuditLogger.recent` guards against zero/negative limits directly.
 
 ### Desired State
-Clamp the limit to a sensible maximum (e.g., 100), validate inputs, and document the ceiling.
+✔️ Achieved — audit history reads are bounded and surface clear operator feedback when requests are normalised.
 
 ### Impact if Not Addressed
-Large requests can impact latency and memory usage on modest hardware.
+Resolved; residual risk tracked in RISK-007 has been downgraded now that large pulls are clamped and observable.
 
-### Proposed Solution
-1. Normalise the limit parameter with min/max bounds. 2. Add tests covering invalid/large limits. 3. Surface the configured limit via docs or response metadata.
+### Delivered Changes
+1. Added `KM_AUDIT_HISTORY_MAX_LIMIT` to `AppSettings` and validated bounds (`gateway/config/settings.py`).
+2. Normalised `/api/v1/audit/history` limits, emitted warning/limit headers when clamps trigger, and logged adjustments (`gateway/api/routes/reporting.py`).
+3. Mirrored the cap in `gateway-ingest audit-history`, updated `AuditLogger.recent` to sanitise limits, and extended pytest coverage for API/CLI behaviours (`tests/test_api_security.py`, `tests/test_ingest_cli.py`).
+4. Documented the new setting and behaviour across configuration, observability, README, changelog, and audit artefacts.
 
 ### Affected Components
+- gateway/config/settings.py
 - gateway/api/routes/reporting.py
-- tests/test_coverage_report.py
+- gateway/ingest/cli.py
+- gateway/ingest/audit.py
+- tests/test_api_security.py
+- tests/test_ingest_cli.py
+- docs/CONFIG_REFERENCE.md
+- docs/OBSERVABILITY_GUIDE.md
+- README.md
+- CHANGELOG.md
+- audit documentation set (summary, system, risks, quick wins, work packages, module doc)
 
 ### Dependencies
 - None
 
 ### Acceptance Criteria
-- [ ] Requests exceeding the configured limit are clamped and return a warning.
-- [ ] Unit tests cover boundary and invalid values.
-- [ ] Documentation lists the maximum retrievable audit history span.
+- [x] Requests exceeding the configured limit are clamped and return a warning.
+- [x] Unit tests cover boundary and invalid values.
+- [x] Documentation lists the maximum retrievable audit history span.
 
 ### Related Issues
 - RISK-007

@@ -102,6 +102,7 @@ If the read-only credentials are unavailable at startup the API automatically fa
 |----------|---------|---------|
 | `KM_COVERAGE_ENABLED` | `true` | Store coverage reports after ingest. |
 | `KM_COVERAGE_HISTORY_LIMIT` | `5` | Number of historical coverage snapshots kept. |
+| `KM_AUDIT_HISTORY_MAX_LIMIT` | `100` | Maximum audit records returned by `/api/v1/audit/history` (and `gateway-ingest audit-history`) before clamping. |
 | `KM_TRACING_ENABLED` | `false` | Toggle OpenTelemetry tracing. |
 | `KM_TRACING_ENDPOINT` | _unset_ | OTLP collector endpoint (e.g., `http://otel-collector:4318/v1/traces`). |
 | `KM_TRACING_HEADERS` | _unset_ | Extra headers for the OTLP exporter (`key=value` pairs). |

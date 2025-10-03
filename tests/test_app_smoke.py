@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import json
 import logging
-import time
 import os
+import time
 from pathlib import Path
 from unittest import mock
 
@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 
 from gateway.api.app import create_app
 from gateway.api.connections import DependencyStatus
+from gateway.api.constants import API_V1_PREFIX
 from gateway.config.settings import get_settings
 from gateway.ingest.audit import AuditLogger
 
@@ -140,7 +141,7 @@ def test_lifecycle_history_endpoint(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     client = TestClient(app)
 
     response = client.get(
-        "/lifecycle/history?limit=5",
+        f"{API_V1_PREFIX}/lifecycle/history?limit=5",
         headers={"Authorization": f"Bearer {os.getenv('KM_ADMIN_TOKEN', 'maintainer-token')}"},
     )
     assert response.status_code == 200
@@ -150,6 +151,12 @@ def test_lifecycle_history_endpoint(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     assert entry["counts"]["stale_docs"] == 1
     assert entry["counts"]["isolated_nodes"] == 1
     assert entry["counts"]["removed_artifacts"] == 1
+
+    legacy_response = client.get(
+        "/lifecycle/history",
+        headers={"Authorization": f"Bearer {os.getenv('KM_ADMIN_TOKEN', 'maintainer-token')}"},
+    )
+    assert legacy_response.status_code == 404
 
 
 def test_requires_non_default_neo4j_password_when_auth_enabled(

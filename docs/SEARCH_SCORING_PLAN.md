@@ -61,7 +61,7 @@ Replace fixed heuristics with a model-driven scorer that:
 ## Risks & Mitigations
 
 - **Sparse Feedback:** Bootstrapped using MCP self-evaluation signals to avoid cold-start; supplement with synthetic benchmarks from design docs if needed.
-- **Latency Impact:** Keep feature extraction memoized per query and prefer linear models; fall back automatically if model loading fails.
+- **Latency Impact:** Keep feature extraction memoized per query, guard graph enrichment with per-request concurrency/time budgets, and prefer linear models; fall back automatically if model loading fails.
 - **Explainability:** Continue exposing raw features and model contributions to satisfy audit requirements.
 - **Data Volume:** Rotate feedback files (e.g., daily) and document archival/cleanup commands.
 

@@ -9,7 +9,6 @@
   - Touch points: `gateway/search/feedback.py`, `gateway/observability/metrics.py`, `gateway/config/settings.py`.
   - Verification: `tests/test_search_feedback.py` covers rotation behaviour and metric updates.
 
-- **WP-208 – Clamp Audit History Window** (Medium impact / XS effort)
-  - Cap `/audit/history` limits to a safe maximum and document the ceiling to prevent accidental DoS.
-  - Touch points: `gateway/api/routes/reporting.py`, `tests/test_coverage_report.py`.
-  - Verification: new unit tests asserting clamped responses and warning metadata.
+- **WP-208 – Clamp Audit History Window** ✔️ Completed
+  - `/api/v1/audit/history` clamps requests to `KM_AUDIT_HISTORY_MAX_LIMIT`, emits `Warning`/`X-KM-Audit-Limit` headers when limits trigger, and `gateway-ingest audit-history` mirrors the cap with operator messaging.
+  - Touch points: `gateway/api/routes/reporting.py`, `gateway/config/settings.py`, `gateway/ingest/{cli,audit}.py`, docs, and pytest coverage for API/CLI flows.

@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import subprocess
 import time
 import uuid
@@ -13,9 +14,12 @@ from collections.abc import Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
+from contextlib import suppress
 
 from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode
+
+from filelock import FileLock, Timeout
 
 from gateway.ingest.artifacts import Chunk, ChunkEmbedding
 from gateway.ingest.chunking import Chunker
@@ -91,6 +95,11 @@ class IngestionPipeline:
         self.qdrant_writer = qdrant_writer
         self.neo4j_writer = neo4j_writer
         self.config = config
+        self._ledger_lock: FileLock | None = None
+        if self.config.ledger_path is not None:
+            lock_path = self.config.ledger_path.with_suffix(self.config.ledger_path.suffix + ".lock")
+            lock_path.parent.mkdir(parents=True, exist_ok=True)
+            self._ledger_lock = FileLock(str(lock_path))
 
     def run(self) -> IngestionResult:
         """Execute discovery, chunking, embedding, and persistence for a repo."""
@@ -415,6 +424,20 @@ class IngestionPipeline:
         if ledger_path is None or not ledger_path.exists():
             return {}
 
+        lock = self._ledger_lock
+        if lock is not None:
+            try:
+                lock.acquire(timeout=1)
+            except Timeout:
+                logger.warning("Timed out waiting for ledger lock at %s", lock.lock_file)
+                return {}
+            try:
+                return self._read_ledger_file(ledger_path)
+            finally:
+                lock.release()
+        return self._read_ledger_file(ledger_path)
+
+    def _read_ledger_file(self, ledger_path: Path) -> dict[str, dict[str, object]]:
         try:
             data = json.loads(ledger_path.read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
@@ -423,6 +446,7 @@ class IngestionPipeline:
 
         entries = data.get("artifacts") if isinstance(data, dict) else None
         if not isinstance(entries, dict):
+            logger.warning("Artifact ledger %s missing 'artifacts' mapping", ledger_path)
             return {}
 
         cleaned: dict[str, dict[str, object]] = {}
@@ -436,12 +460,33 @@ class IngestionPipeline:
         if ledger_path is None:
             return
 
-        ledger_path.parent.mkdir(parents=True, exist_ok=True)
         payload = {
             "updated_at": time.time(),
             "artifacts": entries,
         }
-        ledger_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+        lock = self._ledger_lock
+        if lock is not None:
+            try:
+                lock.acquire(timeout=5)
+            except Timeout as exc:
+                raise RuntimeError(f"Timed out acquiring ledger lock for {ledger_path}") from exc
+            try:
+                self._atomic_write(ledger_path, payload)
+            finally:
+                lock.release()
+        else:
+            self._atomic_write(ledger_path, payload)
+
+    def _atomic_write(self, ledger_path: Path, payload: dict[str, object]) -> None:
+        ledger_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = ledger_path.with_suffix(ledger_path.suffix + f".{uuid.uuid4().hex}.tmp")
+        try:
+            tmp_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            os.replace(tmp_path, ledger_path)
+        finally:
+            with suppress(FileNotFoundError):
+                tmp_path.unlink()
 
 
 def _current_repo_head(repo_root: Path) -> str | None:

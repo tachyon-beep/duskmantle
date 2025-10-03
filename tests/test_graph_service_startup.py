@@ -7,6 +7,7 @@ from fastapi import FastAPI, HTTPException
 from starlette.requests import Request
 
 from gateway.api.app import create_app
+from gateway.api.constants import API_V1_PREFIX
 
 
 @pytest.fixture(autouse=True)
@@ -32,7 +33,7 @@ def _make_request(app: FastAPI) -> Request:
         "type": "http",
         "app": app,
         "method": "GET",
-        "path": "/graph/subsystems/foo",
+        "path": f"{API_V1_PREFIX}/graph/subsystems/foo",
         "headers": [],
     }
     return Request(scope, receive=_receive)

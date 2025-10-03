@@ -10,10 +10,13 @@ from fastapi.testclient import TestClient
 from neo4j import GraphDatabase
 
 from gateway.api.app import create_app
+from gateway.api.constants import API_V1_PREFIX
 from gateway.graph import GraphNotFoundError
 from gateway.graph.migrations.runner import MigrationRunner
 from gateway.ingest.neo4j_writer import Neo4jWriter
 from gateway.ingest.pipeline import IngestionConfig, IngestionPipeline
+
+GRAPH_PREFIX = f"{API_V1_PREFIX}/graph"
 
 
 class DummyGraphService:
@@ -164,7 +167,7 @@ def app(monkeypatch: pytest.MonkeyPatch) -> FastAPI:
 
 def test_graph_subsystem_returns_payload(app: FastAPI) -> None:
     client = TestClient(app)
-    response = client.get("/graph/subsystems/telemetry")
+    response = client.get(f"{GRAPH_PREFIX}/subsystems/telemetry")
     assert response.status_code == 200
     body = response.json()
     assert body["subsystem"]["id"] == "Subsystem:telemetry"
@@ -176,15 +179,21 @@ def test_graph_subsystem_returns_payload(app: FastAPI) -> None:
     assert body["artifacts"][0]["id"].startswith("DesignDoc:")
 
 
+def test_graph_subsystem_legacy_path_missing(app: FastAPI) -> None:
+    client = TestClient(app)
+    response = client.get("/graph/subsystems/telemetry")
+    assert response.status_code == 404
+
+
 def test_graph_subsystem_not_found(app: FastAPI) -> None:
     client = TestClient(app)
-    response = client.get("/graph/subsystems/missing")
+    response = client.get(f"{GRAPH_PREFIX}/subsystems/missing")
     assert response.status_code == 404
 
 
 def test_graph_subsystem_graph_endpoint(app: FastAPI) -> None:
     client = TestClient(app)
-    response = client.get("/graph/subsystems/telemetry/graph")
+    response = client.get(f"{GRAPH_PREFIX}/subsystems/telemetry/graph")
     assert response.status_code == 200
     data = response.json()
     assert any(edge["type"] == "DEPENDS_ON" for edge in data["edges"])
@@ -193,7 +202,7 @@ def test_graph_subsystem_graph_endpoint(app: FastAPI) -> None:
 
 def test_graph_orphans_endpoint(app: FastAPI) -> None:
     client = TestClient(app)
-    response = client.get("/graph/orphans")
+    response = client.get(f"{GRAPH_PREFIX}/orphans")
     assert response.status_code == 200
     payload = response.json()
     assert payload["nodes"][0]["id"] == "DesignDoc:docs/orphan.md"
@@ -201,7 +210,7 @@ def test_graph_orphans_endpoint(app: FastAPI) -> None:
 
 def test_graph_node_endpoint(app: FastAPI) -> None:
     client = TestClient(app)
-    response = client.get("/graph/nodes/Subsystem:telemetry")
+    response = client.get(f"{GRAPH_PREFIX}/nodes/Subsystem:telemetry")
     assert response.status_code == 200
     data = response.json()
     assert data["node"]["id"] == "Subsystem:telemetry"
@@ -210,7 +219,7 @@ def test_graph_node_endpoint(app: FastAPI) -> None:
 
 def test_graph_node_accepts_slash_encoded_ids(app: FastAPI) -> None:
     client = TestClient(app)
-    response = client.get("/graph/nodes/DesignDoc%3Adocs%2Fdesign.md")
+    response = client.get(f"{GRAPH_PREFIX}/nodes/DesignDoc%3Adocs%2Fdesign.md")
     assert response.status_code == 200
     service = app.state._dummy_graph_service
     assert service.last_node_id == "DesignDoc:docs/design.md"
@@ -230,6 +239,10 @@ def test_graph_node_endpoint_live(monkeypatch: pytest.MonkeyPatch, tmp_path: pyt
     monkeypatch.setenv("KM_NEO4J_URI", uri)
     monkeypatch.setenv("KM_NEO4J_USER", user)
     monkeypatch.setenv("KM_NEO4J_PASSWORD", password)
+    monkeypatch.setenv("KM_ADMIN_TOKEN", "admin-token")
+    monkeypatch.setenv("KM_ALLOW_INSECURE_BOOT", "true")
+    monkeypatch.setenv("KM_AUTH_MODE", "insecure")
+    monkeypatch.setenv("KM_AUTH_ENABLED", "false")
     from gateway.config.settings import get_settings
 
     repo_root = Path(tmp_path) / "repo"
@@ -255,7 +268,7 @@ def test_graph_node_endpoint_live(monkeypatch: pytest.MonkeyPatch, tmp_path: pyt
     get_settings.cache_clear()
     app = create_app()
     client = TestClient(app)
-    response = client.get("/graph/nodes/DesignDoc%3Adocs%2Fsample.md")
+    response = client.get(f"{GRAPH_PREFIX}/nodes/DesignDoc%3Adocs%2Fsample.md")
     assert response.status_code == 200
     payload = response.json()
     assert payload["node"]["id"] == "DesignDoc:docs/sample.md"
@@ -276,6 +289,10 @@ def test_graph_search_endpoint_live(monkeypatch: pytest.MonkeyPatch, tmp_path: p
     monkeypatch.setenv("KM_NEO4J_URI", uri)
     monkeypatch.setenv("KM_NEO4J_USER", user)
     monkeypatch.setenv("KM_NEO4J_PASSWORD", password)
+    monkeypatch.setenv("KM_ADMIN_TOKEN", "admin-token")
+    monkeypatch.setenv("KM_ALLOW_INSECURE_BOOT", "true")
+    monkeypatch.setenv("KM_AUTH_MODE", "insecure")
+    monkeypatch.setenv("KM_AUTH_ENABLED", "false")
     from gateway.config.settings import get_settings
 
     repo_root = Path(tmp_path) / "repo"
@@ -302,7 +319,7 @@ def test_graph_search_endpoint_live(monkeypatch: pytest.MonkeyPatch, tmp_path: p
     get_settings.cache_clear()
     app = create_app()
     client = TestClient(app)
-    response = client.get("/graph/search", params={"q": "sample", "limit": 5})
+    response = client.get(f"{GRAPH_PREFIX}/search", params={"q": "sample", "limit": 5})
     assert response.status_code == 200
     results = response.json()["results"]
     assert results, "expected graph search to return results"
@@ -311,7 +328,7 @@ def test_graph_search_endpoint_live(monkeypatch: pytest.MonkeyPatch, tmp_path: p
 
 def test_graph_search_endpoint(app: FastAPI) -> None:
     client = TestClient(app)
-    response = client.get("/graph/search", params={"q": "tele"})
+    response = client.get(f"{GRAPH_PREFIX}/search", params={"q": "tele"})
     assert response.status_code == 200
     assert response.json()["results"][0]["id"] == "Subsystem:telemetry"
 
@@ -329,12 +346,12 @@ def test_graph_cypher_requires_maintainer_token(monkeypatch: pytest.MonkeyPatch)
     client = TestClient(app)
 
     # missing token -> unauthorized
-    resp = client.post("/graph/cypher", json={"query": "MATCH (n) RETURN n LIMIT 1"})
+    resp = client.post(f"{GRAPH_PREFIX}/cypher", json={"query": "MATCH (n) RETURN n LIMIT 1"})
     assert resp.status_code == 401
 
     # maintainer token -> success
     resp = client.post(
-        "/graph/cypher",
+        f"{GRAPH_PREFIX}/cypher",
         json={"query": "MATCH (n) RETURN n LIMIT 1"},
         headers={"Authorization": "Bearer admin-token"},
     )
@@ -367,23 +384,23 @@ def test_graph_reader_scope(monkeypatch: pytest.MonkeyPatch) -> None:
     app.dependency_overrides[app.state.graph_service_dependency] = lambda: dummy_service
     client = TestClient(app)
 
-    assert client.get("/graph/subsystems/kasmina").status_code == 401
+    assert client.get(f"{GRAPH_PREFIX}/subsystems/kasmina").status_code == 401
     assert (
         client.get(
-            "/graph/subsystems/kasmina",
+            f"{GRAPH_PREFIX}/subsystems/kasmina",
             headers={"Authorization": "Bearer nope"},
         ).status_code
         == 403
     )
 
     ok_reader = client.get(
-        "/graph/subsystems/kasmina",
+        f"{GRAPH_PREFIX}/subsystems/kasmina",
         headers={"Authorization": "Bearer reader-token"},
     )
     assert ok_reader.status_code == 200
 
     ok_admin = client.get(
-        "/graph/subsystems/kasmina",
+        f"{GRAPH_PREFIX}/subsystems/kasmina",
         headers={"Authorization": "Bearer admin-token"},
     )
     assert ok_admin.status_code == 200

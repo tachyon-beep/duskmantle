@@ -283,7 +283,7 @@ This section captures additional guidance and stretch goals from the knowledge/d
 
 - Attach a `provenance` block to every chunk containing: embedding model version, ingestion job ID, operator (if manual), and source branch if applicable.
 - Maintain an append-only audit ledger (e.g., SQLite or lightweight event log) capturing each ingestion/prune/rebuild operation with timestamp, actor, and outcome.
-- Offer `GET /audit/history` endpoint with pagination for traceability.
+- Offer `GET /api/v1/audit/history` endpoint with pagination for traceability.
 
 ### 15.3 Embedding Model Lifecycle
 
