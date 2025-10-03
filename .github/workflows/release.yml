@@ -34,6 +34,17 @@ jobs:
           python -m pip install build
           scripts/build-wheel.sh dist/release
 
+      - name: Free disk space for Docker build
+        run: |
+          set -euxo pipefail
+          df -h
+          sudo rm -rf /usr/share/dotnet || true
+          sudo rm -rf /opt/ghc || true
+          sudo rm -rf /usr/local/lib/android || true
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"/CodeQL || true
+          docker system prune -af || true
+          df -h
+
       - name: Build docker image
         run: scripts/build-image.sh duskmantle/km:${{ github.ref_name }}
 
