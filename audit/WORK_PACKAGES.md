@@ -1,431 +1,440 @@
-
 # Work Packages
 
-## Summary Stats
-- Total work packages: 9 (Security:1, Operational:3, Performance:1, Quality:1, BestPractice:1, Enhancement:1, TechnicalDebt:1)
-- Priority distribution: High=0, Medium=5, Low=1
-- Estimated effort by priority: High ≈ 0; Medium ≈ 3×S + 1×XS + 1×M; Low ≈ 1×M
-- Quick-win candidates: None (all previously identified quick wins delivered)
+## Summary Statistics
+- High priority: 4 items (Effort mix: 3×S, 1×M)
+- Medium priority: 4 items (Effort mix: 2×S, 1×M, 1×L)
+- Low priority: 2 items (Effort mix: 1×XS, 1×S)
+- Estimated effort by priority:
+  - High: ≈ 2–3 developer weeks (assuming S≈1–2 days, M≈3–5 days)
+  - Medium: ≈ 3–4 developer weeks (two S, one M, one L)
+  - Low: <1 developer week combined
 
-## Priority: HIGH
+## High Priority
 
-## WP-201: Default To Authenticated Gateway Boots *(Completed)*
-
-**Category**: Security
-**Priority**: HIGH
-**Effort**: S (2-8hrs)
+## WP-001: Enforce UI Auth on Sensitive Observability Views
+**Category**: Security  
+**Priority**: HIGH  
+**Effort**: S  
 **Risk Level**: High
 
 ### Description
-Running the API outside the packaged container previously started with `KM_AUTH_ENABLED=false`, exposing every reader and maintainer endpoint without credentials if operators forgot to override the flag.
+Unauthenticated UI endpoints (`/ui/lifecycle`, `/ui/lifecycle/report`, `/ui/events`) expose operational data and accept event writes even when `KM_AUTH_ENABLED=true`.
 
 ### Current State
-`AppSettings.auth_enabled` now defaults to `True`, the scheduler/tests receive fixture-provided credentials, and startup logs emit a dedicated warning when operators deliberately disable auth. Documentation reflects the new default and discourages `KM_ALLOW_INSECURE_BOOT` outside isolated demos.
+- `gateway/ui/routes.py` serves lifecycle JSON and event logging without authentication or rate limits beyond metrics counters.  
+- Tests (`tests/test_ui_routes.py`) only cover unauthenticated mode.
 
 ### Desired State
-✔️ Achieved — gateway boots are secure-by-default and fail closed when credentials are missing.
+- UI endpoints require reader or maintainer token when auth is enabled, mirroring REST surface behaviour.  
+- Anonymous access remains optional when `KM_AUTH_ENABLED=false`.
 
 ### Impact if Not Addressed
-Addressed; residual monitoring captured in RISK-001 (reduced to credential hygiene).
-
-### Delivered Changes
-1. Default `KM_AUTH_ENABLED` to `True` and log `auth_disabled` warnings in `gateway/api/app.py` when operators opt out.
-2. Added autouse fixtures supplying test credentials, refreshed API smoke/security/UI tests to include tokens where required, and extended defaults coverage (`tests/test_settings_defaults.py`).
-3. Updated configuration docs and changelog to highlight the secure default; `docs/UPGRADE_ROLLBACK.md` no longer instructs flipping the flag manually.
-
-### Affected Components
-- gateway/config/settings.py
-- gateway/api/app.py
-- tests/conftest.py
-- tests/test_settings_defaults.py
-- tests/test_app_smoke.py
-- tests/test_api_security.py
-- tests/test_ui_routes.py
-- docs/CONFIG_REFERENCE.md
-- docs/UPGRADE_ROLLBACK.md
-- CHANGELOG.md
-
-### Dependencies
-- None
-
-### Acceptance Criteria
-- [x] Creating the app without explicit overrides enforces authentication and fails fast if tokens are missing.
-- [x] Documentation explains how to opt into insecure dev-mode and calls out risks.
-- [x] Security tests cover secure, insecure, and misconfigured credential scenarios.
-
-### Related Issues
-- RISK-001
-
-## WP-202: Make Scheduled Backup Pruning Safe *(Completed)*
-
-**Category**: Operational
-**Priority**: HIGH
-**Effort**: S (2-8hrs)
-**Risk Level**: High
-
-### Description
-Backup retention deletes *every* item in the configured destination beyond the retention limit, even if the directory contains unrelated files.
-
-### Current State
-`gateway/backup/service.py` now defaults backups to `${KM_STATE_PATH}/backups/archives`, `km-backup-*.tgz` filenames, and exposes helper utilities (`default_backup_destination`, `is_backup_archive`). The scheduler (`gateway/scheduler.py`) prunes only managed archives, increments a new Prometheus metric (`km_backup_retention_deletes_total`), and leaves foreign files intact. `bin/km-backup` writes to the archival subdirectory by default, and documentation references have been updated.
-
-### Desired State
-✔️ Achieved — retention operates exclusively on managed archives inside a dedicated directory.
-
-### Impact if Not Addressed
-Resolved by the implemented changes; residual risk tracked in RISK-002 has been reduced to monitoring.
-
-### Delivered Changes
-1. Shared helpers (`default_backup_destination`, `is_backup_archive`) surfaced for schedulers and tooling.
-2. Scheduler now records deletion metrics, updates health status with counts, and limits pruning to `km-backup-*` archives.
-3. `bin/km-backup` defaults to `.duskmantle/backups/archives`; docs (`OPERATIONS.md`, `QUICK_START.md`, `UPGRADE_ROLLBACK.md`, `MCP_INTERFACE_SPEC.md`) reflect the new layout.
-4. Regression tests added/updated (`tests/test_scheduler.py`, `tests/mcp/test_server_tools.py`) to cover safe pruning and path expectations.
-
-### Affected Components
-- gateway/scheduler.py
-- gateway/backup/service.py
-- gateway/backup/__init__.py
-- gateway/observability/metrics.py
-- bin/km-backup
-- docs/OPERATIONS.md
-- docs/QUICK_START.md
-- docs/UPGRADE_ROLLBACK.md
-- docs/MCP_INTERFACE_SPEC.md
-- docs/ACCEPTANCE_DEMO_PLAYBOOK.md
-- tests/test_scheduler.py
-- tests/mcp/test_server_tools.py
-
-### Dependencies
-- None
-
-### Acceptance Criteria
-- [x] Retention logic deletes only gateway-created archives.
-- [x] Backup destination defaults to a safe, isolated directory.
-- [x] Tests cover retention with extraneous files and verify no collateral deletions.
-
-### Related Issues
-- RISK-002
-
-## WP-204: Bound Graph Enrichment Latency In Search *(Completed)*
-
-**Category**: Performance
-**Priority**: HIGH
-**Effort**: M (1-3 days)
-**Risk Level**: Medium
-
-### Description
-Hybrid search previously fetched graph context for every hit sequentially with no global budget, so slow Neo4j responses could stall the entire request.
-
-### Current State
-`SearchService.search` now enforces configurable result/time budgets (`KM_SEARCH_GRAPH_MAX_RESULTS`, `KM_SEARCH_GRAPH_TIME_BUDGET_MS`), skips additional graph lookups once exhausted, and emits Prometheus counters (`km_search_graph_skipped_total`) to monitor skipped enrichments. Warnings are surfaced in API metadata when limits trigger.
-
-### Desired State
-✔️ Achieved — graph enrichment respects per-request budgets and exposes telemetry for operators.
-
-### Impact if Not Addressed
-Resolved; residual monitoring covered by RISK-004 (now focused on tuning budgets rather than unbounded latency).
-
-### Delivered Changes
-1. Added configurable graph enrichment settings in `AppSettings` and propagated to `SearchOptions` for runtime tuning.
-2. Updated `SearchService` to cap the number of enriched results, enforce a time budget, and record skip metrics/warnings.
-3. Extended tests (`tests/test_search_service.py`) to cover limit/time-budget behaviour and metric increments.
-
-### Affected Components
-- gateway/config/settings.py
-- gateway/search/service.py
-- gateway/observability/metrics.py
-- gateway/api/dependencies.py
-- tests/test_search_service.py
-- docs/CONFIG_REFERENCE.md
-- CHANGELOG.md
-
-### Dependencies
-- None
-
-### Acceptance Criteria
-- [x] Search responses return within the configured graph budget even under Neo4j slowness.
-- [x] Metrics report skipped/timeout graph lookups and concurrency usage.
-- [x] Regression tests cover mixed fast/slow graph situations.
-
-### Related Issues
-- RISK-004
-
-## Priority: MEDIUM
-
-## WP-203: Rotate Search Feedback Event Logs *(Completed)*
-
-**Category**: Operational
-**Priority**: MEDIUM
-**Effort**: S (2-8hrs)
-**Risk Level**: Medium
-
-### Description
-The feedback store previously appended JSON lines indefinitely with no rotation or metrics, risking disk growth and silent data loss when logs were truncated.
-
-### Current State
-`SearchFeedbackStore` now enforces configurable size-based rotation (`KM_FEEDBACK_LOG_MAX_BYTES`, `KM_FEEDBACK_LOG_MAX_FILES`), exposes Prometheus metrics (`km_feedback_log_bytes`, `km_feedback_rotations_total`), and updates documentation/runbooks describing the behaviour.
-
-### Desired State
-✔️ Achieved — feedback logs rotate automatically with observable metrics and operator tuning knobs.
-
-### Impact if Not Addressed
-Resolved; residual monitoring captured in RISK-003 (reduced to ensuring operators keep retention defaults sensible).
-
-### Delivered Changes
-1. Added rotation controls to `AppSettings`, wired through `create_app`, and enhanced `SearchFeedbackStore` with rotation logic and metrics.
-2. Introduced new Prometheus metrics for log size/rotations and default configuration entries in `docs/CONFIG_REFERENCE.md` / `docs/OPERATIONS.md`.
-3. Added focused regression tests (`tests/test_search_feedback.py`) covering rotation and metric updates.
-
-### Affected Components
-- gateway/search/feedback.py
-- gateway/observability/metrics.py
-- gateway/config/settings.py
-- gateway/api/app.py
-- docs/CONFIG_REFERENCE.md
-- docs/OPERATIONS.md
-- CHANGELOG.md
-- tests/test_search_feedback.py
-
-### Dependencies
-- None
-
-### Acceptance Criteria
-- [x] Feedback logs rotate automatically with configurable limits.
-- [x] Metrics/health endpoints expose current file size and last rotation.
-- [x] Tests verify rotation, retention, and corrupted-log recovery.
-
-### Related Issues
-- RISK-003
-
-## WP-205: Make Artifact Ledger Updates Atomic *(Completed)*
-
-**Category**: TechnicalDebt
-**Priority**: MEDIUM
-**Effort**: S (2-8hrs)
-**Risk Level**: Medium
-
-### Description
-The incremental ingest ledger previously rewrote JSON without locking or atomic rename, risking corruption during concurrent runs or crashes.
-
-### Current State
-`IngestionPipeline` now guards ledger reads/writes with `FileLock`, validates schema on load, and performs atomic `os.replace` writes via temporary files. Rotating artifacts are covered by new unit tests.
-
-### Desired State
-✔️ Achieved — ledger updates are atomic, protected by locks, and corruption falls back to safe defaults with logging.
-
-### Impact if Not Addressed
-Addressed; residual monitoring lives in RISK-005 (reduced to ensuring lock timeouts don’t fire under heavy contention).
-
-### Delivered Changes
-1. Added ledger lock handling and atomic rename logic in `gateway/ingest/pipeline.py`.
-2. Enhanced ledger loading with validation/logging and ensured temporary files are cleaned up.
-3. Added regression tests for atomic writes and corrupt ledger recovery (`tests/test_ingest_pipeline.py`).
-
-### Affected Components
-- gateway/ingest/pipeline.py
-- tests/test_ingest_pipeline.py
-- CHANGELOG.md
-
-### Dependencies
-- None
-
-### Acceptance Criteria
-- [x] Ledger updates are atomic and concurrent ingestion attempts block gracefully.
-- [x] Corrupt ledgers are detected with a clear error and recovery instructions.
-- [x] Tests cover crash/retry scenarios.
-
-### Related Issues
-- RISK-005
-
-## WP-206: Refactor SearchService For Maintainability *(Completed)*
-
-**Category**: Quality
-**Priority**: MEDIUM
-**Effort**: M (1-3 days)
-**Risk Level**: Low
-
-### Description
-`SearchService` previously bundled vector retrieval, graph enrichment, heuristic scoring, and ML reranking into a 1k+ LOC module. The coupling slowed reviews and made new signals risky.
-
-### Current State
-`SearchService` now orchestrates dedicated collaborators: `VectorRetriever`, `GraphEnricher`, `HeuristicScorer`, and `ModelScorer`. Filters and DTOs live in `gateway/search/filtering.py` and `gateway/search/models.py`, while unit suites cover each collaborator. Documentation (`docs/SEARCH_SCORING_PLAN.md`, audit set) reflects the new layout.
-
-### Desired State
-✔️ Achieved — responsibilities are split into reusable modules with targeted tests and updated docs.
-
-### Impact if Not Addressed
-Resolved; future relevance work can evolve each component independently.
-
-### Delivered Changes
-1. Introduced collaborator modules (`vector_retriever`, `filtering`, `graph_enricher`, `scoring`, `ml`, `models`) and rewired `SearchService` to compose them.
-2. Added focused unit suites in `tests/search/test_*.py` and refreshed integration tests to cover the new architecture.
-3. Updated scoring documentation and audit artefacts to describe the modular search pipeline.
-
-### Affected Components
-- gateway/search/service.py
-- gateway/search/vector_retriever.py
-- gateway/search/filtering.py
-- gateway/search/graph_enricher.py
-- gateway/search/scoring.py
-- gateway/search/ml.py
-- gateway/search/models.py
-- docs/SEARCH_SCORING_PLAN.md
-- audit/MODULE_DOCUMENTATION.md
-- tests/search/test_vector_retriever.py
-- tests/search/test_filtering.py
-- tests/search/test_graph_enricher.py
-- tests/search/test_scoring.py
-- tests/search/test_ml_scorer.py
-- tests/test_search_service.py
-
-### Dependencies
-- None
-
-### Acceptance Criteria
-- [x] Search code is decomposed into well-documented modules with focused tests.
-- [x] High-complexity helpers removed from `SearchService`, reducing its cyclomatic score.
-- [x] Documentation reflects the new architecture.
-
-### Related Issues
-- RISK-004
-
-## WP-207: Introduce Versioned REST Surface *(Completed)*
-
-**Category**: BestPractice
-**Priority**: MEDIUM
-**Effort**: S (2-8hrs)
-**Risk Level**: Medium
-
-### Description
-All FastAPI routes were previously mounted at the root (e.g., `/search`, `/graph/...`) with no versioning or compatibility contract.
-
-### Current State
-The API now serves all maintainer/reader operations exclusively via `/api/v1/*`, and tests/docs reference the versioned paths by default.
-
-### Desired State
-✔️ Achieved — `/api/v1` is the canonical surface and clients default to it; no fallback routes remain.
-
-### Impact if Not Addressed
-Resolved; external integrations can upgrade independently without coordinating URL changes.
-
-### Delivered Changes
-1. Added shared API constants and updated `gateway/api/app.py` to mount search/graph/reporting routers under `/api/v1`.
-2. Switched MCP/recipe clients and pytest suites to the versioned paths and refreshed CLI/security/graph tests accordingly.
-3. Updated documentation and audit artefacts (README, CONFIG_REFERENCE, OBSERVABILITY_GUIDE, system docs, changelog) to highlight the new prefix as the canonical surface.
-
-### Affected Components
-- gateway/api/constants.py
-- gateway/api/app.py
-- gateway/mcp/client.py
-- tests/test_api_security.py
-- tests/test_search_api.py
-- tests/test_graph_api.py
-- tests/test_app_smoke.py
-- tests/test_coverage_report.py
-- tests/test_graph_service_startup.py
-- docs/CONFIG_REFERENCE.md
-- docs/OBSERVABILITY_GUIDE.md
-- docs/KNOWLEDGE_MANAGEMENT*.md
-- README.md, CHANGELOG.md
-- audit documentation set (summary, system, risks, quick wins, work packages, module doc)
-
-### Dependencies
-- WP-201 (ensures consistent auth handling during migration)
-
-### Acceptance Criteria
-- [x] `/api/v1/*` endpoints mirror existing behaviour with automated contract tests.
-- [x] Legacy routes emit deprecation warnings with a removal schedule.
-- [x] Client libraries and docs reference the versioned paths by default.
-
-### Related Issues
-- RISK-006
-
-## WP-208: Clamp Audit History Window *(Completed)*
-
-**Category**: Operational
-**Priority**: MEDIUM
-**Effort**: XS (<2hrs)
-**Risk Level**: Low
-
-### Description
-Maintainer users can request an unbounded number of audit entries, loading the entire SQLite table into memory.
-
-### Current State
-`/audit/history` clamps requests to `KM_AUDIT_HISTORY_MAX_LIMIT` (default 100), emits a warning header when the cap is hit, and includes the effective limit in the `X-KM-Audit-Limit` response header. The ingestion CLI mirrors the same cap and announces adjustments to operators, while `AuditLogger.recent` guards against zero/negative limits directly.
-
-### Desired State
-✔️ Achieved — audit history reads are bounded and surface clear operator feedback when requests are normalised.
-
-### Impact if Not Addressed
-Resolved; residual risk tracked in RISK-007 has been downgraded now that large pulls are clamped and observable.
-
-### Delivered Changes
-1. Added `KM_AUDIT_HISTORY_MAX_LIMIT` to `AppSettings` and validated bounds (`gateway/config/settings.py`).
-2. Normalised `/api/v1/audit/history` limits, emitted warning/limit headers when clamps trigger, and logged adjustments (`gateway/api/routes/reporting.py`).
-3. Mirrored the cap in `gateway-ingest audit-history`, updated `AuditLogger.recent` to sanitise limits, and extended pytest coverage for API/CLI behaviours (`tests/test_api_security.py`, `tests/test_ingest_cli.py`).
-4. Documented the new setting and behaviour across configuration, observability, README, changelog, and audit artefacts.
-
-### Affected Components
-- gateway/config/settings.py
-- gateway/api/routes/reporting.py
-- gateway/ingest/cli.py
-- gateway/ingest/audit.py
-- tests/test_api_security.py
-- tests/test_ingest_cli.py
-- docs/CONFIG_REFERENCE.md
-- docs/OBSERVABILITY_GUIDE.md
-- README.md
-- CHANGELOG.md
-- audit documentation set (summary, system, risks, quick wins, work packages, module doc)
-
-### Dependencies
-- None
-
-### Acceptance Criteria
-- [x] Requests exceeding the configured limit are clamped and return a warning.
-- [x] Unit tests cover boundary and invalid values.
-- [x] Documentation lists the maximum retrievable audit history span.
-
-### Related Issues
-- RISK-007
-
-## Priority: LOW
-
-## WP-209: Promote Feedback Events Into Training Pipeline
-
-**Category**: Enhancement
-**Priority**: LOW
-**Effort**: M (1-3 days)
-**Risk Level**: Low
-
-### Description
-Collected feedback is never transformed into structured datasets for `gateway/search/trainer.py`, limiting the value of ML scoring mode.
-
-### Current State
-`search/trainer.py` expects curated training files, but the system only stores append-only logs (`gateway/search/feedback.py`). No tooling automates aggregation or model retraining.
-
-### Desired State
-Provide a CLI or scheduled job that rolls feedback logs into training datasets, retrains/validates models, and publishes artifacts for deployment.
-
-### Impact if Not Addressed
-The ML scoring mode stays stale and operators cannot incorporate collected ratings.
+Lifecycle reports and telemetry can leak ingest details, coverage gaps, and host metadata to unauthenticated users; endpoint can be abused for event flooding.
 
 ### Proposed Solution
-1. Add a `gateway-search export-feedback` command that aggregates events into the trainer format. 2. Offer optional auto-training via scheduler or makefile. 3. Document the workflow in `docs/MCP_RECIPES.md` and add tests covering export edge cases.
+- Introduce FastAPI dependencies wrapping `require_reader` / `require_maintainer` for UI routers.  
+- Respect settings toggle to allow anonymous previews if explicitly configured (e.g., new `KM_UI_PUBLIC` flag).  
+- Update tests to cover both authenticated and unauthenticated modes.
 
 ### Affected Components
-- gateway/search/feedback.py
-- gateway/search/trainer.py
-- gateway/search/cli.py
-- docs/MCP_RECIPES.md
+- `gateway/ui/routes.py`
+- `gateway/api/auth.py`
+- `tests/test_ui_routes.py`
 
 ### Dependencies
-- WP-203 (ensures feedback logs are well-behaved and rotated)
+- None.
 
 ### Acceptance Criteria
-- [ ] CLI command exports validated datasets ready for `gateway/search/trainer.py`.
-- [ ] Documentation walks through feedback-driven retraining.
-- [ ] Tests cover aggregation and malformed log handling.
+- [ ] UI JSON and event endpoints respond 401/403 when tokens missing and auth enabled.  
+- [ ] Happy-path UI responses succeed with valid reader token.  
+- [ ] Tests cover secured mode.  
+- [ ] Documentation updated to describe UI auth behaviour.
 
 ### Related Issues
-- RISK-008
+- Risk register item R1.
+
+---
+
+## WP-002: Externalise Rate Limiter Storage
+**Category**: Operational  
+**Priority**: HIGH  
+**Effort**: M  
+**Risk Level**: Medium
+
+### Description
+Rate limiting relies on an in-memory SlowAPI store initialised with `memory://<uuid4>`; limits reset per process and are ineffective across multiple workers or nodes.
+
+### Current State
+- `_configure_rate_limits` in `gateway/api/app.py` hard-codes `Limiter(storage_uri=f"memory://{uuid4()}")`.  
+- No configuration to supply Redis/Memcached backend; documentation implies production use.
+
+### Desired State
+- Operators can configure persistent or centralised storage (Redis, Memcached, database).  
+- Default remains in-memory for development but documented as non-production.
+
+### Impact if Not Addressed
+Multi-process deployments bypass limits, enabling DoS on expensive endpoints (search, graph cypher, metrics) and invalidating throttle guarantees.
+
+### Proposed Solution
+- Add settings (e.g., `KM_RATE_LIMIT_STORAGE_URI`) and validate on startup.  
+- Document deployment guidance and provide example redis configuration.  
+- Update tests to ensure fallback to memory when unset.
+
+### Affected Components
+- `gateway/api/app.py`
+- `gateway/config/settings.py`
+- `docs/` deployment guidance
+
+### Dependencies
+- None.
+
+### Acceptance Criteria
+- [ ] Storage backend configurable via settings with sane default.  
+- [ ] Failing to connect to configured backend raises startup error.  
+- [ ] Documentation updated with redis example.  
+- [ ] Tests cover memory and dummy backend configuration.
+
+### Related Issues
+- Risk register item R2.
+
+---
+
+## WP-003: Fail Fast on Critical Dependency Outages
+**Category**: Operational  
+**Priority**: HIGH  
+**Effort**: S  
+**Risk Level**: High
+
+### Description
+Gateway reports ready even when Neo4j or Qdrant are unreachable; `_initialise_*` warn but service starts and `/readyz` returns success.
+
+### Current State
+- `create_app` logs warnings, sets metrics, but leaves app running.  
+- Clients receive 5xx on first request; deployment automation may mark service healthy prematurely.
+
+### Desired State
+- Optional fail-fast mode (default on for production) aborts startup when dependencies unavailable or misconfigured.  
+- Readiness endpoint reflects dependency status when fail-fast disabled.
+
+### Impact if Not Addressed
+Leads to brown-out windows, failed ingestion, and confusing health signals during deploy/rollout.
+
+### Proposed Solution
+- Add setting `KM_STRICT_DEPENDENCY_STARTUP` (default true in secure mode) enforcing successful handshake.  
+- Update readiness handler to surface degraded status when strict mode disabled.  
+- Extend tests to cover fail-fast and tolerant modes.
+
+### Affected Components
+- `gateway/api/app.py`
+- `gateway/api/routes/health.py`
+- `tests/test_app_smoke.py`
+
+### Dependencies
+- None.
+
+### Acceptance Criteria
+- [ ] App exits with non-zero when strict mode enabled and dependencies unavailable.  
+- [ ] `/readyz` reflects dependency degradation when strict mode disabled.  
+- [ ] Tests simulate dependency outage.  
+- [ ] Release notes mention behaviour change.
+
+### Related Issues
+- Risk register item R3.
+
+---
+
+## WP-004: Cap Maintainer Cypher Query Resource Usage
+**Category**: Performance  
+**Priority**: HIGH  
+**Effort**: S  
+**Risk Level**: Medium
+
+### Description
+Maintainer-only `/api/v1/graph/cypher` endpoint requires a `LIMIT` clause but does not bound the value; callers can request millions of rows, starving Neo4j.
+
+### Current State
+- `_validate_cypher` in `gateway/graph/service.py` only checks presence of `LIMIT`.  
+- No server-side clamp or safety net beyond SlowAPI rate limits.
+
+### Desired State
+- Enforce maximum row count (configurable) and optionally enforce timeout.  
+- Return 422 when LIMIT exceeds threshold.
+
+### Impact if Not Addressed
+Large queries can block graph workloads, cause ingestion slowdowns, and raise memory pressure.
+
+### Proposed Solution
+- Parse LIMIT value post-validation; reject values above e.g. 10k by default (configurable via settings).  
+- Add metric for blocked queries.  
+- Document safe Cypher usage for maintainers.
+
+### Affected Components
+- `gateway/graph/service.py`
+- `gateway/config/settings.py`
+- `gateway/api/routes/graph.py`
+- `tests/test_graph_api.py`
+
+### Dependencies
+- None.
+
+### Acceptance Criteria
+- [ ] LIMIT above configured maximum returns 422 with helpful message.  
+- [ ] Tests cover allowed vs blocked queries.  
+- [ ] Metrics updated when requests denied.  
+- [ ] Documentation warns about capped limits.
+
+### Related Issues
+- Risk register item R4.
+
+---
+
+## Medium Priority
+
+## WP-005: Parallelise Graph Enrichment for Search Results
+**Category**: Performance  
+**Priority**: MEDIUM  
+**Effort**: M  
+**Risk Level**: Medium
+
+### Description
+`GraphEnricher.resolve` fetches graph context sequentially for each candidate hit; under high result counts, queries run serially and may exceed time budget.
+
+### Current State
+- Search pipeline iterates hits one-by-one (`gateway/search/service.py`).  
+- Time budget partially mitigates but increases warning frequency and reduces enrichment quality.
+
+### Desired State
+- Batch or parallel graph lookups (async or threadpool) respecting same budget.  
+- Metrics reflect enrichment latency distribution.
+
+### Impact if Not Addressed
+Search latency spikes for graph-heavy queries; warnings degrade user trust and reduce context coverage.
+
+### Proposed Solution
+- Implement async enrichment tasks or prefetch using `asyncio.gather`/`ThreadPoolExecutor`.  
+- Preserve ordering and caching semantics.  
+- Update metrics to capture enrichment concurrency success.
+
+### Affected Components
+- `gateway/search/graph_enricher.py`
+- `gateway/search/service.py`
+- `tests/test_search_service.py`
+
+### Dependencies
+- WP-004 (since both touch graph pipelines) optional but not blocker.
+
+### Acceptance Criteria
+- [ ] Median search latency reduced in performance tests vs baseline.  
+- [ ] Graph warnings for timeouts decrease.  
+- [ ] Tests updated to cover concurrent path.  
+- [ ] Documentation mentions concurrency controls.
+
+### Related Issues
+- Risk register item R5.
+
+---
+
+## WP-006: Decompose `gateway/graph/service.py` for Maintainability
+**Category**: Quality  
+**Priority**: MEDIUM  
+**Effort**: L  
+**Risk Level**: Medium
+
+### Description
+Graph service spans ~1k lines covering caching, serialisation, query validation, Cypher execution, and helper utilities, making it difficult to test and evolve.
+
+### Current State
+- Monolithic module with mixed responsibilities and extensive helper functions.  
+- Tests focus on high-level behaviours; refactors risky.
+
+### Desired State
+- Split into cohesive modules (e.g., cache, transformers, validators, Cypher guard).  
+- Shared utilities exposed via internal package for MCP and API.
+
+### Impact if Not Addressed
+Increases risk of regression, slows onboarding, and discourages enhancements (e.g., future graph Analytics, batching).
+
+### Proposed Solution
+- Introduce subpackage `gateway/graph/core/` with focused modules.  
+- Add targeted unit tests for utilities.  
+- Update imports across API/MCP.
+
+### Affected Components
+- `gateway/graph/service.py`
+- `gateway/mcp/server.py`
+- `tests/test_graph_service_unit.py`
+
+### Dependencies
+- Coordinate with WP-004 (limit enforcement) to avoid merge conflicts.
+
+### Acceptance Criteria
+- [ ] Graph service split into logical modules with ≤300 lines each.  
+- [ ] Existing tests pass; new unit tests cover validators/serialisers.  
+- [ ] Developer documentation updated describing new structure.
+
+### Related Issues
+- Risk register item R6.
+
+---
+
+## WP-007: Validate Backup Script Availability at Startup
+**Category**: Operational  
+**Priority**: MEDIUM  
+**Effort**: S  
+**Risk Level**: Medium
+
+### Description
+Backup scheduler defers failures until first run; missing or non-executable `km-backup` script silently sets status to error later.
+
+### Current State
+- `IngestionScheduler` initialises `_backup_status` but does not verify script path.  
+- Operators discover misconfiguration only after scheduled job fails.
+
+### Desired State
+- Startup diagnostics verify script presence/executable and destination directory writability.  
+- Health check surfaces actionable error immediately.
+
+### Impact if Not Addressed
+Backups silently absent, increasing RPO in production.
+
+### Proposed Solution
+- Add validation in `IngestionScheduler.start` (and CLI) to check script path and destination.  
+- Fail startup in strict mode or surface degraded health with reason.  
+- Update docs to highlight requirement.
+
+### Affected Components
+- `gateway/scheduler.py`
+- `gateway/config/settings.py`
+- `tests/test_scheduler.py`
+
+### Dependencies
+- Complements WP-003 fail-fast work.
+
+### Acceptance Criteria
+- [ ] Misconfigured backup script surfaces before scheduler start.  
+- [ ] Health endpoint reports degraded status with clear message.  
+- [ ] Tests cover missing/invalid script.  
+- [ ] Docs updated.
+
+### Related Issues
+- Risk register item R7.
+
+---
+
+## WP-008: Surface Search ML Mode Telemetry
+**Category**: Enhancement  
+**Priority**: MEDIUM  
+**Effort**: S  
+**Risk Level**: Medium
+
+### Description
+When `KM_SEARCH_SCORING_MODE=ml` but model missing or errors occur, service falls back silently except for logs.
+
+### Current State
+- `SearchService` logs warning; metadata warnings not surfaced in metrics or `/healthz`.
+
+### Desired State
+- Metrics and API metadata clearly indicate heuristic fallback and alert operators.
+
+### Impact if Not Addressed
+Operators assume ML ranking active while system reverts to heuristic, degrading relevance without visibility.
+
+### Proposed Solution
+- Add Prometheus gauge (e.g., `km_search_ml_enabled`) and warning counter.  
+- Embed flag in search response metadata and `/healthz` coverage.  
+- Extend unit tests to assert metadata flag.
+
+### Affected Components
+- `gateway/search/service.py`
+- `gateway/observability/metrics.py`
+- `tests/test_search_service.py`
+
+### Dependencies
+- None.
+
+### Acceptance Criteria
+- [ ] Metrics expose ML availability.  
+- [ ] Search metadata contains boolean `ml_active`.  
+- [ ] Tests verify fallback path updates metric.  
+- [ ] Documentation updated.
+
+### Related Issues
+- Risk register item R8.
+
+---
+
+## Low Priority
+
+## WP-009: Document Coverage & Lifecycle History Retention Controls
+**Category**: BestPractice  
+**Priority**: LOW  
+**Effort**: XS  
+**Risk Level**: Low
+
+### Description
+Retention knobs (`KM_COVERAGE_HISTORY_LIMIT`, `KM_LIFECYCLE_HISTORY_LIMIT`) exist but are undocumented; history directories can grow unexpectedly.
+
+### Current State
+- Code enforces limits, but README/docs omit guidance and operations procedures.
+
+### Desired State
+- Documentation and operational runbooks explain retention knobs and pruning commands.
+
+### Impact if Not Addressed
+Teams may leave defaults, leading to storage sprawl or confusion when history pruned automatically.
+
+### Proposed Solution
+- Update README / docs with retention explanation and recommended values.  
+- Add note to CLI output when exports occur.
+
+### Affected Components
+- `docs/` (Quick Start, Operations)  
+- `README.md`
+
+### Dependencies
+- None.
+
+### Acceptance Criteria
+- [ ] Docs mention both env vars with defaults and guidance.  
+- [ ] Release notes summarise doc addition.
+
+### Related Issues
+- None.
+
+---
+
+## WP-010: Add Auth-Aware UI Integration Tests
+**Category**: Quality  
+**Priority**: LOW  
+**Effort**: S  
+**Risk Level**: Low
+
+### Description
+Test suite covers unauthenticated UI flows only; once WP-001 lands, regressions could slip in without coverage.
+
+### Current State
+- `tests/test_ui_routes.py` hardcodes `KM_AUTH_ENABLED=false`.
+
+### Desired State
+- Tests assert 401/403 when auth enabled and success when token supplied.
+
+### Impact if Not Addressed
+Future changes may break UI auth without detection.
+
+### Proposed Solution
+- Parameterize existing tests for auth/no-auth scenarios.  
+- Reuse helper fixtures to set tokens.
+
+### Affected Components
+- `tests/test_ui_routes.py`
+
+### Dependencies
+- Requires WP-001 changes.
+
+### Acceptance Criteria
+- [ ] Tests fail if UI endpoints ignore auth when enabled.  
+- [ ] CI reflects new coverage.
+
+### Related Issues
+- Supports WP-001.
+

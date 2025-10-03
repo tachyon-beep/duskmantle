@@ -1,14 +1,10 @@
-
 # Quick Wins
 
-- **WP-202 – Make Scheduled Backup Pruning Safe** ✔️ Completed
-  - Scheduler now prunes only `km-backup-*.tgz` archives within `${KM_STATE_PATH}/backups/archives`, exposes `km_backup_retention_deletes_total`, and leaves operator-managed files untouched. Docs and tests updated accordingly.
-
-- **WP-203 – Rotate Search Feedback Event Logs** ✔️ Completed
-  - `SearchFeedbackStore` now enforces size-based rotation (`KM_FEEDBACK_LOG_MAX_BYTES`, `KM_FEEDBACK_LOG_MAX_FILES`) and exposes Prometheus metrics (`km_feedback_log_bytes`, `km_feedback_rotations_total`).
-  - Touch points: `gateway/search/feedback.py`, `gateway/observability/metrics.py`, `gateway/config/settings.py`.
-  - Verification: `tests/test_search_feedback.py` covers rotation behaviour and metric updates.
-
-- **WP-208 – Clamp Audit History Window** ✔️ Completed
-  - `/api/v1/audit/history` clamps requests to `KM_AUDIT_HISTORY_MAX_LIMIT`, emits `Warning`/`X-KM-Audit-Limit` headers when limits trigger, and `gateway-ingest audit-history` mirrors the cap with operator messaging.
-  - Touch points: `gateway/api/routes/reporting.py`, `gateway/config/settings.py`, `gateway/ingest/{cli,audit}.py`, docs, and pytest coverage for API/CLI flows.
+| Order | Work Package | Impact | Effort | Rationale |
+|-------|--------------|--------|--------|-----------|
+| 1 | WP-001 Enforce UI Auth on Sensitive Observability Views | High | S | Eliminates unauthenticated access to lifecycle data with minimal code changes (attach existing auth deps). |
+| 2 | WP-003 Fail Fast on Critical Dependency Outages | High | S | Prevents unhealthy rollouts by reusing existing connection checks and readiness plumbing. |
+| 3 | WP-004 Cap Maintainer Cypher Query Resource Usage | Medium | S | Small parser enhancement that avoids expensive graph scans driven by maintenance users. |
+| 4 | WP-007 Validate Backup Script Availability at Startup | Medium | S | Simple filesystem check that surfaces backup gaps early. |
+| 5 | WP-008 Surface Search ML Mode Telemetry | Medium | S | Adds observability for ML fallback with light-touch metric changes. |
+| 6 | WP-009 Document Coverage & Lifecycle History Retention Controls | Medium | XS | Documentation-only task clarifying retention knobs to operators. |

@@ -1,155 +1,112 @@
 # System Documentation
 
 ## Architecture Overview
-- The appliance centres on a FastAPI application (`gateway/api/app.py`) that exposes REST routes for search, graph introspection, health, reporting, and static UI assets. Dependency wiring is handled at startup so Neo4j and Qdrant clients, scheduler, and search components share lifecycle hooks.
-- Supporting subsystems include the ingestion pipeline (`gateway/ingest`), hybrid search layer (`gateway/search`), Neo4j graph access (`gateway/graph`), lifecycle/coverage reporters, and the FastMCP bridge (`gateway/mcp`).
-- State is persisted across three domains: Neo4j holds the domain graph, Qdrant stores vector embeddings, and the filesystem (under `KM_STATE_PATH`) retains audit databases, coverage/lifecycle reports, feedback logs, and backups.
-- Background processing is coordinated via APScheduler (`gateway/scheduler.py`) and CLI entry points (`gateway/ingest/cli.py`, `gateway/graph/cli.py`, `gateway/recipes/cli.py`).
-- Runtime container topology: Docker Compose (see `.duskmantle/compose/docker-compose.yml`) launches three services on the `duskmantle-internal` network—`gateway` (this Python image), `neo4j` (official 5.x image), and `qdrant` (official 1.15.x image). Host volumes under `.duskmantle/config/` persist state, and only the API port `8000` is published by default.
+- The Duskmantle Knowledge Gateway is a FastAPI application (`gateway/api/app.py`) that brokers requests between clients, the Neo4j knowledge graph, and the Qdrant vector store.
+- Core subsystems: API layer (`gateway/api`), ingestion pipeline (`gateway/ingest`), search stack (`gateway/search`), graph service (`gateway/graph`), Model Context Protocol adapter (`gateway/mcp`), observability utilities (`gateway/observability`), and CLI tools (`gateway/graph/cli.py`, `gateway/ingest/cli.py`, etc.).
+- Background scheduler (`gateway/scheduler.py`) orchestrates periodic ingestion and backups using APScheduler jobs.
+- Static UI hosted under `/ui` serves dashboards and configuration readouts via Jinja templates (`gateway/ui`).
+- Stateful data persists under the configured `KM_STATE_PATH` (defaults to `/opt/knowledge/var`) and includes audit SQLite databases, coverage snapshots, lifecycle reports, and backups.
 
 ```mermaid
 graph TD
-    subgraph Client Interfaces
-        UI[Static UI]
-        REST[FastAPI REST]
-        MCP[FastMCP Server]
-    end
-
-    REST -->|Dependencies| APIDeps[Dependency Layer]
-    REST -->|Routes| SearchRoute[/search]
-    REST --> GraphRoute[/graph]
-    REST --> ReportRoute[/api/v1/coverage,/api/v1/lifecycle]
-    REST --> HealthRoute[/healthz,/metrics]
-
-    MCP -->|HTTP calls| REST
-
-    subgraph Services
-        SearchSvc[SearchService]
-        GraphSvc[GraphService]
-        IngestSvc[IngestionPipeline]
-        Scheduler[IngestionScheduler]
-    end
-
-    SearchRoute --> SearchSvc
-    GraphRoute --> GraphSvc
-    ReportRoute --> IngestReports[Coverage & Lifecycle readers]
-    Scheduler --> IngestSvc
-
-    SearchSvc --> Qdrant[(Qdrant)]
-    SearchSvc --> Embedder[SentenceTransformers]
-    SearchSvc -.optional.- GraphSvc
-
-    GraphSvc --> Neo4j[(Neo4j)]
-
-    IngestSvc --> Qdrant
-    IngestSvc --> Neo4j
-    IngestSvc --> StateFS[(State Files)]
-
-    ReportRoute --> StateFS
-    HealthRoute --> StateFS
+  subgraph API
+    A[FastAPI app]\n(gateway/api/app.py)
+  end
+  subgraph Ingestion
+    I1[Discovery]\n(gateway/ingest/discovery.py)
+    I2[Chunking]\n(gateway/ingest/chunking.py)
+    I3[Embedding]\n(gateway/ingest/embedding.py)
+    I4[Writers]\n(gateway/ingest/qdrant_writer.py, neo4j_writer.py)
+  end
+  subgraph Search
+    S1[VectorRetriever]
+    S2[GraphEnricher]
+    S3[Scoring]
+  end
+  subgraph Storage
+    N[(Neo4j)]
+    Q[(Qdrant)]
+    FS[State FS]
+  end
+  subgraph MCP
+    M1[FastMCP server]
+    M2[GatewayClient]
+  end
+  A -->|REST / MCP| Clients
+  A --> N
+  A --> Q
+  A --> FS
+  A -.-> M1
+  M1 --> A
+  I1 --> I2 --> I3 --> I4
+  I4 --> N
+  I4 --> Q
+  S1 --> Q
+  S2 --> N
+  S1 --> S3
+  S2 --> S3
+  S3 --> A
 ```
 
-- ## Technology Stack
-- **FastAPI 0.110+ & Uvicorn 0.24+** – Serve REST endpoints, static UI assets, and manage dependency injection (`gateway/api`). Authentication is enabled by default (bearer tokens) and startup logs warn explicitly when operators set `KM_AUTH_ENABLED=false`. Upgrade path: keep pace with FastAPI/Starlette releases and re-run regression tests for dependency injection wiring and SlowAPI middleware changes.
-- **fastmcp 2.12+** – Exposes the gateway as an MCP toolset (`gateway/mcp/server.py`) with HTTPX client bindings to the REST API. Monitor MCP spec updates; adapter code already centralises schema definitions in `docs/MCP_INTERFACE_SPEC.md`.
-- **Neo4j 5.26** – Primary graph store (Compose defaults to `neo4j:5.26.0`). Accessed via the official Bolt driver for schema migrations, query execution, and graph enrichment (`gateway/graph/service.py`, `gateway/ingest/neo4j_writer.py`). Upgrades require Cypher migration compatibility checks and driver pin updates in `pyproject.toml`.
-- **Qdrant 1.15.4** – Vector database for chunk embeddings, accessed via `qdrant-client>=1.7`. Collection creation/upsert semantics are encapsulated in `gateway/ingest/qdrant_writer.py`; when upgrading ensure HNSW/optimizer defaults remain backward compatible.
-- **SentenceTransformers (all-MiniLM-L6-v2 by default)** – Provides embedding models for ingestion and ad-hoc search scoring (`gateway/ingest/embedding.py`). Model path is configurable; upgrades should regenerate embeddings and validate cosine similarity consistency.
-- **Prometheus client 0.20 + SlowAPI 0.1.7** – Surface metrics (`gateway/observability/metrics.py`) and enforce rate limits via middleware.
-- **APScheduler 3.10 + FileLock** – Drive scheduled ingestion runs and guard concurrent executions (`gateway/scheduler.py`). Cron expression parsing remains server-side; upgrades must respect timezone defaults.
-- **OpenTelemetry 1.24** – Wraps ingestion spans and captures pipeline metrics (`gateway/observability/tracing.py`). Exporter endpoints configured through environment variables for OTLP collectors.
+## Technology Stack
+- **Language**: Python 3.12 (type-annotated, Pydantic v2).
+- **Web Framework**: FastAPI 0.110+ with SlowAPI for rate limiting, Uvicorn server (scripts expose console entry point).
+- **Scheduler**: APScheduler 3.10 for ingestion/backup automation.
+- **Vector Store**: Qdrant 1.7+ (HTTP client, HNSW retrieval).
+- **Graph Database**: Neo4j 5.14+ via official Python driver.
+- **Embeddings**: sentence-transformers `all-MiniLM-L6-v2` by default (configurable).
+- **Observability**: Prometheus client metrics, python-json-logger for structured logs, OpenTelemetry exporters (`otlp`, console debugging).
+- **MCP Adapter**: FastMCP 2.12 bridging Codex CLI tools to gateway services.
+- **UI**: Jinja2 templates + static assets bundled under `gateway/ui` served by FastAPI.
+- **Testing/Linting**: pytest, pytest-asyncio, pytest-cov, Ruff, Black, mypy, Pylint (dev extras).
+
+Upgrade notes: Align on latest stable FastAPI/Uvicorn, Neo4j driver, and Qdrant client; monitor sentence-transformers releases for embedding quality, and keep OpenTelemetry exporters in lockstep (OTLP 1.24 currently).
 
 ## Key Features & Capabilities
-- Hybrid search combining vector similarity with graph-derived heuristics, optional machine-learned reranking, and subsystem filters (`gateway/search/service.py`).
-- Graph enrichment obeys configurable budgets (`KM_SEARCH_GRAPH_MAX_RESULTS`, `KM_SEARCH_GRAPH_TIME_BUDGET_MS`) and records skip metrics so operators can balance latency vs context fidelity.
-- Graph introspection APIs that paginate subsystem neighbourhoods, fetch node detail, list orphans, and run read-only Cypher (`gateway/api/routes/graph.py`).
-- Reporting endpoints for coverage and lifecycle health, backed by offline JSON reports generated during ingestion (`gateway/ingest/coverage.py`, `gateway/ingest/lifecycle.py`).
-- Ingestion pipeline that discovers repository artifacts, chunks content, produces embeddings, and persists to both stores with incremental update support (`gateway/ingest/pipeline.py`).
-- MCP tool suite enabling search, graph inspection, ingest triggering, feedback capture, file uploads, and state backups for MCP-compatible agents (`gateway/mcp/server.py`).
-- Observability via Prometheus metrics, structured logging, OpenTelemetry traces, and granular health endpoints (`gateway/observability`).
+- Hybrid search API combines dense vector retrieval (Qdrant) with graph-aware enrichment (Neo4j) and supports heuristic or ML-based ranking.
+- Graph exploration endpoints expose subsystem topology, arbitrary Cypher queries (read-only), orphan detection, and graph search.
+- Operational reporting: coverage snapshots, lifecycle reports, audit history, backup status, Prometheus metrics, and structured logging.
+- Ingestion pipeline discovers repo artifacts, chunks content, embeds text, syncs graph relationships, and prunes stale data. Supports incremental mode with artifact ledger tracking.
+- MCP tool suite (search, ingest trigger, backup trigger, upload/storetext, feedback) enables Codex agents to interact without HTTP credentials.
+- Embedded UI surfaces search weight profiles, subsystem explorer, lifecycle dashboard, and JSON report download endpoints.
 
 ## Data Architecture
-### Neo4j Graph Schema
-- **Node Labels:** `Subsystem`, `SourceFile`, `DesignDoc`, `TestCase`, `Chunk`, `IntegrationMessage`, `TelemetryChannel`, `ConfigFile`. Uniqueness constraints enforced via migrations (`gateway/graph/migrations/runner.py`).
-- **Relationships:**
-  - `BELONGS_TO`, `DESCRIBES`, `VALIDATES` connect artifacts to subsystems.
-  - `HAS_CHUNK` links artifacts to chunk nodes.
-  - `DEPENDS_ON` captures subsystem dependencies.
-  - `IMPLEMENTS` and `EMITS` relate subsystems to integration messages and telemetry channels.
-  - `DECLARES` links source files to integration messages.
-- **Properties:** Artifacts store `path`, `artifact_type`, `git_commit`, `git_timestamp`, `subsystem`. Subsystems carry metadata such as `description`, `criticality`, `owner`, `tags`/`labels` via ingestion metadata.
-- **Access Patterns:**
-  - Graph snapshots for subsystems (`GraphService.get_subsystem`) gather related nodes/edges with caching.
-  - Node lookup and relationship pagination (`GraphService.get_node`).
-  - Graph search via case-insensitive term matching (`GraphService.search`).
-  - Read-only Cypher execution for maintainers with lightweight validation (`GraphService.run_cypher`).
+- **Neo4j** stores subsystem, artifact, chunk, integration message, telemetry channel, and migration history nodes. Relationships such as `BELONGS_TO`, `DESCRIBES`, `VALIDATES`, `HAS_CHUNK`, `DEPENDS_ON`, `IMPLEMENTS`, `EMITS` capture topology.
+- **Qdrant** stores chunk embeddings keyed by chunk digests; payload metadata mirrors artifact path, subsystem assignment, coverage stats, and search scoring hints.
+- **Filesystem state (`KM_STATE_PATH`)** retains ingestion audit SQLite DB, coverage reports, lifecycle reports/history, search feedback logs and models, backup archives, scheduler locks, and MCP audit trails.
+- **MCP uploads/documents** written into `KM_CONTENT_ROOT` (default `/workspace/repo`) under the configured docs subdirectory.
 
-### Qdrant Collections
-- **Collection:** Single default `km_knowledge_v1` configured with cosine distance and dynamic segment optimisers (`QdrantWriter.ensure_collection`).
-- **Vector Size:** Determined by selected SentenceTransformer model; persisted before upsert operations.
-- **Payload Schema:** Includes chunk metadata (`chunk_id`, `path`, `artifact_type`, `subsystem`, textual content, scoring context) mirroring ingestion artifacts.
-- **Operations:**
-  - Batch upsert of embeddings with deterministic UUID based on chunk digest (`QdrantWriter.upsert_chunks`).
-  - Deletion by artifact path to remove stale content (`QdrantWriter.delete_artifact`).
-  - Search queries with optional HNSW tuning and filters for subsystems, artifact types, namespaces, tags, and recency (`SearchService.search`).
-
--## API & Interface Layer
-- **POST /search** – Reader scope. Request body includes `query: str`, optional `filters` (`subsystems`, `artifact_types`, `namespaces`, `tags`, `after_commit`), `include_graph: bool`, and tuning knobs (`limit`, `graph_limit`, `score_debug`). Response contains `results` with `chunk`, `scores` (vector, lexical, heuristics), optional `graph` context, and `metadata.feedback_prompt` for MCP feedback tools. SlowAPI rate limiting enforces defaults (120 req/minute).
-- **GET /search/weights** – Maintainer scope. Returns resolved weight profile name, overrides, and applied numeric values so operators can verify heuristics and UI visualisations.
-- **Graph suite** –
-  - `GET /graph/subsystem` with `name`, `depth`, pagination (`cursor`, `limit`, `include_artifacts`). Returns cached `related` nodes, `artifacts`, `subsystem` metadata.
-  - `GET /graph/subsystem/graph` returns full node/edge snapshot for visualisation tools.
-  - `GET /graph/node` fetches node detail plus relationships filtered by type/direction with pagination.
-  - `GET /graph/orphans` enumerates nodes lacking relationships (label filter optional).
-  - `POST /graph/search` performs term search across subsystems, nodes, and artifacts; returns summary hits.
-  - `POST /graph/cypher` (maintainer scope) executes read-only Cypher after validation (procedure whitelist, summary counters). Optional read-only driver ensures server-side enforcement.
-- **Reporting** – `GET /api/v1/coverage`, `/api/v1/lifecycle`, `/api/v1/lifecycle/history`, `/api/v1/audit/history` serve JSON documents from `KM_STATE_PATH/reports` and the ingest audit SQLite ledger. Maintainer scope required; requests exceeding `KM_AUDIT_HISTORY_MAX_LIMIT` (default 100) return a warning header indicating the clamp.
-- **Operations** – `GET /healthz` exposes dependency heartbeat gauge (last success/failure, revisions), `GET /readyz` checks scheduler and model load, `/metrics` exports Prometheus registry. Static assets under `/ui/*` host the preview console and documentation.
-- **FastMCP Surface** – Tools defined in `gateway/mcp/server.py` provide equivalent operations over MCP transport: `km-search`, `km-graph-*`, `km-ingest-*`, `km-backup-trigger`, `km-feedback-submit`, `km-upload`, `km-storetext`. Requests are proxied through `GatewayClient` using scoped bearer tokens and consistent output schemas (documented in `docs/MCP_INTERFACE_SPEC.md`).
+## API & Interface Layer
+- REST API versioned under `/api/v1`; routers grouped into search, graph, reporting, and health modules. Dependencies enforce authentication scopes via bearer tokens and limiters throttle high-cost routes.
+- Health endpoints expose `/healthz`, `/readyz`, `/metrics` with component-level status (coverage, audit DB, scheduler, Neo4j, Qdrant, backup).
+- Search endpoint `POST /api/v1/search` accepts filters (subsystems, artifact types, namespaces, tags, recency) and optional graph context toggle.
+- Graph endpoints `GET /graph/subsystems/{name}`, `/graph/nodes/{node_id}`, `/graph/orphans`, POST `/graph/cypher` (read-only enforcement) support graph diagnostics.
+- Reporting endpoints `/coverage`, `/lifecycle`, `/lifecycle/history`, `/audit/history` are maintainer-scoped.
+- UI routes hosted under `/ui` render HTML or expose JSON for lifecycle reports; event telemetry POST `/ui/events` increments Prometheus counters.
+- System CLIs (`gateway-ingest`, `gateway-graph`, `gateway-recipes`, `gateway-mcp`, etc.) wrap the same internal services for operators.
 
 ## Configuration & Deployment
-- **Runtime Settings:** Centralised in `gateway/config/settings.py` using Pydantic `AppSettings`. Environment variables prefixed with `KM_` control auth, data stores, scheduler, search weights, tracing, and ingest behaviour. Optional `KM_NEO4J_READONLY_{URI,USER,PASSWORD}` credentials force `/graph/cypher` traffic through a read-only Neo4j account. Helper methods clamp values, including `KM_AUDIT_HISTORY_MAX_LIMIT` for `/audit/history`, and derive scheduler triggers and weight profiles.
-- **Startup Sequence:** `docker-entrypoint.sh` seeds sample repo content on first boot, generates reader/maintainer tokens when absent (unless `KM_ALLOW_INSECURE_BOOT=true`), verifies `KM_NEO4J_PASSWORD`, exports default service URLs (`KM_QDRANT_URL=http://qdrant:6333`, `KM_NEO4J_URI=bolt://neo4j:7687`), and finally execs the configured command (default `uvicorn`).
-- **Docker Image:** Builds a Python 3.12 slim runtime containing the gateway application plus CLI tooling (`Dockerfile`, `infra/docker-entrypoint.sh`). It expects Qdrant and Neo4j to run as sibling containers (Compose brings official images) and only exposes port 8000 from the gateway container.
-- **Compose Scaffold:** `.duskmantle/compose/docker-compose.yml` (mirrors `infra/examples/docker-compose.sample.yml`) launches `gateway`, `neo4j`, and `qdrant` services on a private bridge network, mounts `.duskmantle/{config,repo}` volumes, and surfaces core env vars (`KM_ADMIN_TOKEN`, `KM_NEO4J_PASSWORD`, seed toggles). Only the gateway's 8000/tcp is published by default.
-- **State Directories:** `KM_STATE_PATH` (default `/opt/knowledge/var`) stores audit SQLite DBs, coverage/lifecycle reports, scheduler locks, managed backups under `backups/archives/km-backup-*.tgz`, and search feedback logs.
-- **CLI Entry Points:**
-  - `knowledge-gateway` – start API via Uvicorn.
-  - `gateway-ingest` – run ingestion interactively (`gateway/ingest/cli.py`).
-  - `gateway-graph` – inspect migrations (`gateway/graph/cli.py`).
-  - `gateway-search`, `gateway-recipes`, `gateway-lifecycle` – support maintenance workflows.
+- Settings via environment variables prefixed `KM_` (Pydantic `AppSettings`): API host/port, auth toggle and tokens, Neo4j/Qdrant endpoints & credentials, embedding model, chunking parameters, scheduler/backup triggers, search weight profile overrides, tracing endpoints, lifecycle thresholds.
+- Auth modes: `KM_AUTH_ENABLED` toggles dependency enforcement; missing maintainer token blocks scheduler/backups; read-only graph queries enforced by sanitiser.
+- Deployment packaging: `pyproject.toml` builds wheel, `Dockerfile` (root) for container image, scripts under `bin/` scaffolding docker-compose assets (see `docs` for specs). `.duskmantle/compose` used by bootstrap scripts.
+- Backups: `KM_BACKUP_ENABLED`, `KM_BACKUP_DEST_PATH`, `KM_BACKUP_RETENTION_LIMIT` tune scheduler-managed archives; scripts expect `bin/km-backup` or override.
+- Tracing: `KM_TRACING_ENABLED` and OTLP endpoint/headers; optional console exporter for debugging.
 
-## Data Flow Diagrams (Text)
-- **Ingestion Flow:**
-  1. Discovery scans repository roots and infers artifact metadata (`gateway/ingest/discovery.py`).
-  2. Chunking splits textual artifacts with configurable window/overlap (`gateway/ingest/chunking.py`).
-  3. Embedding pool encodes chunks via SentenceTransformers, optionally in parallel batches.
-  4. QdrantWriter ensures collection and upserts embeddings; Neo4jWriter syncs artifacts, subgraph relationships, and chunk nodes.
-  5. Ledger/history updated for incremental runs, stale artifacts removed, audit entry persisted, coverage/lifecycle reports regenerated when enabled, metrics emitted.
-
-- **Search Flow:**
-  1. API validates payload, resolves filters, and fetches SearchService dependency.
-  2. `VectorRetriever` encodes the query with the shared embedder and executes Qdrant search with optional HNSW parameters.
-  3. `build_filter_state` screens payloads, `HeuristicScorer` applies lexical/subsystem/coverage signals, and (when enabled) `ModelScorer` reranks using stored coefficients.
-  4. `GraphEnricher` retrieves Neo4j context under slot/time budgets, updates telemetry, and the service assembles metadata/feedback prompts.
-
-- **MCP Interaction:**
-  1. FastMCP loads `GatewayClient` within lifespan to reuse HTTP connections.
-  2. Tools gather parameters, enforce limit clamps, and call REST endpoints with scope-specific bearer tokens.
-  3. Metrics record tool latency and failures; rich feedback surfaced back to MCP host.
+## Data Flow Diagrams
+- **Ingestion**: `gateway.ingest.discovery` enumerates repo -> `Chunker` splits files -> `Embedder` encodes -> `QdrantWriter.upsert_chunks` & `Neo4jWriter.sync_chunks` persist -> coverage/lifecycle writers emit JSON -> audit logger records run (SQLite). Incremental ledger bypasses unchanged artifacts; stale artifacts deleted from both stores.
+- **Search**: Request enters FastAPI -> embeddings generated using configured model -> Qdrant HNSW search -> payload filtered -> optional graph enrichment via `GraphService` (Neo4j) within latency budget -> heuristic or ML scoring -> sorted response payload -> optional feedback logging for retraining.
+- **Lifecycle**: After ingest run, lifecycle writer collates stale docs, isolated nodes (Neo4j orphans), missing tests, removed artifacts -> metrics updated -> history snapshots rotated.
+- **Backups**: Scheduler triggers `run_backup` -> external script packages state -> retention pruning removes old archives -> Prometheus gauges updated.
 
 ## Dependencies & Integration
-- **External Services:** Neo4j (Bolt protocol), Qdrant HTTP API, SentenceTransformer model downloads (PyTorch CPU wheels), optional OTLP collector.
-- **Python Libraries:** FastAPI, httpx, apscheduler, qdrant-client, neo4j-driver, sentence-transformers, slowapi, prometheus-client, pydantic v2, opentelemetry.*.
-- **Inter-service Communication:**
-  - REST API <-> Neo4j via Bolt sessions.
-  - REST API <-> Qdrant via HTTP.
-  - MCP server <-> REST API via HTTPX.
-  - Scheduler invokes ingestion pipeline in-process.
+- **External services**: Neo4j bolt endpoint (read/write URIs, optional read-only replica), Qdrant HTTP endpoint (API key optional), optional OTLP tracing endpoint, Prometheus scrape target for `/metrics`.
+- **Python packages**: fastapi, httpx, qdrant-client, neo4j, sentence-transformers, apscheduler, opentelemetry stack, fastmcp, rich, prometheus-client, python-json-logger, slowapi, filelock.
+- **Inter-service communication**: API dependencies share connection managers through FastAPI `state`. Scheduler reuses managers when provided; MCP server reuses HTTP client wrapper.
 
 ## Development & Operations
-- **Environment Setup:** `python3.12 -m venv .venv`, `pip install -e .[dev]`. Lint with `ruff` and format via `black`. Type checking through `mypy` (plugins enabled for Pydantic).
-- **Testing:** Primary suite under `tests/` with pytest markers for Neo4j (`-m neo4j`) and MCP smoke tests (`-m mcp_smoke`). Coverage via `pytest --cov=gateway --cov-report=term-missing`.
-- **Observability:** Structured logging initialised in `gateway/observability/logging.py`, OpenTelemetry tracing optional via env toggles, Prometheus metrics exposed on `/metrics` (including backup gauges/counters such as `km_backup_runs_total`, `km_backup_last_status`, `km_backup_retention_deletes_total` and feedback log metrics `km_feedback_log_bytes`, `km_feedback_rotations_total`) and enriched during ingestion/search/MCP flows.
-- **Operational Playbooks:** Ingestion orchestrated via CLI or scheduler; backups triggered through MCP tool; lifecycle and coverage reports read from `KM_STATE_PATH/reports`.
-- **Deployment Considerations:** Ensure secrets supplied through environment or secret management, mount persistent volumes for state, configure TLS/ingress for API and Qdrant, and monitor metrics for ingestion/scheduler health.
+- **Environment setup**: `python3.12 -m venv .venv`, `pip install -e .[dev]`. Run `ruff check .`, `black .`, `pytest --cov=gateway --cov-report=term-missing` before publishing. Optional `pytest tests/mcp/` and `pytest -m mcp_smoke` for MCP changes.
+- **Local services**: `bin/km-bootstrap` to pull container stack; `bin/km-watch` for host-side monitoring; `bin/km-run` orchestrates local environment (see `infra/` configs for Neo4j/Qdrant).
+- **Testing**: Extensive pytest suite under `tests/` covering API security, search heuristics, graph migrations, scheduler behaviour, MCP smoke flows, CLI utilities. Playwright UI smoke tests under `playwright/`.
+- **Observability**: Structured JSON logs, Prometheus counters/gauges/histograms, optional tracing instrumentation. Search and MCP modules instrument warnings and latencies. UI events recorded via `/ui/events`.
+- **Deployment**: Docker image built via `scripts/build-image.sh` (`duskmantle/km:dev`), Compose assets under `.duskmantle/compose`. `infra/smoke-test.sh` for acceptance-run; release automation summarised in `README`/`docs`.
+
