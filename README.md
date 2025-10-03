@@ -1,10 +1,10 @@
 # Duskmantle Knowledge Management Appliance
 
-This repository packages a turnkey knowledge management stack that bundles the Knowledge Gateway, Qdrant, and Neo4j into a single container. It targets engineering teams and power users who need deterministic retrieval-augmented answers and graph-backed reasoning over their own repositories without standing up infrastructure.
+This repository packages a turnkey knowledge management stack composed of the Knowledge Gateway API, Qdrant, and Neo4j. The hardened distribution now runs these services as separate containers coordinated via Docker Compose so each dependency keeps its own least-privilege runtime. It targets engineering teams and power users who need deterministic retrieval-augmented answers and graph-backed reasoning over their own repositories without bespoke infrastructure.
 
 ## Highlights
 
-- **Single container delivery:** Supervisor launches the gateway, Qdrant, and Neo4j together with baked-in defaults.
+- **Secure multi-service runtime:** Docker Compose launches the gateway, Qdrant, and Neo4j as isolated containers with non-root users and minimal port exposure.
 - **Deterministic ingestion:** Periodic jobs index docs, source, tests, and protobufs with provenance and coverage reporting.
 - **Hybrid search + graph context:** Vector similarity fused with lexical overlap and live graph lookups for every result.
 - **Embedded preview UI:** Visit `/ui/` for a bundled console shell; future sprints will light up search, subsystems, and lifecycle dashboards.
@@ -34,16 +34,16 @@ This repository packages a turnkey knowledge management stack that bundles the K
 
 Prefer the detailed walkthrough in `docs/QUICK_START.md`. Agents should follow the **LLM Agent Workflow** above; dive into the manual steps below only when customising the container build, mounts, or runtime settings.
 
-Summary (or simply run `bin/km-bootstrap` to let the repo pull the latest image, generate credentials, and start the container automatically):
+Summary (or simply run `bin/km-bootstrap` to pull images, generate credentials, scaffold docker compose assets, and start the full stack automatically):
 
-1. Prepare working directories: `mkdir -p .duskmantle/{config,data}`. Copy or symlink the content you want indexed into `.duskmantle/data/` (this path is mounted at `/workspace/repo`). Use `bin/km-sweep` anytime to copy loose `*.md`, `*.docx`, `*.txt`, `*.doc`, or `*.pdf` files into `.duskmantle/data/docs/` so they’re picked up on the next ingest.
-2. Build the container with `scripts/build-image.sh duskmantle/km:dev` (BuildKit enabled by default).
-3. Launch it via `bin/km-run` (default container name `duskmantle`, mounts `.duskmantle/config` and `.duskmantle/data`). Override `KM_DATA_DIR`, `KM_REPO_DIR`, or `KM_IMAGE` as needed.
-4. Kick off an ingest inside the container: `docker exec duskmantle gateway-ingest rebuild --profile local --dummy-embeddings`.
-5. Verify `http://localhost:8000/readyz`, `/healthz`, and `/coverage`; inspect Prometheus metrics at `/metrics` (requires maintainer token if auth enabled).
+1. Prepare working directories: `mkdir -p .duskmantle/{config,data,backups}`. Copy or symlink the content you want indexed into `.duskmantle/data/` (mounted to `/workspace/repo`). Use `bin/km-sweep` anytime to copy loose `*.md`, `*.docx`, `*.txt`, `*.doc`, or `*.pdf` files into `.duskmantle/data/docs/` so they’re picked up on the next ingest.
+2. Build the gateway image with `scripts/build-image.sh duskmantle/km:dev` (BuildKit enabled) **or** rely on `bin/km-bootstrap` to use `ghcr.io/tachyon-beep/duskmantle-km`. Qdrant and Neo4j pull their upstream hardened images (`qdrant/qdrant`, `neo4j`).
+3. Launch the stack via `bin/km-run` (wraps docker compose). By default it reads `.duskmantle/secrets.env`, starts the three services with non-root users, exposes only `8000/tcp` to the host, and persists state under `.duskmantle/compose/config/{gateway,neo4j,qdrant}`. Override `KM_IMAGE`, `KM_QDRANT_IMAGE`, `KM_NEO4J_IMAGE`, `KM_COMPOSE_DIR`, or `KM_COMPOSE_PROJECT` as needed.
+4. Kick off an ingest from the host: `docker compose --project duskmantle -f .duskmantle/compose/docker-compose.yml exec gateway /opt/knowledge/.venv/bin/gateway-ingest rebuild --profile local --dummy-embeddings`.
+5. Verify `http://localhost:8000/readyz`, `/healthz`, `/metrics`, and `/coverage`; inspect structured logs under `.duskmantle/compose/config/gateway/logs/`.
 6. Use `bin/km-backup` to snapshot `.duskmantle/config` before upgrades; restore with a simple `tar -xzf` into that directory.
-7. Run `./infra/smoke-test.sh duskmantle/km:dev` (or `make smoke`) to build, launch, ingest, and validate coverage end-to-end.
-8. (Optional) Leave `bin/km-watch` running to detect file changes under `.duskmantle/data` and trigger ingestion automatically (pass `--metrics-port` to expose watcher metrics; the in-container watcher uses `KM_WATCH_METRICS_PORT`, default `9103`).
+7. Run `./infra/smoke-test.sh duskmantle/km:dev` (or `make smoke`) to build the API image, start the compose stack, ingest sample content, and validate coverage end-to-end.
+8. (Optional) Run `bin/km-watch` on the host to detect file changes under `.duskmantle/data` and trigger ingestion automatically. In-container watchers were removed as part of the hardening effort; keep automation outside the gateway container for least privilege.
 
 > Maintainer operations (uploads, text capture, ingest and backup triggers) append audit lines to `KM_STATE_PATH/audit/mcp_actions.log`. Include the file in your log rotation policy whenever MCP workflows are part of your day-to-day usage.
 
@@ -55,19 +55,19 @@ Summary (or simply run `bin/km-bootstrap` to let the repo pull the latest image,
 
 ### Security Defaults
 
-The container now boots in **secure mode** by default. On first launch the entrypoint:
+The compose stack boots in **secure mode** by default. During bootstrap:
 
-- Generates random reader and maintainer tokens plus a 48-character Neo4j password.
-- Persists them to `${KM_VAR}/secrets.env` (mounted as `.duskmantle/config/secrets.env` when you use `bin/km-run` or `bin/km-bootstrap`).
-- Enables API and Neo4j authentication automatically.
+- `bin/km-bootstrap` generates random reader and maintainer tokens plus a strong Neo4j password and writes them to `.duskmantle/secrets.env` (symlinked into the compose directory as `gateway.env`).
+- The gateway entrypoint loads those credentials, enforces API authentication, and refuses to start if `KM_NEO4J_PASSWORD` is missing.
+- The Neo4j service receives the same password via `NEO4J_AUTH=neo4j/<password>` so the graph database and API stay in sync.
 
-Restarting the container reuses the stored credentials so long-lived deployments stay consistent. To run without managed secrets—for example during a disposable demo—set `KM_ALLOW_INSECURE_BOOT=true`. Doing so disables API and Neo4j auth and prints a prominent warning; avoid that mode for anything beyond throwaway experimentation.
+Restarting the stack reuses the stored credentials so long-lived deployments stay consistent. To run without managed secrets—for example during a disposable demo—set `KM_ALLOW_INSECURE_BOOT=true` **and** supply explicit credentials in `gateway.env`. Doing so disables API auth inside the gateway and is not recommended outside short-lived experiments.
 
 **Credential management tips**
 
 1. The generated secrets live in `.duskmantle/config/secrets.env`. Treat this file as sensitive: restrict access to operators and back it up alongside other state.
-2. Override tokens or the Neo4j password whenever needed by exporting new values (or using `bin/km-make-tokens`) *before* starting the container. The entrypoint respects user-provided values and will not overwrite them.
-3. If you rotate the Neo4j password on a running system, stop the container, remove the old `neo4j` auth cache under `.duskmantle/config/neo4j`, set the new `KM_NEO4J_PASSWORD`, and start the container so the driver can apply the change during boot.
+2. Override tokens or the Neo4j password whenever needed by editing `.duskmantle/secrets.env` (or using `bin/km-make-tokens`) *before* restarting the stack. The entrypoint respects user-provided values and will not overwrite them.
+3. Use `bin/km-rotate-neo4j-password` to automate password rotation. The helper updates `secrets.env`, clears the Neo4j auth file under `.duskmantle/compose/config/neo4j`, and restarts the graph + gateway services so the new credential takes effect.
 4. Update MCP clients, automation scripts, or CI pipelines to supply the maintainer token whenever they call privileged endpoints (`/graph/cypher`, `/metrics`, `/coverage`, ingest/backup triggers, etc.).
 
 ## Repository Layout
@@ -167,9 +167,8 @@ All MCP usage is mirrored to Prometheus (`km_mcp_requests_total`, `km_mcp_reques
 - Full environment-variable reference: see [`docs/CONFIG_REFERENCE.md`](docs/CONFIG_REFERENCE.md).
 - Quick tips:
   - Set `KM_AUTH_ENABLED=true` with new reader/maintainer tokens for any non-demo usage.
-  - `KM_WATCH_ENABLED=true` makes the container hash `/workspace/repo` every `KM_WATCH_INTERVAL` seconds and run `gateway-ingest` automatically.
-  - Scheduler (`KM_SCHEDULER_ENABLED=true`) and watcher can run together; both require maintainer tokens when auth is enabled.
-  - Use `bin/km-watch` host-side if you prefer to keep automation outside the container.
+  - Host-side automation is preferred: run `bin/km-watch` to hash `.duskmantle/data` and trigger ingestion on change. In-container watchers were removed in the hardened runtime.
+  - Scheduler (`KM_SCHEDULER_ENABLED=true`) can run alongside host-side watch processes; both require maintainer tokens when auth is enabled.
 
 ### Observability & Automation
 

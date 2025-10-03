@@ -7,12 +7,12 @@ The knowledge gateway reads its runtime configuration from environment variables
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `KM_IMAGE` | (set by launcher) | Container image tag (e.g., `ghcr.io/tachyon-beep/duskmantle-km:latest`). |
-| `KM_CONTAINER_NAME` | `duskmantle` | Docker container name used by helper scripts. |
+| `KM_CONTAINER_NAME` | `duskmantle` | Legacy helper default; compose stacks use `KM_COMPOSE_PROJECT` instead. |
 | `KM_STATE_PATH` | `/opt/knowledge/var` | Gateway state root (Neo4j/Qdrant data, coverage, logs, watcher fingerprints). |
 | `KM_REPO_PATH` | `/workspace/repo` | Repository location scanned by ingestion. |
 | `KM_SAMPLE_CONTENT_DIR` | `/opt/knowledge/infra/examples/sample-repo` | Seed repository copied into `KM_REPO_PATH` when the target directory is empty (turnkey doc + subsystem metadata). |
 | `KM_SEED_SAMPLE_REPO` | `true` | Populate `/workspace/repo` with sample content on first boot; set to `false` to skip seeding. |
-| `KM_DATA_DIR` | `./.duskmantle/config` (host default) | Host directory mounted to `/opt/knowledge/var` when using `bin/km-run`. |
+| `KM_DATA_DIR` | `./.duskmantle/compose/config/gateway` (host default) | Host directory mounted to `/opt/knowledge/var` when using `bin/km-run`/compose. |
 | `KM_REPO_DIR` | `./.duskmantle/data` (host default) | Host directory mounted to `/workspace/repo` when using `bin/km-run`. |
 | `KM_CONTENT_ROOT` | `/workspace/repo` | Base directory used by MCP upload/storetext helpers (usually matches `KM_REPO_PATH`). |
 | `KM_CONTENT_DOCS_SUBDIR` | `docs` | Relative subdirectory under `KM_CONTENT_ROOT` for authored documents. |
@@ -56,23 +56,15 @@ The knowledge gateway reads its runtime configuration from environment variables
 | `KM_BACKUP_RETENTION_LIMIT` | `7` | Number of recent backup archives to retain (older archives are removed). |
 | `KM_BACKUP_DEST_PATH` | `${KM_STATE_PATH}/backups` | Directory where backup archives are stored. |
 | `KM_BACKUP_SCRIPT` | `<repo>/bin/km-backup` | Optional override for the backup helper script executed by the scheduler/MCP tool. |
-| `KM_WATCH_ENABLED` | `false` | When `true`, the container runs `bin/km-watch` internally. |
-| `KM_WATCH_INTERVAL` | `60` | Polling interval (seconds) for the internal watcher. |
-| `KM_WATCH_PROFILE` | `local` | Ingestion profile invoked by the watcher. |
-| `KM_WATCH_USE_DUMMY` | `true` | Append `--dummy-embeddings` when the watcher triggers ingestion. |
-| `KM_WATCH_ROOT` | `/workspace/repo` | Directory hashed by the watcher (override for subdirectories). |
-| `KM_WATCH_FINGERPRINTS` | `/opt/knowledge/var/watch/fingerprints.json` | Fingerprint cache path inside the container. |
-| `KM_WATCH_METRICS_PORT` | `9103` (container default) | Start an HTTP server on this port to expose watcher metrics. Set to `0` to disable. |
-
-Watcher tips: the watcher monitors `KM_WATCH_ROOT` (default `/workspace/repo`). If you keep the seeded sample repo, ingest will emit a warning—remove the `.km-sample-repo` marker or disable seeding once you mount real content.
+Legacy watcher variables (`KM_WATCH_*`) remain for backward compatibility but the hardened container no longer spawns an in-process watcher. Run `bin/km-watch` on the host when you need automatic ingests and configure cadence via CLI flags.
 
 ## Neo4j & Qdrant
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `KM_NEO4J_URI` | `bolt://localhost:7687` | Bolt endpoint for Neo4j. |
-| `KM_NEO4J_USER` / `KM_NEO4J_PASSWORD` | `neo4j` / `neo4jadmin` | Credentials for Neo4j. The entrypoint replaces the default password with a random value on first boot and persists it to `${KM_VAR}/secrets.env`. |
-| `KM_NEO4J_DATABASE` | `knowledge` | Neo4j database name queried by the gateway (startup fails if it is missing). |
+| `KM_NEO4J_URI` | `bolt://localhost:7687` | Bolt endpoint for Neo4j (compose helpers override to `bolt://neo4j:7687`). |
+| `KM_NEO4J_USER` / `KM_NEO4J_PASSWORD` | `neo4j` / `neo4jadmin` | Credentials for Neo4j. Compose helpers generate a strong password and persist it to `.duskmantle/secrets.env`. |
+| `KM_NEO4J_DATABASE` | `neo4j` | Neo4j database name queried by the gateway (startup fails if it is missing). |
 | `KM_NEO4J_AUTH_ENABLED` | `true` | Toggle authentication for Neo4j access (leave enabled outside isolated dev). |
 | `KM_NEO4J_READONLY_URI` | _unset_ | Optional Bolt URI for a read-only Neo4j endpoint used by `/graph/cypher`. Defaults to `KM_NEO4J_URI`. |
 | `KM_NEO4J_READONLY_USER` / `KM_NEO4J_READONLY_PASSWORD` | _unset_ | Credentials for the read-only Neo4j account. When omitted, maintainer queries use the primary credentials. |

@@ -184,10 +184,24 @@ def _initialise_graph_manager(manager: Neo4jConnectionManager, settings: AppSett
         return
 
     if not _verify_graph_database(driver, settings.neo4j_database):
-        logger.warning("Neo4j database validation failed during startup")
-        manager.mark_failure(RuntimeError("database validation failed"))
-        _set_migration_metrics(0, timestamp=time.time())
-        return
+        if _ensure_graph_database(settings):
+            manager.mark_failure(RuntimeError("database created; refreshing driver"))
+            try:
+                driver = manager.get_write_driver()
+            except Exception as exc:
+                logger.warning("Neo4j unavailable after attempting database creation: %s", exc)
+                _set_migration_metrics(0, timestamp=time.time())
+                return
+            if not _verify_graph_database(driver, settings.neo4j_database):
+                logger.warning("Neo4j database '%s' validation failed after auto-create", settings.neo4j_database)
+                manager.mark_failure(RuntimeError("database validation failed"))
+                _set_migration_metrics(0, timestamp=time.time())
+                return
+        else:
+            logger.warning("Neo4j database validation failed during startup")
+            manager.mark_failure(RuntimeError("database validation failed"))
+            _set_migration_metrics(0, timestamp=time.time())
+            return
 
     if settings.graph_auto_migrate:
         _run_graph_auto_migration(driver, settings.neo4j_database)
@@ -231,6 +245,36 @@ def _verify_graph_database(driver: Driver, database: str) -> bool:
     except Exception as exc:  # pragma: no cover - defensive guard
         logger.warning("Unexpected error validating Neo4j database '%s': %s", database, exc)
         return False
+    return True
+
+
+def _ensure_graph_database(settings: AppSettings) -> bool:
+    """Ensure the configured Neo4j database exists, creating it if missing."""
+
+    if not settings.neo4j_auth_enabled:
+        return False
+
+    driver: Driver | None = None
+    try:
+        driver = GraphDatabase.driver(
+            settings.neo4j_uri,
+            auth=(settings.neo4j_user, settings.neo4j_password),
+        )
+        with driver.session(database="system") as session:
+            session.run(f"CREATE DATABASE `{settings.neo4j_database}` IF NOT EXISTS").consume()
+    except Exception as exc:  # pragma: no cover - defensive guard
+        logger.warning(
+            "Failed to ensure Neo4j database '%s' exists: %s",
+            settings.neo4j_database,
+            exc,
+        )
+        return False
+    finally:
+        if driver is not None:
+            with suppress(Exception):
+                driver.close()
+
+    logger.info("Ensured Neo4j database '%s' exists", settings.neo4j_database)
     return True
 
 

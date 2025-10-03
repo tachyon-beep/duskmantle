@@ -2,21 +2,27 @@
 set -euo pipefail
 
 IMAGE_DEFAULT="ghcr.io/tachyon-beep/duskmantle-km:v1.1.0"
+QDRANT_IMAGE_DEFAULT="qdrant/qdrant:v1.15.5"
+NEO4J_IMAGE_DEFAULT="neo4j:5.26.0"
 FORCE="false"
 IMAGE="$IMAGE_DEFAULT"
+QDRANT_IMAGE="$QDRANT_IMAGE_DEFAULT"
+NEO4J_IMAGE="$NEO4J_IMAGE_DEFAULT"
 
 usage() {
   cat <<'USAGE'
-Usage: km-bootstrap [--image IMAGE] [--force]
+Usage: km-bootstrap [--image IMAGE] [--qdrant IMAGE] [--neo4j IMAGE] [--force]
 
-Pull the Duskmantle gateway image, ensure fresh credentials exist, and launch it
-with `.duskmantle/config` mapped to state and `.duskmantle/data` mapped to the
-repository workload.
+Provision compose configuration, generate credentials, and launch the
+Duskmantle stack. Credentials are stored in .duskmantle/secrets.env and
+symlinked into the compose directory as gateway.env.
 
 Options:
-  --image IMAGE   Override the container image tag (default: ghcr.io/tachyon-beep/duskmantle-km:v1.1.0)
-  --force         Regenerate credentials even if .duskmantle/secrets.env exists
-  --help          Show this help text
+  --image IMAGE    Gateway API image tag (default: ghcr.io/tachyon-beep/duskmantle-km:v1.1.0)
+  --qdrant IMAGE   Qdrant image tag (default: qdrant/qdrant:1.15.4)
+  --neo4j IMAGE    Neo4j image tag (default: neo4j:5.26.0)
+  --force          Regenerate credentials even if secrets.env exists
+  --help           Show this help text
 USAGE
 }
 
@@ -24,6 +30,14 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --image)
       IMAGE="$2"
+      shift 2
+      ;;
+    --qdrant)
+      QDRANT_IMAGE="$2"
+      shift 2
+      ;;
+    --neo4j)
+      NEO4J_IMAGE="$2"
       shift 2
       ;;
     --force)
@@ -42,16 +56,40 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if ! command -v docker >/dev/null 2>&1; then
+  echo "docker command not found" >&2
+  exit 1
+fi
+
+if ! docker compose version >/dev/null 2>&1; then
+  echo "docker compose plugin is required" >&2
+  exit 1
+fi
+
 BASE_DIR="$(pwd)/.duskmantle"
 CONFIG_DIR="$BASE_DIR/config"
-DATA_DIR="$BASE_DIR/data"
+COMPOSE_DIR="$BASE_DIR/compose"
+REPO_DIR="$BASE_DIR/data"
 BACKUP_DIR="$BASE_DIR/backups"
-ENV_FILE="$BASE_DIR/secrets.env"
+SECRETS_FILE="$BASE_DIR/secrets.env"
+COMPOSE_FILE="$COMPOSE_DIR/docker-compose.yml"
+ENV_FILE="$COMPOSE_DIR/gateway.env"
 
-mkdir -p "$CONFIG_DIR" "$DATA_DIR" "$BACKUP_DIR"
+mkdir -p "$CONFIG_DIR" "$REPO_DIR" "$BACKUP_DIR"
+mkdir -p "$COMPOSE_DIR/config/gateway" "$COMPOSE_DIR/config/neo4j" "$COMPOSE_DIR/config/qdrant" "$COMPOSE_DIR/repo"
+mkdir -p "$COMPOSE_DIR/config/neo4j/data" "$COMPOSE_DIR/config/neo4j/logs"
+
+if [[ ! -f "$COMPOSE_FILE" ]]; then
+  echo "Copying compose template to $COMPOSE_FILE"
+  cp infra/examples/docker-compose.sample.yml "$COMPOSE_FILE"
+fi
+
+if [[ ! -f "$ENV_FILE" ]]; then
+  ln -sf ../secrets.env "$ENV_FILE"
+fi
 
 declare -a secrets
-if [[ ! -f "$ENV_FILE" || $FORCE == "true" ]]; then
+if [[ ! -f "$SECRETS_FILE" || $FORCE == "true" ]]; then
   mapfile -t secrets < <(python <<'PY'
 import secrets
 import string
@@ -68,62 +106,76 @@ PY
   READER_TOKEN=${secrets[0]}
   ADMIN_TOKEN=${secrets[1]}
   NEO4J_PASSWORD=${secrets[2]}
-  {
-    printf 'KM_IMAGE=%q\n' "$IMAGE"
-    printf 'KM_CONTAINER_NAME=%q\n' "duskmantle"
-    printf 'KM_AUTH_ENABLED=true\n'
-    printf 'KM_READER_TOKEN=%q\n' "$READER_TOKEN"
-    printf 'KM_ADMIN_TOKEN=%q\n' "$ADMIN_TOKEN"
-    printf 'KM_NEO4J_PASSWORD=%q\n' "$NEO4J_PASSWORD"
-    printf 'KM_NEO4J_AUTH_ENABLED=true\n'
-    printf 'KM_NEO4J_DATABASE=knowledge\n'
-    printf 'KM_DATA_DIR=%q\n' "$CONFIG_DIR"
-    printf 'KM_REPO_DIR=%q\n' "$DATA_DIR"
-    printf 'KM_CONTENT_ROOT=%q\n' "$DATA_DIR"
-    printf 'KM_CONTENT_DOCS_SUBDIR=docs\n'
-    printf 'KM_UPLOAD_DEFAULT_OVERWRITE=false\n'
-    printf 'KM_UPLOAD_DEFAULT_INGEST=false\n'
-  } >"$ENV_FILE"
-  echo "Wrote new credentials to $ENV_FILE"
 else
-  echo "Reusing existing credentials in $ENV_FILE"
+  echo "Reusing existing credentials in $SECRETS_FILE"
+  # shellcheck disable=SC1090
+  source "$SECRETS_FILE"
+  READER_TOKEN=${KM_READER_TOKEN:-}
+  ADMIN_TOKEN=${KM_ADMIN_TOKEN:-}
+  NEO4J_PASSWORD=${KM_NEO4J_PASSWORD:-}
 fi
 
-set -a
-source "$ENV_FILE"
-KM_IMAGE="${KM_IMAGE:-$IMAGE}"
-set +a
-
-echo "Pulling $KM_IMAGE ..."
-docker pull "$KM_IMAGE"
-
-echo "Stopping existing container if present..."
-docker rm -f "${KM_CONTAINER_NAME:-duskmantle}" >/dev/null 2>&1 || true
-
-echo "Launching gateway..."
-# Compose docker env args (auth, graph, passwords) and append any caller overrides.
-RUN_ENV_ARGS=(
-  "-e" "KM_AUTH_ENABLED=${KM_AUTH_ENABLED}"
-  "-e" "KM_READER_TOKEN=${KM_READER_TOKEN}"
-  "-e" "KM_ADMIN_TOKEN=${KM_ADMIN_TOKEN}"
-  "-e" "KM_NEO4J_PASSWORD=${KM_NEO4J_PASSWORD}"
-  "-e" "KM_NEO4J_AUTH_ENABLED=${KM_NEO4J_AUTH_ENABLED:-true}"
-  "-e" "KM_NEO4J_DATABASE=${KM_NEO4J_DATABASE:-knowledge}"
-  "-e" "KM_CONTENT_ROOT=/workspace/repo"
-  "-e" "KM_CONTENT_DOCS_SUBDIR=docs"
-  "-e" "KM_UPLOAD_DEFAULT_OVERWRITE=false"
-  "-e" "KM_UPLOAD_DEFAULT_INGEST=false"
-  "-e" "KM_ALLOW_INSECURE_BOOT=false"
-)
-if [[ -n ${KM_DOCKER_RUN_ARGS:-} ]]; then
-  RUN_ENV_ARGS+=( ${KM_DOCKER_RUN_ARGS} )
+if [[ -z "$READER_TOKEN" || -z "$ADMIN_TOKEN" || -z "$NEO4J_PASSWORD" ]]; then
+  echo "Generating new credentials"
+  mapfile -t secrets < <(python <<'PY'
+import secrets
+import string
+import uuid
+alphabet = string.ascii_letters + string.digits
+reader = str(uuid.uuid4())
+admin = str(uuid.uuid4())
+password = ''.join(secrets.choice(alphabet) for _ in range(32))
+print(reader)
+print(admin)
+print(password)
+PY
+  )
+  READER_TOKEN=${secrets[0]}
+  ADMIN_TOKEN=${secrets[1]}
+  NEO4J_PASSWORD=${secrets[2]}
 fi
 
-export KM_DOCKER_RUN_ARGS="${RUN_ENV_ARGS[*]}"
+GATEWAY_STATE_DIR="$CONFIG_DIR/gateway"
+cat >"$SECRETS_FILE" <<EOF
+KM_IMAGE=$IMAGE
+KM_QDRANT_IMAGE=$QDRANT_IMAGE
+KM_NEO4J_IMAGE=$NEO4J_IMAGE
+KM_AUTH_ENABLED=true
+KM_READER_TOKEN=$READER_TOKEN
+KM_ADMIN_TOKEN=$ADMIN_TOKEN
+KM_NEO4J_PASSWORD=$NEO4J_PASSWORD
+KM_NEO4J_AUTH_ENABLED=true
+KM_NEO4J_DATABASE=neo4j
+KM_QDRANT_URL=http://qdrant:6333
+KM_NEO4J_URI=bolt://neo4j:7687
+KM_DATA_DIR=$GATEWAY_STATE_DIR
+KM_REPO_DIR=$REPO_DIR
+KM_CONTENT_ROOT=/workspace/repo
+KM_CONTENT_DOCS_SUBDIR=docs
+KM_UPLOAD_DEFAULT_OVERWRITE=false
+KM_UPLOAD_DEFAULT_INGEST=false
+KM_ALLOW_INSECURE_BOOT=false
+EOF
+chmod 0600 "$SECRETS_FILE"
+echo "Wrote credentials to $SECRETS_FILE"
 
-KM_IMAGE="$KM_IMAGE" bin/km-run --detach
+if [[ ! -L "$ENV_FILE" ]]; then
+  rm -f "$ENV_FILE"
+  ln -sf ../secrets.env "$ENV_FILE"
+fi
 
-echo "Gateway launched. Secrets stored in $ENV_FILE"
-echo "Repository content: $DATA_DIR"
+export KM_IMAGE="$IMAGE"
+export KM_QDRANT_IMAGE="$QDRANT_IMAGE"
+export KM_NEO4J_IMAGE="$NEO4J_IMAGE"
+export KM_READER_TOKEN="$READER_TOKEN"
+export KM_ADMIN_TOKEN="$ADMIN_TOKEN"
+export KM_NEO4J_PASSWORD="$NEO4J_PASSWORD"
+export KM_DATA_DIR="$GATEWAY_STATE_DIR"
+export KM_REPO_DIR="$REPO_DIR"
+
+KM_ENV_FILE="$ENV_FILE" KM_COMPOSE_DIR="$COMPOSE_DIR" KM_COMPOSE_PROJECT="duskmantle" bin/km-run --detach
+
+echo "Duskmantle stack launched. Compose directory: $COMPOSE_DIR"
+echo "Gateway credentials stored in $SECRETS_FILE"
+echo "Repository content: $REPO_DIR"
 echo "State directory:    $CONFIG_DIR"
-echo "Next steps: record the tokens/password from secrets.env or rotate via bin/km-rotate-neo4j-password"

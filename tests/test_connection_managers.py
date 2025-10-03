@@ -101,7 +101,7 @@ def test_qdrant_manager_handles_health_failures(monkeypatch: pytest.MonkeyPatch)
         def __init__(self) -> None:
             self.calls = 0
 
-        def health_check(self) -> None:
+        def get_collections(self) -> None:
             self.calls += 1
             if self.calls == 1:
                 raise RuntimeError("offline")

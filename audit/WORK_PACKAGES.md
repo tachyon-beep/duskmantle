@@ -177,7 +177,7 @@ Delivered: connection managers with metrics + heartbeat loop, dependency injecti
 ### Related Issues
 RISK-004
 
-## WP-005: Automate State Backups and Recovery Playbooks
+## WP-005: Automate State Backups and Recovery Playbooks *(Completed)*
 
 **Category**: Operational
 **Priority**: HIGH
@@ -227,16 +227,16 @@ RISK-005
 The Docker image runs as root and bundles Neo4j, Qdrant, and the API in a single container.
 
 ### Current State
-docker-entrypoint launches supervisord that controls all processes; file permissions and network ports are fully exposed.
+Gateway image drops root privileges (runs as `km:km`), `infra/examples/docker-compose.sample.yml` splits the API/Qdrant/Neo4j services, and helper scripts (`bin/km-bootstrap`, `bin/km-run`, `infra/smoke-test.sh`) orchestrate the compose topology. A new `docs/DEPLOYMENT.md` captures compose and Kubernetes hardening guidance, including security context snippets. Sample compose exposes only the API port, uses tmpfs for `/tmp`, and persists state under `.duskmantle/compose/config/`.
 
 ### Desired State
-Least-privilege runtime with separated services (compose or helm), non-root users, and minimal exposed ports.
+Maintain the non-root runtime, compose separation, and security documentation as defaults going forward.
 
 ### Impact if Not Addressed
-A single compromise grants access to graph/vector data and OS-level privileges.
+Regression would reintroduce root-level containers or bundled dependencies, allowing a single compromise to leak graph/vector data and escalate to host privileges.
 
 ### Proposed Solution
-Create dedicated users, split services into separate containers (or document compose topology), tighten filesystem permissions, and add securityContext guidance.
+Completed: non-root `km` user baked into the image, entrypoint refuses to start without Neo4j credentials, compose sample isolates dependencies, new deployment guide documents Docker/Kubernetes security contexts, and smoke tests assert the gateway runs as non-root.
 
 ### Affected Components
 - Dockerfile
@@ -248,9 +248,9 @@ Create dedicated users, split services into separate containers (or document com
 - WP-001
 
 ### Acceptance Criteria
-- [ ] Containers run as non-root in CI smoke tests
-- [ ] Sample deployment separates API/Qdrant/Neo4j with documented networking
-- [ ] Security guide updated with hardening steps
+- [x] Containers run as non-root in CI smoke tests *(validated locally; see smoke script notes about host iptables requirements)*
+- [x] Sample deployment separates API/Qdrant/Neo4j with documented networking
+- [x] Security guide updated with hardening steps
 
 ### Related Issues
 RISK-006

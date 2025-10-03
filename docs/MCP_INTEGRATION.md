@@ -6,7 +6,7 @@ The Duskmantle gateway now exposes a first-class Model Context Protocol (MCP) su
 
 - Python 3.12 with the project installed locally (`pip install -e .[dev]`). The dev extras bring in FastMCP and `pytest-asyncio` for smoke tests.
 - A running gateway instance (local container via `bin/km-run` or remote deployment) reachable at the URL you provide to the MCP adapter.
-  - When using the turnkey container, export `KM_NEO4J_DATABASE=knowledge` before launching or invoking ingestion so graph queries succeed.
+  - When using the turnkey container, export `KM_NEO4J_DATABASE=neo4j` before launching or invoking ingestion so graph queries succeed.
 - Tokens if authentication is enabled:
   - `KM_READER_TOKEN` for read-only operations (search/graph/coverage).
   - `KM_ADMIN_TOKEN` for maintainer operations (ingest trigger, backups, feedback submission).

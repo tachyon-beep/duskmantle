@@ -8,7 +8,7 @@ import threading
 import time
 from dataclasses import dataclass
 
-from neo4j import READ_ACCESS, Driver, GraphDatabase, RoutingControl
+from neo4j import READ_ACCESS, Driver, GraphDatabase
 from neo4j.exceptions import Neo4jError, ServiceUnavailable
 from qdrant_client import QdrantClient
 
@@ -126,7 +126,6 @@ class Neo4jConnectionManager:
             with driver.session(
                 database=self._settings.neo4j_database,
                 default_access_mode=READ_ACCESS,
-                routing_=RoutingControl.READ,
             ) as session:
                 session.run("RETURN 1 AS ok").consume()
         except Exception as exc:  # pragma: no cover - exercised in unit tests
@@ -220,7 +219,7 @@ class QdrantConnectionManager:
     def heartbeat(self) -> bool:
         try:
             client = self.get_client()
-            client.health_check()
+            client.get_collections()
         except Exception as exc:  # pragma: no cover - exercised in unit tests
             self._log.warning("Qdrant heartbeat failed: %s", exc)
             self.mark_failure(exc)

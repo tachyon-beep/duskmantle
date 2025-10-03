@@ -44,7 +44,7 @@ This document explains how to safely upgrade the Duskmantle knowledge gateway co
 
    ```bash
    KM_IMAGE=duskmantle/km:<new-tag> \
-   KM_NEO4J_DATABASE=knowledge \
+   KM_NEO4J_DATABASE=neo4j \
    KM_AUTH_ENABLED=true \
    KM_ADMIN_TOKEN=<token> \
    bin/km-run --detach

@@ -1,74 +1,71 @@
 # syntax=docker/dockerfile:1.7
 
-FROM python:3.12-bookworm
+ARG PYTHON_VERSION=3.12-slim-bookworm
 
-ARG QDRANT_VERSION=1.15.4
-ARG NEO4J_VERSION=5.26.0
+FROM python:${PYTHON_VERSION} AS builder
+
+ENV KM_HOME=/opt/knowledge \
+    VENV_PATH=/opt/knowledge/.venv \
+    PIP_NO_CACHE_DIR=1
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential \
+        git \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN python -m venv ${VENV_PATH}
+ENV PATH="${VENV_PATH}/bin:${PATH}"
+
+WORKDIR ${KM_HOME}/src
+
+COPY pyproject.toml README.md ./
+COPY gateway gateway
+
+RUN pip install --upgrade pip \
+    && pip install --no-cache-dir .
+
+# ---------------------------------------------------------------------------
+FROM python:${PYTHON_VERSION} AS runtime
+
 ENV KM_HOME=/opt/knowledge \
     KM_VAR=/opt/knowledge/var \
     KM_BIN=/opt/knowledge/bin \
     KM_ETC=/opt/knowledge/etc \
+    KM_APP=/opt/knowledge/app \
     PATH="/opt/knowledge/.venv/bin:/opt/knowledge/bin:${PATH}"
-
-# Force CPU-only PyTorch wheels to avoid pulling large CUDA toolkits during pip install
-ENV PIP_NO_CACHE_DIR=1 \
-    PIP_EXTRA_INDEX_URL=https://download.pytorch.org/whl/cpu
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        ca-certificates \
-        curl \
-        gnupg \
-        unzip \
-        supervisor \
-        openjdk-17-jre-headless \
-        procps \
         tini \
+        curl \
+        ca-certificates \
+        bash \
     && rm -rf /var/lib/apt/lists/*
 
-# Create base directories
-RUN mkdir -p ${KM_HOME}/var ${KM_BIN} ${KM_ETC} ${KM_HOME}/app
+RUN addgroup --system --gid 1000 km \
+    && adduser --system --uid 1000 --ingroup km --home ${KM_HOME} --shell /bin/bash km
 
-# Download and install Qdrant
-RUN curl -fsSL -o /tmp/qdrant.tar.gz "https://github.com/qdrant/qdrant/releases/download/v${QDRANT_VERSION}/qdrant-x86_64-unknown-linux-musl.tar.gz" \
-    && tar -xzf /tmp/qdrant.tar.gz -C ${KM_BIN} \
-    && chmod +x ${KM_BIN}/qdrant \
-    && rm /tmp/qdrant.tar.gz
+RUN mkdir -p ${KM_HOME} ${KM_VAR} ${KM_BIN} ${KM_ETC} ${KM_APP} /workspace/repo \
+    && chown -R km:km ${KM_HOME} /workspace
 
-# Download and install Neo4j
-RUN curl -fsSL -o /tmp/neo4j.tar.gz "https://dist.neo4j.org/neo4j-community-${NEO4J_VERSION}-unix.tar.gz" \
-    && tar -xzf /tmp/neo4j.tar.gz -C /opt/knowledge \
-    && mv /opt/knowledge/neo4j-community-${NEO4J_VERSION} ${KM_BIN}/neo4j-distribution \
-    && ln -sf ${KM_BIN}/neo4j-distribution/bin/neo4j ${KM_BIN}/neo4j \
-    && rm /tmp/neo4j.tar.gz
-
-# Set up Python environment
-RUN python -m venv /opt/knowledge/.venv
-
-WORKDIR ${KM_HOME}/app
-COPY pyproject.toml README.md .
-COPY gateway gateway
+COPY --from=builder /opt/knowledge/.venv /opt/knowledge/.venv
+COPY --from=builder /opt/knowledge/src/gateway ${KM_APP}/gateway
+COPY --from=builder /opt/knowledge/src/pyproject.toml ${KM_APP}/pyproject.toml
+COPY README.md ${KM_APP}/README.md
 COPY bin ${KM_BIN}
-
-RUN pip install --upgrade pip \
-    && pip install --no-cache-dir . \
-    && rm -rf /root/.cache
-
-# Copy remaining project assets (docs, infra, etc.)
-COPY docs docs
-COPY tests tests
+COPY docs ${KM_HOME}/docs
 COPY infra ${KM_HOME}/infra
+COPY infra/docker-entrypoint.sh ${KM_BIN}/docker-entrypoint.sh
 
-# Install supervisor configuration and entrypoint assets
-RUN cp ${KM_HOME}/infra/supervisord.conf ${KM_ETC}/supervisord.conf \
-    && cp ${KM_HOME}/infra/qdrant.yaml ${KM_ETC}/qdrant.yaml \
-    && mkdir -p ${KM_ETC}/neo4j \
-    && cp ${KM_HOME}/infra/neo4j.conf ${KM_ETC}/neo4j/neo4j.conf \
-    && cp ${KM_HOME}/infra/docker-entrypoint.sh ${KM_HOME}/docker-entrypoint.sh \
-    && chmod +x ${KM_HOME}/docker-entrypoint.sh
+RUN find ${KM_BIN} -type f -exec chmod +x {} \; \
+    && chmod +x ${KM_BIN}/docker-entrypoint.sh \
+    && chown -R km:km ${KM_HOME}
 
-ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
-EXPOSE 8000 6333 6334 7474 7473 7687
-VOLUME ["${KM_VAR}"]
+USER km
+WORKDIR ${KM_APP}
 
-ENTRYPOINT ["/opt/knowledge/docker-entrypoint.sh"]
+EXPOSE 8000
+
+ENTRYPOINT ["/usr/bin/tini", "--", "/opt/knowledge/bin/docker-entrypoint.sh"]
+CMD ["uvicorn", "gateway.api.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]

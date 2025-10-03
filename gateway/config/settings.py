@@ -66,7 +66,7 @@ class AppSettings(BaseSettings):
     neo4j_uri: str = Field("bolt://localhost:7687", alias="KM_NEO4J_URI")
     neo4j_user: str = Field("neo4j", alias="KM_NEO4J_USER")
     neo4j_password: str = Field("neo4jadmin", alias="KM_NEO4J_PASSWORD")
-    neo4j_database: str = Field("knowledge", alias="KM_NEO4J_DATABASE")
+    neo4j_database: str = Field("neo4j", alias="KM_NEO4J_DATABASE")
     neo4j_auth_enabled: bool = Field(True, alias="KM_NEO4J_AUTH_ENABLED")
     neo4j_readonly_uri: str | None = Field(None, alias="KM_NEO4J_READONLY_URI")
     neo4j_readonly_user: str | None = Field(None, alias="KM_NEO4J_READONLY_USER")

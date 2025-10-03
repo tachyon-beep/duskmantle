@@ -49,23 +49,25 @@ Copy or symlink the material you want the gateway to index into `.duskmantle/dat
 container. Run `bin/km-sweep` whenever you add loose `*.md`, `*.docx`, `*.txt`, `*.doc`, or `*.pdf` files—the helper copies them into
 `.duskmantle/data/docs/` so the next ingest picks them up.
 
-Use the helper script for consistent mounts and ports:
+Use the helper scripts for consistent compose launches:
 
 ```bash
-bin/km-run
+bin/km-bootstrap          # first run – fetches images and generates secrets
+bin/km-run --detach        # subsequent starts, honours KM_COMPOSE_* overrides
 ```
 
-Prefer Compose? Copy `infra/examples/docker-compose.sample.yml` into your project,
-adjust the volume paths/environment, and run `docker compose up -d` for the same
-layout.
+`bin/km-bootstrap` creates `.duskmantle/compose/docker-compose.yml` from the sample,
+mirrors the repository under `.duskmantle/data`, and symlinks `.duskmantle/secrets.env`
+into `compose/gateway.env`. Edit that env file whenever you rotate tokens or
+passwords.
 
 Defaults:
 
-- Ports: API `8000`, Qdrant `6333`, Neo4j `7687`.
-- State directory: `.duskmantle/config` mounted to `/opt/knowledge/var`.
+- Ports: API `8000` exposed to the host; Qdrant/Neo4j stay on the internal compose network.
+- State directory: `.duskmantle/compose/config/gateway` mounted to `/opt/knowledge/var`.
 - Repository mount: `.duskmantle/data` to `/workspace/repo` (read-only by default).
 
-On first boot the container seeds `/workspace/repo` with a small sample repository
+On first boot the gateway seeds `/workspace/repo` with a small sample repository
 (docs plus `.metadata/subsystems.json`) so `/graph/subsystems` has data immediately.
 Set `KM_SEED_SAMPLE_REPO=false` if you prefer a pristine volume. Replace the
 seeded files with your real knowledge base before running a production ingest.
@@ -116,10 +118,9 @@ docker exec duskmantle gateway-ingest rebuild --profile local --dummy-embeddings
 
 For production, omit `--dummy-embeddings` (requires model download).
 
-**Automatic ingestion (optional):** set `KM_WATCH_ENABLED=true` (and optionally adjust `KM_WATCH_INTERVAL`, `KM_WATCH_PROFILE`,
-`KM_WATCH_USE_DUMMY`, `KM_WATCH_METRICS_PORT`) before launching `bin/km-run`. The container’s supervisor will run `bin/km-watch` internally,
-hashing `/workspace/repo` every interval and triggering `gateway-ingest` whenever files change. Fingerprints persist under
-`/opt/knowledge/var/watch/fingerprints.json`, and metrics are exposed on `KM_WATCH_METRICS_PORT` (default `9103`).
+**Automatic ingestion (optional):** run `bin/km-watch` on the host. It hashes `.duskmantle/data`, invokes `docker compose exec gateway`
+with your preferred profile, and exposes metrics via `--metrics-port` (default `9103`). Container-managed watchers were removed during
+hardening so all automation now runs outside the gateway process.
 
 ## 5. Health Checks & Observability
 
@@ -190,7 +191,7 @@ For more detail, consult `docs/OBSERVABILITY_GUIDE.md` and the release playbook 
 2. Back up `/opt/knowledge/var` (`bin/km-backup`). Copy `.duskmantle/backups/km-backup-*.tgz` off-host.
 3. Stop the running container (`docker rm -f duskmantle`).
 4. Pull or build the new image (`docker pull duskmantle/km:<tag>` or `scripts/build-image.sh`). Relaunch with the same env vars
-(`KM_NEO4J_DATABASE=knowledge`, tokens, mounts).
+(`KM_NEO4J_DATABASE=neo4j`, tokens, mounts).
 5. Run ingest if needed (`docker exec duskmantle gateway-ingest rebuild --profile production`).
 6. Validate `/healthz`, `/coverage`, the smoke script, and `pytest -m mcp_smoke`.
 7. For rollback: stop the container, restore the archived backup to `.duskmantle/config/`, and start the previous image tag.

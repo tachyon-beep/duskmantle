@@ -10,7 +10,7 @@ from threading import Lock
 from time import monotonic
 from typing import Any, TypeVar, cast
 
-from neo4j import Driver, ManagedTransaction, RoutingControl, Session
+from neo4j import Driver, ManagedTransaction, Session
 from neo4j.exceptions import Neo4jError, ServiceUnavailable
 from neo4j.graph import Node, Relationship
 
@@ -396,7 +396,6 @@ class GraphService:
                     query,
                     parameters=params,
                     database_=self.database,
-                    routing_=RoutingControl.READ,
                 ),
                 readonly=True,
             )

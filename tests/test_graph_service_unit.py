@@ -5,7 +5,6 @@ from types import SimpleNamespace, TracebackType
 from unittest import mock
 
 import pytest
-from neo4j import RoutingControl
 
 from gateway.graph import service as graph_service
 from gateway.graph.service import GraphNotFoundError, GraphQueryError, GraphService
@@ -76,7 +75,7 @@ class DummySession:
 class DummyDriver:
     def __init__(self, session: DummySession) -> None:
         self._session = session
-        self.last_execute_query: tuple[str, dict[str, object], str, object | None] | None = None
+        self.last_execute_query: tuple[str, dict[str, object], str] | None = None
         self.execute_query_result = SimpleNamespace(
             records=[],
             summary=SimpleNamespace(
@@ -94,9 +93,8 @@ class DummyDriver:
         query: str,
         parameters: dict[str, object],
         database_: str,
-        routing_: object | None = None,
     ) -> SimpleNamespace:
-        self.last_execute_query = (query, parameters, database_, routing_)
+        self.last_execute_query = (query, parameters, database_)
         return self.execute_query_result
 
 
@@ -379,7 +377,6 @@ def test_run_cypher_serializes_records(monkeypatch: pytest.MonkeyPatch, dummy_dr
     assert payload["data"][0]["row"][0]["id"] == "Subsystem:Kasmina"
     assert payload["summary"]["resultConsumedAfterMs"] == 12
     assert driver.last_execute_query[0] == "MATCH (n) RETURN n LIMIT 1"
-    assert driver.last_execute_query[3] == RoutingControl.READ
 
 
 def test_run_cypher_rejects_non_read_queries(dummy_driver: DriverFixture) -> None:
