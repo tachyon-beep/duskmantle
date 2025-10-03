@@ -13,6 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       KM_ADMIN_TOKEN: maintainer-token
+      KM_NEO4J_PASSWORD: ObservabilityPass123!
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -53,6 +54,39 @@ jobs:
       - name: Build container image
         run: docker build -t duskmantle/km:${{ github.sha }} .
 
+      - name: Start Qdrant dependency
+        run: |
+          set -euxo pipefail
+          docker rm -f km-ci-qdrant || true
+          docker run -d --name km-ci-qdrant --network host qdrant/qdrant:v1.15.5
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:6333/healthz >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Qdrant failed to become ready" >&2
+          docker logs km-ci-qdrant || true
+          exit 1
+
+      - name: Start Neo4j dependency
+        run: |
+          set -euxo pipefail
+          docker rm -f km-ci-neo4j || true
+          docker run -d --name km-ci-neo4j \
+            --network host \
+            -e NEO4J_AUTH=neo4j/${KM_NEO4J_PASSWORD} \
+            neo4j:5.26.0
+          for i in {1..60}; do
+            if docker exec km-ci-neo4j cypher-shell -u neo4j -p ${KM_NEO4J_PASSWORD} "SHOW DATABASES" >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Neo4j failed to become ready" >&2
+          docker logs km-ci-neo4j || true
+          exit 1
+
       - name: Launch container
         run: |
           mkdir -p observability-data/reports observability-data/audit
@@ -87,12 +121,15 @@ jobs:
           conn.commit()
           conn.close()
           PY
-          mkdir -p observability-data
+          sudo chown -R 1000:1000 observability-data
           docker run -d --name km-observability \
+            --network host \
             -e KM_ADMIN_TOKEN=$KM_ADMIN_TOKEN \
+            -e KM_NEO4J_PASSWORD=${KM_NEO4J_PASSWORD} \
+            -e KM_NEO4J_URI=bolt://127.0.0.1:7687 \
+            -e KM_QDRANT_URL=http://127.0.0.1:6333 \
             -v "$(pwd)"/observability-data:/opt/knowledge/var \
             -v "$(pwd)":/workspace/repo \
-            -p 8000:8000 \
             duskmantle/km:${{ github.sha }}
 
       - name: Wait for readiness
@@ -161,4 +198,6 @@ jobs:
         run: |
           docker logs km-observability || true
           docker rm -f km-observability || true
+          docker rm -f km-ci-neo4j || true
+          docker rm -f km-ci-qdrant || true
           sudo rm -rf observability-data
