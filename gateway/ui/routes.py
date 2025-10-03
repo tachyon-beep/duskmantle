@@ -6,10 +6,11 @@ import json
 import logging
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
+from gateway.api.auth import require_maintainer, require_reader
 from gateway.config.settings import get_settings
 from gateway.observability import UI_EVENTS_TOTAL, UI_REQUESTS_TOTAL
 
@@ -28,7 +29,11 @@ def get_static_path() -> Path:
     return STATIC_DIR
 
 
-@router.get("/", response_class=HTMLResponse)
+@router.get(
+    "/",
+    response_class=HTMLResponse,
+    dependencies=[Depends(require_reader)],
+)
 async def ui_index(request: Request) -> HTMLResponse:
     """Render the landing page for the embedded UI."""
 
@@ -40,7 +45,11 @@ async def ui_index(request: Request) -> HTMLResponse:
     )
 
 
-@router.get("/search", response_class=HTMLResponse)
+@router.get(
+    "/search",
+    response_class=HTMLResponse,
+    dependencies=[Depends(require_reader)],
+)
 async def ui_search(request: Request) -> HTMLResponse:
     """Render the search console view."""
 
@@ -66,7 +75,11 @@ async def ui_search(request: Request) -> HTMLResponse:
     )
 
 
-@router.get("/subsystems", response_class=HTMLResponse)
+@router.get(
+    "/subsystems",
+    response_class=HTMLResponse,
+    dependencies=[Depends(require_reader)],
+)
 async def ui_subsystems(request: Request) -> HTMLResponse:
     """Render the subsystem explorer view."""
 
@@ -82,7 +95,11 @@ async def ui_subsystems(request: Request) -> HTMLResponse:
     )
 
 
-@router.get("/lifecycle", response_class=HTMLResponse)
+@router.get(
+    "/lifecycle",
+    response_class=HTMLResponse,
+    dependencies=[Depends(require_reader)],
+)
 async def ui_lifecycle(request: Request) -> HTMLResponse:
     """Render the lifecycle dashboard view."""
 
@@ -98,7 +115,10 @@ async def ui_lifecycle(request: Request) -> HTMLResponse:
     )
 
 
-@router.get("/lifecycle/report")
+@router.get(
+    "/lifecycle/report",
+    dependencies=[Depends(require_reader)],
+)
 async def ui_lifecycle_report(request: Request) -> JSONResponse:
     """Serve the lifecycle report JSON while recording UI metrics."""
 
@@ -120,7 +140,10 @@ async def ui_lifecycle_report(request: Request) -> JSONResponse:
     return JSONResponse(content=payload)
 
 
-@router.post("/events")
+@router.post(
+    "/events",
+    dependencies=[Depends(require_maintainer)],
+)
 async def ui_event(request: Request, payload: dict[str, object]) -> JSONResponse:
     """Record a UI event for observability purposes."""
 

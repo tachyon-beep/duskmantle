@@ -91,6 +91,7 @@ class AppSettings(BaseSettings):
     backup_retention_limit: int = Field(7, alias="KM_BACKUP_RETENTION_LIMIT")
     backup_destination: Path | None = Field(None, alias="KM_BACKUP_DEST_PATH")
     backup_script_path: Path | None = Field(None, alias="KM_BACKUP_SCRIPT")
+    strict_dependency_startup: bool = Field(True, alias="KM_STRICT_DEPENDENCY_STARTUP")
 
     lifecycle_report_enabled: bool = Field(True, alias="KM_LIFECYCLE_REPORT_ENABLED")
     lifecycle_stale_days: int = Field(30, alias="KM_LIFECYCLE_STALE_DAYS")

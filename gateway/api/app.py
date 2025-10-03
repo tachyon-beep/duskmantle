@@ -183,13 +183,13 @@ def _load_search_model(settings: AppSettings) -> ModelArtifact | None:
     return None
 
 
-def _initialise_graph_manager(manager: Neo4jConnectionManager, settings: AppSettings) -> None:
+def _initialise_graph_manager(manager: Neo4jConnectionManager, settings: AppSettings) -> bool:
     try:
         driver = manager.get_write_driver()
     except Exception as exc:
         logger.warning("Neo4j unavailable during startup: %s", exc)
         _set_migration_metrics(0, timestamp=time.time())
-        return
+        return False
 
     if not _verify_graph_database(driver, settings.neo4j_database):
         if _ensure_graph_database(settings):
@@ -199,27 +199,36 @@ def _initialise_graph_manager(manager: Neo4jConnectionManager, settings: AppSett
             except Exception as exc:
                 logger.warning("Neo4j unavailable after attempting database creation: %s", exc)
                 _set_migration_metrics(0, timestamp=time.time())
-                return
+                return False
             if not _verify_graph_database(driver, settings.neo4j_database):
                 logger.warning("Neo4j database '%s' validation failed after auto-create", settings.neo4j_database)
                 manager.mark_failure(RuntimeError("database validation failed"))
                 _set_migration_metrics(0, timestamp=time.time())
-                return
+                return False
         else:
             logger.warning("Neo4j database validation failed during startup")
             manager.mark_failure(RuntimeError("database validation failed"))
             _set_migration_metrics(0, timestamp=time.time())
-            return
+            return False
 
     if settings.graph_auto_migrate:
-        _run_graph_auto_migration(driver, settings.neo4j_database)
+        if not _run_graph_auto_migration(driver, settings.neo4j_database):
+            return False
     else:
         logger.info("Graph auto-migration disabled; run `gateway-graph migrate` during deployment")
         _set_migration_metrics(-1, timestamp=None)
 
+    return True
 
-def _initialise_qdrant_manager(manager: QdrantConnectionManager) -> None:
-    manager.heartbeat()
+
+def _initialise_qdrant_manager(manager: QdrantConnectionManager) -> bool:
+    try:
+        manager.heartbeat()
+    except Exception as exc:  # pragma: no cover - defensive guard
+        logger.warning("Qdrant unavailable during startup: %s", exc)
+        manager.mark_failure(exc)
+        return False
+    return True
 
 
 async def _dependency_heartbeat_loop(app: FastAPI, interval: float) -> None:
@@ -286,7 +295,7 @@ def _ensure_graph_database(settings: AppSettings) -> bool:
     return True
 
 
-def _run_graph_auto_migration(driver: Driver, database: str) -> None:
+def _run_graph_auto_migration(driver: Driver, database: str) -> bool:
     runner = MigrationRunner(driver=driver, database=database)
     pending = _fetch_pending_migrations(runner)
     _log_migration_plan(pending)
@@ -296,10 +305,11 @@ def _run_graph_auto_migration(driver: Driver, database: str) -> None:
     except (Neo4jError, RuntimeError) as exc:  # pragma: no cover - defensive
         logger.exception("Graph auto-migration failed: %s", exc)
         _set_migration_metrics(0, timestamp=time.time())
-        return
+        return False
 
     _log_migration_completion(pending)
     _set_migration_metrics(1, timestamp=time.time())
+    return True
 
 
 def _fetch_pending_migrations(runner: MigrationRunner) -> list[str] | None:
@@ -391,8 +401,24 @@ def create_app() -> FastAPI:
     app.state.dependency_heartbeat_task = None
     app.state.graph_service_factory = get_graph_service
 
-    _initialise_graph_manager(graph_manager, settings)
-    _initialise_qdrant_manager(qdrant_manager)
+    graph_ready = _initialise_graph_manager(graph_manager, settings)
+    qdrant_ready = _initialise_qdrant_manager(qdrant_manager)
+
+    if settings.strict_dependency_startup:
+        failures: list[str] = []
+        if not graph_ready:
+            failures.append("Neo4j")
+        if not qdrant_ready:
+            failures.append("Qdrant")
+        if failures:
+            joined = ", ".join(failures)
+            raise RuntimeError(f"Dependency initialisation failed: {joined}")
+    else:
+        if not graph_ready:
+            logger.warning("Continuing startup with Neo4j marked degraded (strict dependency startup disabled)")
+        if not qdrant_ready:
+            logger.warning("Continuing startup with Qdrant marked degraded (strict dependency startup disabled)")
+
     app.state.graph_service_revision = graph_manager.revision
     app.state.qdrant_revision = qdrant_manager.revision
     app.state.search_embedder = None

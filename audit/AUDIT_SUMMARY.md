@@ -19,24 +19,22 @@ Overall health score: **7/10** – solid foundation with clear, tractable harden
 - **Code Quality**: `gateway/graph/service.py` is ~1k lines combining concerns; difficult to evolve safely (WP-006).
 - **Best Practice**: Retention knobs exist but undocumented; ML fallback lacks telemetry (WP-008, WP-009).
 
-## Top 10 Priorities
-1. WP-001 – Enforce UI auth on lifecycle/event endpoints
-2. WP-003 – Fail fast on critical dependency outages
-3. WP-002 – Externalise rate limiter storage
-4. WP-004 – Cap maintainer Cypher query resource usage
-5. WP-005 – Parallelise graph enrichment for search results
-6. WP-007 – Validate backup script availability at startup
-7. WP-008 – Surface search ML mode telemetry
-8. WP-006 – Decompose `gateway/graph/service.py`
-9. WP-009 – Document coverage & lifecycle history retention controls
-10. WP-010 – Add auth-aware UI integration tests
+## Top Priorities
+1. WP-002 – Externalise rate limiter storage
+2. WP-004 – Cap maintainer Cypher query resource usage
+3. WP-005 – Parallelise graph enrichment for search results
+4. WP-007 – Validate backup script availability at startup
+5. WP-008 – Surface search ML mode telemetry
+6. WP-006 – Decompose `gateway/graph/service.py`
+7. WP-009 – Document coverage & lifecycle history retention controls
+8. WP-010 – Add auth-aware UI integration tests
 
 ## Recommended Immediate Actions
-1. **Secure the embedded UI** (WP-001) – apply FastAPI auth dependencies to lifecycle/event routes, ship regression tests, and update docs before next release.
-2. **Harden deployment readiness** (WP-003) – enable fail-fast startup mode in production and wire readiness probes to dependency status to avoid brown-outs during rollouts.
-3. **Plan rate limiter backend migration** (WP-002) – provision Redis (or similar) and introduce configuration switch so throttles hold in multi-node environments.
-4. **Add Cypher LIMIT clamp** (WP-004) – small change preventing heavy analyst queries from starving Neo4j.
-5. **Announce telemetry gaps** (WP-008) – ensure operators can see when ML ranking is off.
+1. **Plan rate limiter backend migration** (WP-002) – provision Redis (or similar) and introduce configuration switch so throttles hold in multi-node environments.
+2. **Add Cypher LIMIT guard** (WP-004) – prevent maintainer queries from consuming unbounded resources.
+3. **Parallelise graph enrichment** (WP-005) – reduce search latency by batching Neo4j lookups.
+4. **Validate backup tooling upfront** (WP-007) – surface missing scripts/destinations during startup.
+5. **Expose ML scoring telemetry** (WP-008) – add metrics and metadata to highlight heuristic fallbacks.
 
 Deliverables produced:
 - `audit/MODULE_DOCUMENTATION.md` – per-module reference (classes, functions, dependencies, metrics) for all Python files.

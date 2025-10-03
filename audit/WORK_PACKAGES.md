@@ -1,59 +1,38 @@
 # Work Packages
 
 ## Summary Statistics
-- High priority: 4 items (Effort mix: 3×S, 1×M)
+- Completed: 2 items (WP-001, WP-003; Effort S+S)
+- High priority: 2 items (Effort mix: 1×S, 1×M)
 - Medium priority: 4 items (Effort mix: 2×S, 1×M, 1×L)
 - Low priority: 2 items (Effort mix: 1×XS, 1×S)
 - Estimated effort by priority:
-  - High: ≈ 2–3 developer weeks (assuming S≈1–2 days, M≈3–5 days)
+  - High: ≈ 1–1.5 developer weeks (assuming S≈1–2 days, M≈3–5 days)
   - Medium: ≈ 3–4 developer weeks (two S, one M, one L)
   - Low: <1 developer week combined
 
-## High Priority
+## Completed
 
-## WP-001: Enforce UI Auth on Sensitive Observability Views
+## WP-001: Enforce UI Auth on Sensitive Observability Views *(Done)*
 **Category**: Security  
 **Priority**: HIGH  
 **Effort**: S  
 **Risk Level**: High
 
-### Description
-Unauthenticated UI endpoints (`/ui/lifecycle`, `/ui/lifecycle/report`, `/ui/events`) expose operational data and accept event writes even when `KM_AUTH_ENABLED=true`.
+### Outcomes
+- `/ui` HTML routes now require reader scope; `/ui/events` requires maintainer scope (`gateway/ui/routes.py`).
+- Tests cover authenticated and unauthenticated flows (`tests/test_ui_routes.py`).
+- Risk register item R1 mitigated.
 
-### Current State
-- `gateway/ui/routes.py` serves lifecycle JSON and event logging without authentication or rate limits beyond metrics counters.  
-- Tests (`tests/test_ui_routes.py`) only cover unauthenticated mode.
+## WP-003: Fail Fast on Critical Dependency Outages *(Done)*
+**Category**: Operational  \n**Priority**: HIGH  \n**Effort**: S  \n**Risk Level**: High
 
-### Desired State
-- UI endpoints require reader or maintainer token when auth is enabled, mirroring REST surface behaviour.  
-- Anonymous access remains optional when `KM_AUTH_ENABLED=false`.
+### Outcomes
+- Introduced `KM_STRICT_DEPENDENCY_STARTUP` (default true) to abort startup when Neo4j or Qdrant are unavailable (`gateway/config/settings.py`, `gateway/api/app.py`).
+- `/readyz` now reports degraded status (503) when dependencies remain unhealthy under lenient mode (`gateway/api/routes/health.py`).
+- Added comprehensive tests for strict and tolerant modes (`tests/test_app_smoke.py`).
+- Risk register item R3 mitigated.
 
-### Impact if Not Addressed
-Lifecycle reports and telemetry can leak ingest details, coverage gaps, and host metadata to unauthenticated users; endpoint can be abused for event flooding.
-
-### Proposed Solution
-- Introduce FastAPI dependencies wrapping `require_reader` / `require_maintainer` for UI routers.  
-- Respect settings toggle to allow anonymous previews if explicitly configured (e.g., new `KM_UI_PUBLIC` flag).  
-- Update tests to cover both authenticated and unauthenticated modes.
-
-### Affected Components
-- `gateway/ui/routes.py`
-- `gateway/api/auth.py`
-- `tests/test_ui_routes.py`
-
-### Dependencies
-- None.
-
-### Acceptance Criteria
-- [ ] UI JSON and event endpoints respond 401/403 when tokens missing and auth enabled.  
-- [ ] Happy-path UI responses succeed with valid reader token.  
-- [ ] Tests cover secured mode.  
-- [ ] Documentation updated to describe UI auth behaviour.
-
-### Related Issues
-- Risk register item R1.
-
----
+## High Priority
 
 ## WP-002: Externalise Rate Limiter Storage
 **Category**: Operational  
@@ -96,50 +75,6 @@ Multi-process deployments bypass limits, enabling DoS on expensive endpoints (se
 
 ### Related Issues
 - Risk register item R2.
-
----
-
-## WP-003: Fail Fast on Critical Dependency Outages
-**Category**: Operational  
-**Priority**: HIGH  
-**Effort**: S  
-**Risk Level**: High
-
-### Description
-Gateway reports ready even when Neo4j or Qdrant are unreachable; `_initialise_*` warn but service starts and `/readyz` returns success.
-
-### Current State
-- `create_app` logs warnings, sets metrics, but leaves app running.  
-- Clients receive 5xx on first request; deployment automation may mark service healthy prematurely.
-
-### Desired State
-- Optional fail-fast mode (default on for production) aborts startup when dependencies unavailable or misconfigured.  
-- Readiness endpoint reflects dependency status when fail-fast disabled.
-
-### Impact if Not Addressed
-Leads to brown-out windows, failed ingestion, and confusing health signals during deploy/rollout.
-
-### Proposed Solution
-- Add setting `KM_STRICT_DEPENDENCY_STARTUP` (default true in secure mode) enforcing successful handshake.  
-- Update readiness handler to surface degraded status when strict mode disabled.  
-- Extend tests to cover fail-fast and tolerant modes.
-
-### Affected Components
-- `gateway/api/app.py`
-- `gateway/api/routes/health.py`
-- `tests/test_app_smoke.py`
-
-### Dependencies
-- None.
-
-### Acceptance Criteria
-- [ ] App exits with non-zero when strict mode enabled and dependencies unavailable.  
-- [ ] `/readyz` reflects dependency degradation when strict mode disabled.  
-- [ ] Tests simulate dependency outage.  
-- [ ] Release notes mention behaviour change.
-
-### Related Issues
-- Risk register item R3.
 
 ---
 

@@ -9,6 +9,7 @@ from contextlib import suppress
 from typing import Any
 
 from fastapi import APIRouter, Depends, FastAPI, Request, Response
+from fastapi.responses import JSONResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from slowapi import Limiter
 
@@ -33,8 +34,11 @@ def create_router(limiter: Limiter, metrics_limit: str) -> APIRouter:
         return build_health_report(request.app, settings)
 
     @router.get("/readyz", tags=["health"])
-    def readyz() -> dict[str, str]:
-        return {"status": "ready"}
+    def readyz(request: Request) -> JSONResponse:
+        is_ready, dependencies = _evaluate_readiness(request.app)
+        if is_ready:
+            return JSONResponse(content={"status": "ready"})
+        return JSONResponse(status_code=503, content={"status": "degraded", "dependencies": dependencies})
 
     @router.get("/metrics", tags=["observability"])
     @limiter.limit(metrics_limit)
@@ -177,6 +181,22 @@ def _qdrant_health(app: FastAPI, settings: AppSettings) -> dict[str, Any]:
     info["collection"] = settings.qdrant_collection
     info["url"] = settings.qdrant_url
     return info
+
+
+def _evaluate_readiness(app: FastAPI) -> tuple[bool, dict[str, str]]:
+    statuses: dict[str, str] = {}
+    overall = True
+    for attr, label in (("graph_manager", "graph"), ("qdrant_manager", "qdrant")):
+        manager = getattr(app.state, attr, None)
+        if manager is None:
+            statuses[label] = "missing"
+            overall = False
+            continue
+        snapshot: DependencyStatus = manager.describe()
+        statuses[label] = snapshot.status
+        if snapshot.status != "ok":
+            overall = False
+    return overall, statuses
 
 
 def _dependency_health(

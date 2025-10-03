@@ -65,6 +65,7 @@ def _stub_connection_managers(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_health_endpoint_reports_diagnostics(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _stub_connection_managers(monkeypatch)
     monkeypatch.setenv("KM_STATE_PATH", str(tmp_path / "state"))
     app = create_app()
     client = TestClient(app)
@@ -85,6 +86,7 @@ def test_health_endpoint_reports_diagnostics(tmp_path: Path, monkeypatch: pytest
 
 
 def test_health_endpoint_ok_when_artifacts_present(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _stub_connection_managers(monkeypatch)
     state_path = tmp_path / "state"
     monkeypatch.setenv("KM_STATE_PATH", str(state_path))
 
@@ -111,7 +113,8 @@ def test_health_endpoint_ok_when_artifacts_present(tmp_path: Path, monkeypatch: 
     assert data["checks"]["backup"]["status"] == "disabled"
 
 
-def test_ready_endpoint_returns_ready() -> None:
+def test_ready_endpoint_returns_ready(monkeypatch: pytest.MonkeyPatch) -> None:
+    _stub_connection_managers(monkeypatch)
     app = create_app()
     client = TestClient(app)
     response = client.get("/readyz")
@@ -120,6 +123,7 @@ def test_ready_endpoint_returns_ready() -> None:
 
 
 def test_lifecycle_history_endpoint(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _stub_connection_managers(monkeypatch)
     state_path = tmp_path / "state"
     history_dir = state_path / "reports" / "lifecycle_history"
     history_dir.mkdir(parents=True, exist_ok=True)
@@ -211,3 +215,88 @@ def test_logs_warning_when_neo4j_auth_disabled(
     app = create_app()
     assert app is not None
     assert any("Neo4j authentication disabled" in record.getMessage() for record in caplog.records)
+
+
+def test_startup_fails_when_dependency_unavailable_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    class FailingNeo4jManager:
+        def __init__(self, *args: object, **kwargs: object) -> None:  # noqa: D401
+            self.revision = 0
+
+        def get_write_driver(self) -> mock.Mock:
+            raise RuntimeError("neo4j unavailable")
+
+        def mark_failure(self, exc: Exception | None = None) -> None:  # pragma: no cover - state neutral
+            pass
+
+        def describe(self) -> DependencyStatus:
+            return DependencyStatus("degraded", self.revision, None, None, "neo4j unavailable")
+
+    class StubQdrantManager:
+        def __init__(self, *args: object, **kwargs: object) -> None:  # noqa: D401
+            self.revision = 0
+
+        def heartbeat(self) -> bool:
+            return True
+
+        def mark_failure(self, exc: Exception | None = None) -> None:  # pragma: no cover
+            pass
+
+        def describe(self) -> DependencyStatus:
+            return DependencyStatus("ok", self.revision, None, None, None)
+
+    monkeypatch.setenv("KM_STATE_PATH", str(tmp_path / "state"))
+    monkeypatch.setenv("KM_AUTH_ENABLED", "false")
+    monkeypatch.setenv("KM_STRICT_DEPENDENCY_STARTUP", "true")
+    monkeypatch.setattr("gateway.api.app.Neo4jConnectionManager", FailingNeo4jManager)
+    monkeypatch.setattr("gateway.api.app.QdrantConnectionManager", StubQdrantManager)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        create_app()
+
+    assert "Dependency initialisation failed" in str(excinfo.value)
+    assert "Neo4j" in str(excinfo.value)
+
+
+def test_ready_endpoint_degraded_when_dependency_down_and_strict_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    class FailingNeo4jManager:
+        def __init__(self, *args: object, **kwargs: object) -> None:  # noqa: D401
+            self.revision = 0
+
+        def get_write_driver(self) -> mock.Mock:
+            raise RuntimeError("neo4j unavailable")
+
+        def mark_failure(self, exc: Exception | None = None) -> None:  # pragma: no cover
+            pass
+
+        def describe(self) -> DependencyStatus:
+            return DependencyStatus("degraded", self.revision, None, None, "neo4j unavailable")
+
+    class StubQdrantManager:
+        def __init__(self, *args: object, **kwargs: object) -> None:  # noqa: D401
+            self.revision = 0
+
+        def heartbeat(self) -> bool:
+            return True
+
+        def describe(self) -> DependencyStatus:
+            return DependencyStatus("ok", self.revision, None, None, None)
+
+    monkeypatch.setenv("KM_STATE_PATH", str(tmp_path / "state"))
+    monkeypatch.setenv("KM_AUTH_ENABLED", "false")
+    monkeypatch.setenv("KM_STRICT_DEPENDENCY_STARTUP", "false")
+    monkeypatch.setattr("gateway.api.app.Neo4jConnectionManager", FailingNeo4jManager)
+    monkeypatch.setattr("gateway.api.app.QdrantConnectionManager", StubQdrantManager)
+
+    app = create_app()
+    client = TestClient(app)
+    response = client.get("/readyz")
+    assert response.status_code == 503
+    payload = response.json()
+    assert payload["status"] == "degraded"
+    assert payload["dependencies"]["graph"] == "degraded"

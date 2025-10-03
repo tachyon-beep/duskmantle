@@ -152,6 +152,7 @@ def default_authentication_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("KM_ADMIN_TOKEN", os.getenv("KM_ADMIN_TOKEN", "maintainer-token"))
     monkeypatch.setenv("KM_READER_TOKEN", os.getenv("KM_READER_TOKEN", "reader-token"))
     monkeypatch.setenv("KM_NEO4J_PASSWORD", os.getenv("KM_NEO4J_PASSWORD", "super-secure-password"))
+    monkeypatch.setenv("KM_STRICT_DEPENDENCY_STARTUP", os.getenv("KM_STRICT_DEPENDENCY_STARTUP", "false"))
 
 
 @pytest.fixture(scope="session")
