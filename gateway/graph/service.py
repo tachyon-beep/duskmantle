@@ -913,12 +913,6 @@ def _strip_literals_and_comments(query: str) -> str:
                     i += 1
                 i = min(length, i + 2)
                 continue
-        if ch == "-" and i + 1 < length and query[i + 1] == "-":
-            result.append(" ")
-            i += 2
-            while i < length and query[i] not in {"\n", "\r"}:
-                i += 1
-            continue
         result.append(ch)
         i += 1
     return "".join(result)
