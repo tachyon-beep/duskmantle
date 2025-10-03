@@ -119,8 +119,8 @@ if [ "$graph_status" != "ok" ]; then
 fi
 
 echo "Validating subsystem endpoint and coverage..."
-curl -fsS http://localhost:8000/graph/subsystems/Sample?depth=1 -H "$READER_HEADER" >/dev/null
-curl -fsS http://localhost:8000/coverage -H "$ADMIN_HEADER" >/dev/null
+curl -fsS http://localhost:8000/api/v1/graph/subsystems/Sample?depth=1 -H "$READER_HEADER" >/dev/null
+curl -fsS http://localhost:8000/api/v1/coverage -H "$ADMIN_HEADER" >/dev/null
 
 echo "Checking Neo4j password enforcement..."
 if docker compose --project-name "$PROJECT" -f "$COMPOSE_FILE" exec -T neo4j cypher-shell -u neo4j -p neo4j "SHOW DATABASES" >/dev/null 2>&1; then
