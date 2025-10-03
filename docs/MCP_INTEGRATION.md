@@ -82,6 +82,7 @@ Set `KM_MCP_CONTAINER` if your container uses a different name than `duskmantle`
 > about the bundled demo files.
 
 Restart Codex CLI after editing the config. List available MCP servers with `/sys mcp list` and invoke tools via `/sys mcp run duskmantle km-search --query "ingestion pipeline"`.
+When symbol extraction is enabled you can append `--symbol`, `--kind`, or `--lang` to narrow the query without embedding a JSON `filters` object.
 
 #### FastMCP manifest example
 

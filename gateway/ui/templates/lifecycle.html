@@ -42,6 +42,11 @@
       <span class="dm-metric__value">0</span>
       <span class="dm-metric__spark" data-dm-lifecycle-spark="removed_artifacts">—</span>
     </div>
+    <div class="dm-metric" data-metric="symbol_tests" hidden>
+      <span class="dm-metric__label">Symbol Tests</span>
+      <span class="dm-metric__value">0</span>
+      <span class="dm-metric__spark" data-dm-lifecycle-spark="symbol_tests">—</span>
+    </div>
   </div>
   <p class="dm-note">Trend spark lines update automatically once ingest history is available.</p>
 </section>
@@ -85,6 +90,22 @@
       </thead>
       <tbody></tbody>
     </table>
+  </div>
+
+  <div data-dm-lifecycle-symbol-panel hidden>
+    <h3>Symbol Test Coverage</h3>
+    <div class="dm-table-scroll">
+      <table class="dm-table" data-dm-lifecycle-symbol-tests>
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Tests</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
   </div>
 
   <h3>Recently Removed Artifacts</h3>

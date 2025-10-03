@@ -18,6 +18,9 @@ def build_filter_state(filters: Mapping[str, Any] | None) -> FilterState:
     raw_types = filters.get("artifact_types") or []
     raw_namespaces = filters.get("namespaces") or []
     raw_tags = filters.get("tags") or []
+    raw_symbols = filters.get("symbols") or []
+    raw_symbol_kinds = filters.get("symbol_kinds") or []
+    raw_symbol_languages = filters.get("symbol_languages") or []
     updated_after_filter = filters.get("updated_after")
     max_age_filter = filters.get("max_age_days")
 
@@ -25,6 +28,9 @@ def build_filter_state(filters: Mapping[str, Any] | None) -> FilterState:
     allowed_types = {str(value).strip().lower() for value in raw_types if isinstance(value, str)}
     allowed_namespaces = {str(value).strip().lower() for value in raw_namespaces if isinstance(value, str)}
     allowed_tags = {str(value).strip().lower() for value in raw_tags if isinstance(value, str)}
+    allowed_symbol_names = {str(value).strip().lower() for value in raw_symbols if isinstance(value, str)}
+    allowed_symbol_kinds = {str(value).strip().lower() for value in raw_symbol_kinds if isinstance(value, str)}
+    allowed_symbol_languages = {str(value).strip().lower() for value in raw_symbol_languages if isinstance(value, str)}
 
     parsed_updated_after: datetime | None = None
     if isinstance(updated_after_filter, datetime):
@@ -62,6 +68,30 @@ def build_filter_state(filters: Mapping[str, Any] | None) -> FilterState:
         filters_applied["tags"] = sorted(
             {str(value).strip() for value in raw_tags if isinstance(value, str) and value.strip()},
         )
+    if allowed_symbol_names:
+        unique_symbols: list[str] = []
+        seen_symbols: set[str] = set()
+        for value in raw_symbols:
+            if not isinstance(value, str):
+                continue
+            trimmed = value.strip()
+            if not trimmed:
+                continue
+            key = trimmed.lower()
+            if key in seen_symbols:
+                continue
+            seen_symbols.add(key)
+            unique_symbols.append(trimmed)
+        if unique_symbols:
+            filters_applied["symbols"] = unique_symbols
+    if allowed_symbol_kinds:
+        filters_applied["symbol_kinds"] = sorted(
+            {str(value).strip().lower() for value in raw_symbol_kinds if isinstance(value, str) and value.strip()},
+        )
+    if allowed_symbol_languages:
+        filters_applied["symbol_languages"] = sorted(
+            {str(value).strip().lower() for value in raw_symbol_languages if isinstance(value, str) and value.strip()},
+        )
     if parsed_updated_after is not None:
         filters_applied["updated_after"] = parsed_updated_after.astimezone(UTC).isoformat()
     if max_age_filter is not None:
@@ -75,6 +105,9 @@ def build_filter_state(filters: Mapping[str, Any] | None) -> FilterState:
         allowed_types=allowed_types,
         allowed_namespaces=allowed_namespaces,
         allowed_tags=allowed_tags,
+        allowed_symbol_names=allowed_symbol_names,
+        allowed_symbol_kinds=allowed_symbol_kinds,
+        allowed_symbol_languages=allowed_symbol_languages,
         filters_applied=filters_applied,
         recency_cutoff=recency_cutoff,
     )
@@ -94,6 +127,21 @@ def payload_passes_filters(payload: Mapping[str, Any], state: FilterState) -> bo
     if state.allowed_tags:
         payload_tags = _normalise_payload_tags(payload.get("tags"))
         if not payload_tags.intersection(state.allowed_tags):
+            return False
+
+    if state.allowed_symbol_names:
+        payload_symbol_names = _payload_symbol_names(payload)
+        if not payload_symbol_names.intersection(state.allowed_symbol_names):
+            return False
+
+    if state.allowed_symbol_kinds:
+        payload_symbol_kinds = _payload_symbol_kinds(payload)
+        if not payload_symbol_kinds.intersection(state.allowed_symbol_kinds):
+            return False
+
+    if state.allowed_symbol_languages:
+        payload_symbol_languages = _payload_symbol_languages(payload)
+        if not payload_symbol_languages.intersection(state.allowed_symbol_languages):
             return False
 
     return True
@@ -123,6 +171,60 @@ def parse_iso_datetime(value: object) -> datetime | None:
 def _normalise_payload_tags(raw_tags: Sequence[object] | set[object] | None) -> set[str]:
     if isinstance(raw_tags, (list, tuple, set)):
         return {str(tag).strip().lower() for tag in raw_tags if str(tag).strip()}
+    return set()
+
+
+def _payload_symbol_names(payload: Mapping[str, Any]) -> set[str]:
+    names = _normalise_string_iterable(payload.get("symbol_names"))
+    if names:
+        return names
+    symbols = payload.get("symbols")
+    if isinstance(symbols, (list, tuple)):
+        extracted: set[str] = set()
+        for entry in symbols:
+            if isinstance(entry, Mapping):
+                text = str(entry.get("qualified_name") or entry.get("name") or "").strip()
+                if text:
+                    extracted.add(text.lower())
+        return extracted
+    return set()
+
+
+def _payload_symbol_kinds(payload: Mapping[str, Any]) -> set[str]:
+    kinds = _normalise_string_iterable(payload.get("symbol_kinds"))
+    if kinds:
+        return kinds
+    symbols = payload.get("symbols")
+    if isinstance(symbols, (list, tuple)):
+        extracted: set[str] = set()
+        for entry in symbols:
+            if isinstance(entry, Mapping):
+                text = str(entry.get("kind") or "").strip()
+                if text:
+                    extracted.add(text.lower())
+        return extracted
+    return set()
+
+
+def _payload_symbol_languages(payload: Mapping[str, Any]) -> set[str]:
+    languages = _normalise_string_iterable(payload.get("symbol_languages"))
+    if languages:
+        return languages
+    symbols = payload.get("symbols")
+    if isinstance(symbols, (list, tuple)):
+        extracted: set[str] = set()
+        for entry in symbols:
+            if isinstance(entry, Mapping):
+                text = str(entry.get("language") or "").strip()
+                if text:
+                    extracted.add(text.lower())
+        return extracted
+    return set()
+
+
+def _normalise_string_iterable(values: Any) -> set[str]:
+    if isinstance(values, (list, tuple, set)):
+        return {str(value).strip().lower() for value in values if isinstance(value, str) and value.strip()}
     return set()
 
 

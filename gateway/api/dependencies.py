@@ -128,6 +128,8 @@ def get_search_service_dependency(
         weights=search_weights,
         model_artifact=model_artifact,
         failure_callback=qdrant_manager.mark_failure,
+        editor_uri_template=settings.editor_uri_template,
+        repo_root=settings.repo_root,
     )
 
 

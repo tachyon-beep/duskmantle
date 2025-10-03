@@ -79,6 +79,8 @@ class AppSettings(BaseSettings):
     ingest_incremental_enabled: bool = Field(True, alias="KM_INGEST_INCREMENTAL")
     ingest_parallel_workers: int = Field(2, alias="KM_INGEST_PARALLEL_WORKERS")
     ingest_max_pending_batches: int = Field(4, alias="KM_INGEST_MAX_PENDING_BATCHES")
+    symbols_enabled: bool = Field(False, alias="KM_SYMBOLS_ENABLED")
+    editor_uri_template: str | None = Field(None, alias="KM_EDITOR_URI_TEMPLATE")
     scheduler_enabled: bool = Field(False, alias="KM_SCHEDULER_ENABLED")
     scheduler_interval_minutes: int = Field(30, alias="KM_SCHEDULER_INTERVAL_MINUTES")
     scheduler_cron: str | None = Field(None, alias="KM_SCHEDULER_CRON")

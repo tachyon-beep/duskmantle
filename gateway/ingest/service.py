@@ -97,6 +97,7 @@ def execute_ingestion(
         incremental=incremental_enabled,
         embed_parallel_workers=max(1, settings.ingest_parallel_workers),
         max_pending_batches=max(1, settings.ingest_max_pending_batches),
+        symbols_enabled=settings.symbols_enabled,
     )
 
     pipeline = IngestionPipeline(qdrant_writer=qdrant_writer, neo4j_writer=neo4j_writer, config=config)

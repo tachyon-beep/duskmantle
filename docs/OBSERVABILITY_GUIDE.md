@@ -41,6 +41,7 @@ Key time-series:
 | `km_backup_last_status` | Gauge | _none_ | Last backup status (1=success, 0=failure). | Alert when zero for sustained intervals. |
 | `km_backup_last_success_timestamp` | Gauge | _none_ | Unix timestamp of the last successful backup run. | Alert when stale relative to expected cadence. |
 | `km_search_requests_total` | Counter | `status` (`success`,`failure`) | Search API requests partitioned by outcome. | Alert when failure ratio rises above baseline. |
+| `km_search_symbol_filters_total` | Counter | `filter_type` (`name`,`kind`,`language`) | Search requests tagging symbol filters. | Alert if usage suddenly drops (feature disabled) or spikes unexpectedly. |
 | `km_search_graph_cache_events_total` | Counter | `status` (`miss`,`hit`,`error`) | Tracks graph context cache utilisation. | Alert when `status="error"` climbs or hit ratio drops suddenly. |
 | `km_search_graph_lookup_seconds` | Histogram | _none_ | Latency of Neo4j lookups for search enrichment. | Alert when P95 exceeds expected threshold (e.g., >250 ms). |
 | `km_search_adjusted_minus_vector` | Histogram | _none_ | Distribution of adjusted minus vector scores per result. | Alert when distribution skews heavily positive/negative (ranking drift). |

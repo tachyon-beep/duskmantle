@@ -182,6 +182,7 @@ Restart the container to pick up restored state.
 mirror spans locally.
 - **Hybrid search tuning**: Adjust dense vs. lexical weighting with `KM_SEARCH_VECTOR_WEIGHT` / `KM_SEARCH_LEXICAL_WEIGHT` (defaults 1.0 /
 0.25). Increase `KM_SEARCH_HNSW_EF_SEARCH` for higher recall at the cost of latency.
+- **Symbol filters (optional)**: Run `gateway-graph migrate` to apply symbol constraints, set `KM_SYMBOLS_ENABLED=true`, and target results with CLI sugar such as `km-search --symbol Example.method --lang python` or query macros (`sym:Example.method`). The `/ui/search` console also adds chips for symbol kind and language so you can layer filters without crafting JSON payloads.
 
 For more detail, consult `docs/OBSERVABILITY_GUIDE.md` and the release playbook in `RELEASE.md`.
 
@@ -235,6 +236,8 @@ Launch `gateway-mcp` to expose the gateway over the Model Context Protocol so ag
 | `km-recipe-run` | maintainer | Execute predefined automation workflows (e.g., release-prep). |
    | `km-backup-trigger` | maintainer | Invoke the backup helper to create a state archive. |
    | `km-feedback-submit` | maintainer | Record relevance votes for ranking telemetry. |
+
+   Tip: When symbol indexing is enabled, `km-search` accepts convenience flags (`--symbol`, `--kind`, `--lang`) in addition to structured `filters` JSON, so MC clients can target specific definitions without crafting payloads manually.
 
 3 In another terminal, validate the surface:
 

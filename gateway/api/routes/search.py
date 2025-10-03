@@ -29,6 +29,10 @@ from gateway.search.feedback import SearchFeedbackStore
 logger = logging.getLogger(__name__)
 
 
+_SYMBOL_KIND_ALLOWLIST = {"class", "function", "method", "interface", "type", "module"}
+_SYMBOL_LANGUAGE_ALLOWLIST = {"python", "typescript", "tsx", "javascript", "go"}
+
+
 def create_router(limiter: Limiter, metrics_limit: str) -> APIRouter:
     """Return an API router for the search endpoints with shared rate limits."""
     router = APIRouter()
@@ -101,6 +105,44 @@ def create_router(limiter: Limiter, metrics_limit: str) -> APIRouter:
                 cleaned_tags = [value.strip() for value in tags if isinstance(value, str) and value.strip()]
                 if cleaned_tags:
                     filters_resolved["tags"] = cleaned_tags
+
+            symbols = filters_payload.get("symbols")
+            if symbols is not None:
+                if not isinstance(symbols, list) or not all(isinstance(item, str) for item in symbols):
+                    raise HTTPException(status_code=422, detail="filters.symbols must be an array of strings")
+                cleaned_symbols = [value.strip() for value in symbols if isinstance(value, str) and value.strip()]
+                if cleaned_symbols:
+                    filters_resolved["symbols"] = cleaned_symbols
+
+            symbol_kinds = filters_payload.get("symbol_kinds")
+            if symbol_kinds is not None:
+                if not isinstance(symbol_kinds, list) or not all(isinstance(item, str) for item in symbol_kinds):
+                    raise HTTPException(status_code=422, detail="filters.symbol_kinds must be an array of strings")
+                cleaned_kinds = []
+                for kind in symbol_kinds:
+                    key = kind.strip().lower() if isinstance(kind, str) else ""
+                    if not key:
+                        continue
+                    if key not in _SYMBOL_KIND_ALLOWLIST:
+                        raise HTTPException(status_code=422, detail=f"Unsupported symbol kind '{kind}'")
+                    cleaned_kinds.append(key)
+                if cleaned_kinds:
+                    filters_resolved["symbol_kinds"] = cleaned_kinds
+
+            symbol_languages = filters_payload.get("symbol_languages")
+            if symbol_languages is not None:
+                if not isinstance(symbol_languages, list) or not all(isinstance(item, str) for item in symbol_languages):
+                    raise HTTPException(status_code=422, detail="filters.symbol_languages must be an array of strings")
+                cleaned_languages = []
+                for lang in symbol_languages:
+                    key = lang.strip().lower() if isinstance(lang, str) else ""
+                    if not key:
+                        continue
+                    if key not in _SYMBOL_LANGUAGE_ALLOWLIST:
+                        raise HTTPException(status_code=422, detail=f"Unsupported symbol language '{lang}'")
+                    cleaned_languages.append(key)
+                if cleaned_languages:
+                    filters_resolved["symbol_languages"] = cleaned_languages
 
             updated_after = filters_payload.get("updated_after")
             if updated_after is not None:

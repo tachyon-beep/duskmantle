@@ -7,6 +7,7 @@ This repository packages a turnkey knowledge management stack composed of the Kn
 - **Secure multi-service runtime:** Docker Compose launches the gateway, Qdrant, and Neo4j as isolated containers with non-root users and minimal port exposure.
 - **Deterministic ingestion:** Periodic jobs index docs, source, tests, and protobufs with provenance and coverage reporting.
 - **Hybrid search + graph context:** Vector similarity fused with lexical overlap and live graph lookups for every result.
+- **Symbol-aware filters:** Opt-in symbol extraction feeds `sym:`, `kind:`, and `lang:` operators with optional IDE deep links when `KM_EDITOR_URI_TEMPLATE` is set.
 - **Embedded preview UI:** Visit `/ui/` for a bundled console shell; future sprints will light up search, subsystems, and lifecycle dashboards.
 - **MCP-native interface:** Codex CLI (and other MCP clients) can call search, graph, ingest, backup, and feedback tools without touching raw HTTP APIs.
 - **Offline ready:** Embedding models and dependencies are vendored so the appliance runs in air-gapped environments.
@@ -21,11 +22,12 @@ This repository packages a turnkey knowledge management stack composed of the Kn
    Tokens entered via the console are stored for the current browser session only; clear them anytime with the Tokens dialog when you step away from the machine.
 4. Import the Codex MCP snippet from `docs/MCP_INTEGRATION.md` (or the per-tool recipes in `docs/MCP_RECIPES.md`). Any MCP-capable agent can now call `km-search`, `km-graph-*`, `km-ingest-*`, and `km-feedback-submit` without bespoke glue code.
 5. Exercise the surface using the MCP smoke recipe (`docs/MCP_RECIPES.md` section 3) or run `pytest -m mcp_smoke`. Start with `km-upload`/`km-storetext` to add material, then query via `km-search`; `/search` responses include a `metadata.feedback_prompt`, so keep submitting feedback with `km-feedback-submit` until ranking telemetry stabilises.
+   Symbol indexing stays disabled by default; set `KM_SYMBOLS_ENABLED=true` after running `gateway-graph migrate` to apply the symbol schema and unlock CLI helpers such as `km-search --symbol ExampleClass.method --lang python` or query macros like `sym:ExampleClass`. When enabled, the search console surfaces symbol chips and editor links so you can filter and jump straight from the browser.
 
 ## Core Capabilities
 
 - **End-to-end ingestion** – discovers repository artifacts, normalises metadata, and writes to Qdrant and Neo4j with constraint enforcement.
-- **Search with explainability** – `/search` returns scoring breakdowns (vector, lexical, subsystem signals) plus graph context for every hit.
+- **Search with explainability** – `/search` returns scoring breakdowns (vector, lexical, subsystem signals) plus graph context for every hit. Enable `KM_SYMBOLS_ENABLED` to attach symbol previews (with optional editor URIs) for code-heavy answers.
 - **Graph exploration** – `/graph/subsystems`, `/graph/nodes`, `/graph/search`, and `/graph/cypher` expose the knowledge graph for diagnostics and agents.
 - **Operational tooling** – `/metrics`, `/healthz`, `/coverage`, `gateway-ingest`, `gateway-search`, `gateway-graph`, and backup helpers cover daily operations.
 - **Release automation** – reproducible wheel/image pipelines, checksum generation, and smoke tests capture every acceptance run in `docs/ACCEPTANCE_DEMO_SNAPSHOT.md`.
@@ -188,7 +190,7 @@ All MCP usage is mirrored to Prometheus (`km_mcp_requests_total`, `km_mcp_reques
 - `/healthz` surfaces coverage freshness, audit ledger status, and scheduler state alongside the overall result; `/readyz` remains a simple readiness probe.
 - Graph context is exposed via `/graph/subsystems/{name}`, `/graph/nodes/{id}`, `/graph/search`, and maintainer-only `/graph/cypher` (read-only Cypher) for deeper analysis.
 - `/search` responses include a `scoring` breakdown (`vector_score`, `adjusted_score`, per-signal contributions such as `path_depth`, `subsystem_criticality`, and `freshness_days`). Set `KM_SEARCH_WEIGHT_PROFILE` (`default`, `analysis`, `operations`, `docs-heavy`) to load preset weighting bundles; any `KM_SEARCH_W_*` variables override the bundle. Use `KM_SEARCH_SORT_BY_VECTOR=true` to bypass graph boosts during troubleshooting.
-- Observability includes search-specific metrics: `km_search_graph_cache_events_total` (cache hits/misses/errors), `km_search_graph_lookup_seconds` (Neo4j lookup latency), and `km_search_adjusted_minus_vector` (ranking deltas). Add these to dashboards to spot graph regressions or ranking drift.
+- Observability includes search-specific metrics: `km_search_graph_cache_events_total` (cache hits/misses/errors), `km_search_graph_lookup_seconds` (Neo4j lookup latency), `km_search_symbol_filters_total` (symbol filter usage by type), and `km_search_adjusted_minus_vector` (ranking deltas). Add these to dashboards to spot graph regressions or ranking drift.
 - To enable learned ranking, set `KM_SEARCH_SCORING_MODE=ml` and point `KM_SEARCH_MODEL_PATH` at a JSON artifact produced by `gateway-search train-model`; responses will include per-feature contributions under `scoring.model` along with the active `metadata.scoring_mode`.
 - Optional subsystem metadata: provide `docs/subsystems.json` (e.g., `{ "Kasmina": { "criticality": "high" } }`) or `.metadata/subsystems.json` to annotate criticality used by scoring heuristics.
 - Rate limiting and bearer-token auth are optional but recommended for multi-user deployments.

@@ -139,6 +139,44 @@ async def test_km_search_success_records_metrics(
 
 
 @pytest.mark.asyncio
+async def test_km_search_symbol_flags_merge_filters(
+    mcp_server: ServerFixture,
+) -> None:
+    server, state = mcp_server
+
+    captured: dict[str, Any] = {}
+
+    class StubClient:
+        async def search(self, payload: dict[str, object]) -> dict[str, object]:
+            captured.clear()
+            captured.update(payload)
+            await asyncio.sleep(0)
+            return {"results": [], "metadata": {}}
+
+    state.client = cast(Any, StubClient())
+
+    tool_fn = _tool_fn(await server.get_tool("km-search"))
+    result = await tool_fn(
+        query="symbol filters",
+        limit=4,
+        include_graph=False,
+        filters={"tags": ["integration"], "symbol_kinds": ["class"]},
+        symbol="Gateway.Service, Another.helper",
+        kind=["function", "Class"],
+        lang=["Python", "TypeScript"],
+        context=None,
+    )
+
+    assert result == {"results": [], "metadata": {}}
+    filters = captured.get("filters")
+    assert filters is not None
+    assert filters["tags"] == ["integration"]
+    assert filters["symbols"] == ["Gateway.Service", "Another.helper"]
+    assert filters["symbol_kinds"] == ["class", "function"]
+    assert filters["symbol_languages"] == ["python", "typescript"]
+
+
+@pytest.mark.asyncio
 async def test_km_search_gateway_error_records_failure(
     mcp_server: ServerFixture,
 ) -> None:

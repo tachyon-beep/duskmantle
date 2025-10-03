@@ -18,6 +18,7 @@ except ModuleNotFoundError:  # pragma: no cover - fallback for older runtimes
     import tomli as tomllib  # type: ignore
 
 from gateway.ingest.artifacts import Artifact
+from gateway.ingest.symbols import SymbolRecord, extract_symbols
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,7 @@ class DiscoveryConfig:
         "tests",
         ".codacy",
     )
+    symbols_enabled: bool = False
 
 
 _SUBSYSTEM_METADATA_CACHE: dict[Path, dict[str, Any]] = {}
@@ -79,6 +81,7 @@ def discover(config: DiscoveryConfig) -> Iterable[Artifact]:
             logger.debug("Skipping non-utf8 file %s", path)
             continue
 
+        relative_path = path.relative_to(repo_root)
         artifact_type = _infer_artifact_type(path, repo_root)
         inferred_subsystem = _infer_subsystem(path, repo_root, source_prefixes)
         catalog_entry = None
@@ -96,15 +99,27 @@ def discover(config: DiscoveryConfig) -> Iterable[Artifact]:
 
         git_commit, git_timestamp = _lookup_git_metadata(path, repo_root)
 
-        extra = {
+        extra: dict[str, Any] = {
             "message_entities": sorted(set(_MESSAGE_PATTERN.findall(content))),
             "telemetry_signals": sorted(set(_TELEMETRY_PATTERN.findall(content))),
             "subsystem_metadata": subsystem_meta,
             "subsystem_criticality": subsystem_meta.get("criticality"),
         }
 
+        if config.symbols_enabled:
+            relative_path = path.relative_to(repo_root)
+            symbols = _extract_symbols(relative_path, content)
+            if symbols:
+                symbol_payloads = [symbol.to_metadata(path=relative_path) for symbol in symbols]
+                extra["symbols"] = symbol_payloads
+                extra["symbol_count"] = len(symbol_payloads)
+                extra["symbol_names"] = [item["qualified_name"] for item in symbol_payloads]
+                extra["symbol_kinds"] = [item["kind"] for item in symbol_payloads]
+                extra["symbol_languages"] = [item["language"] for item in symbol_payloads]
+                extra["symbol_ids"] = [item["id"] for item in symbol_payloads]
+
         yield Artifact(
-            path=path.relative_to(repo_root),
+            path=relative_path,
             artifact_type=artifact_type,
             subsystem=subsystem_name,
             content=content,
@@ -174,6 +189,14 @@ def _lookup_git_metadata(path: Path, repo_root: Path) -> tuple[str | None, int |
     except (subprocess.CalledProcessError, FileNotFoundError, ValueError):
         logger.debug("Git metadata unavailable for %s", rel)
         return None, None
+
+
+def _extract_symbols(path: Path, content: str) -> list[SymbolRecord]:
+    try:
+        return extract_symbols(path, content)
+    except Exception:  # pragma: no cover - defensive guard
+        logger.debug("Failed to extract symbols for %s", path, exc_info=True)
+        return []
 
 
 def _load_subsystem_catalog(repo_root: Path) -> dict[str, Any]:

@@ -21,6 +21,7 @@ Practical examples for calling the gateway’s MCP tools. Assumptions:
 - Gateway is reachable at `http://localhost:8000`.
 - Tokens are available via `KM_READER_TOKEN` / `KM_ADMIN_TOKEN`.
 - `gateway-mcp` (or `bin/km-mcp-container`) is installed.
+- Symbol-aware filters require `gateway-graph migrate` (to install the new constraints) and `KM_SYMBOLS_ENABLED=true`.
 
 ## 1. Quickstart Sessions
 
@@ -85,6 +86,7 @@ Typical command flow after connecting:
 | Task | Tool & Params | Typical Output |
 |------|---------------|----------------|
 | Find scheduler docs | `km-search {"query": "scheduler", "limit": 5}` | Top chunks with subsystem context. |
+| Pinpoint a symbol | `km-search --symbol ExampleClass.method --lang python --limit 5` | Code chunks annotated with symbol spans and optional editor URIs. |
 | Inspect a subsystem | `km-graph-subsystem {"name": "Ingestion", "depth": 2, "limit": 10}` | Multi-hop chains with `hops` and `path` metadata; increase `depth` for deeper graphs. |
 | Export subsystem graph | `curl -sS -H "Authorization: Bearer $KM_READER_TOKEN" $KM_GATEWAY_URL/graph/subsystems/Ingestion/graph` | Returns node/edge lists for visualising dependency connections. |
 | Detect orphaned docs | `curl -sS -H "Authorization: Bearer $KM_READER_TOKEN" $KM_GATEWAY_URL/graph/orphans?limit=20` | Lists artifacts missing BELONGS_TO/DESCRIBES/VALIDATES edges. |

@@ -94,13 +94,21 @@ The MCP server exposes the following helper summaries. These mirror the metadata
     "artifact_types": ["doc", "code"],
     "namespaces": ["docs"],
     "tags": ["Integration"],
+    "symbols": ["Example.method"],
+    "symbol_kinds": ["method"],
+    "symbol_languages": ["python"],
     "updated_after": "2024-01-01T00:00:00Z",
     "max_age_days": 30
   },
   "sort_by_vector": false
 }
 ```
-- **Response:** hybrid search results (chunk, graph context, scoring). Include `metadata.request_id` for follow-up feedback.
+
+- `filters.symbols`: array of qualified symbol names (case-insensitive).
+- `filters.symbol_kinds`: array of symbol kinds (`class`, `function`, `method`, `interface`, `type`, `module`).
+- `filters.symbol_languages`: array of languages (`python`, `typescript`, `tsx`, `javascript`, `go`).
+- **Response:** hybrid search results (chunk, graph context, scoring). Include `metadata.request_id` for follow-up feedback. Each chunk now includes a `symbols` array when symbol indexing is enabled; entries contain `id`, `qualified_name`, span details, and an `editor_uri` when `KM_EDITOR_URI_TEMPLATE` is configured.
+- **CLI shortcut:** When invoking via FastMCP or Codex CLI, use `--symbol`, `--kind`, or `--lang` flags (repeatable/comma-separated) to append filter terms without hand-crafting the `filters` payload.
 
 ### 3.2 `km-graph-node`
 - **Request:** `{ "node_id": "DesignDoc:docs/archive/WORK_PACKAGES.md", "relationships": "all", "limit": 25 }`

@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from qdrant_client import QdrantClient
@@ -13,7 +14,7 @@ from qdrant_client.http.models import ScoredPoint
 
 from gateway.graph.service import GraphService
 from gateway.ingest.embedding import Embedder
-from gateway.observability import SEARCH_SCORE_DELTA
+from gateway.observability import SEARCH_SCORE_DELTA, SEARCH_SYMBOL_FILTERS_TOTAL
 from gateway.search.filtering import build_filter_state, parse_iso_datetime, payload_passes_filters
 from gateway.search.graph_enricher import GraphEnricher
 from gateway.search.ml import ModelScorer
@@ -43,6 +44,9 @@ class SearchService:
         weights: SearchWeights | None = None,
         model_artifact: ModelArtifact | None = None,
         failure_callback: Callable[[Exception], None] | None = None,
+        editor_uri_template: str | None = None,
+        repo_root: Path | None = None,
+        symbol_preview_limit: int = 5,
     ) -> None:
         """Initialise the search service with vector and scoring options."""
         self.qdrant_client = qdrant_client
@@ -94,6 +98,9 @@ class SearchService:
             lexical_weight=self.lexical_weight,
         )
         self._model_scorer = ModelScorer(self._model_artifact)
+        self.editor_uri_template = editor_uri_template
+        self.repo_root = repo_root.resolve() if isinstance(repo_root, Path) else (Path(repo_root).resolve() if repo_root else None)
+        self.symbol_preview_limit = max(1, int(symbol_preview_limit)) if symbol_preview_limit else 5
 
         self._vector_retriever = VectorRetriever(
             embedder=embedder,
@@ -127,6 +134,12 @@ class SearchService:
             raise
 
         filter_state = build_filter_state(filters or {})
+        if filter_state.allowed_symbol_names:
+            SEARCH_SYMBOL_FILTERS_TOTAL.labels(filter_type="name").inc()
+        if filter_state.allowed_symbol_kinds:
+            SEARCH_SYMBOL_FILTERS_TOTAL.labels(filter_type="kind").inc()
+        if filter_state.allowed_symbol_languages:
+            SEARCH_SYMBOL_FILTERS_TOTAL.labels(filter_type="language").inc()
         results: list[SearchResult] = []
         warnings: list[str] = []
 
@@ -149,6 +162,7 @@ class SearchService:
                 continue
 
             chunk = self._scorer.build_chunk(payload, point.score)
+            self._attach_symbol_metadata(chunk, payload)
             lexical_score = self._scorer.lexical_score(query, chunk)
             scoring = self._scorer.base_scoring(
                 vector_score=point.score,
@@ -275,6 +289,75 @@ class SearchService:
         if enricher.time_exhausted:
             metadata["warnings"].append("graph context skipped after exceeding time budget")
         return SearchResponse(query=query, results=results, metadata=metadata)
+
+    def _attach_symbol_metadata(self, chunk: dict[str, Any], payload: Mapping[str, Any]) -> None:
+        raw_symbols = payload.get("symbols")
+        if not isinstance(raw_symbols, list):
+            return
+        artifact_path = str(chunk.get("artifact_path") or payload.get("path") or "")
+        prepared = self._prepare_symbol_metadata(raw_symbols, artifact_path)
+        if not prepared:
+            return
+        chunk["symbols"] = prepared
+        chunk["symbol_count"] = len(raw_symbols)
+
+    def _prepare_symbol_metadata(self, raw_symbols: list[Any], artifact_path: str | None) -> list[dict[str, Any]]:
+        prepared: list[dict[str, Any]] = []
+        for entry in raw_symbols:
+            if not isinstance(entry, Mapping):
+                continue
+            name = str(entry.get("name") or entry.get("qualified_name") or "").strip()
+            qualified = str(entry.get("qualified_name") or name).strip()
+            if not qualified and not name:
+                continue
+            line_start = self._coerce_int(entry.get("line_start"))
+            line_end = self._coerce_int(entry.get("line_end"))
+            item: dict[str, Any] = {
+                "id": str(entry.get("id") or qualified),
+                "name": name or qualified,
+                "qualified_name": qualified or name,
+                "kind": str(entry.get("kind") or "").strip(),
+                "language": str(entry.get("language") or "").strip(),
+                "line_start": line_start,
+                "line_end": line_end,
+            }
+            editor_uri = self._build_editor_uri(artifact_path, line_start, line_end)
+            if editor_uri:
+                item["editor_uri"] = editor_uri
+            prepared.append(item)
+            if len(prepared) >= self.symbol_preview_limit:
+                break
+        return prepared
+
+    def _build_editor_uri(self, artifact_path: str | None, line_start: int | None, line_end: int | None) -> str | None:
+        template = self.editor_uri_template
+        if not template or not artifact_path:
+            return None
+        replacements: dict[str, Any] = {
+            "path": artifact_path,
+            "line": line_start if line_start is not None else "",
+            "line_start": line_start if line_start is not None else "",
+            "line_end": line_end if line_end is not None else "",
+        }
+        if self.repo_root is not None:
+            try:
+                replacements["abs_path"] = str((self.repo_root / artifact_path).resolve())
+            except Exception:  # pragma: no cover - best-effort path resolution
+                replacements["abs_path"] = str(self.repo_root / artifact_path)
+        else:
+            replacements["abs_path"] = artifact_path
+        try:
+            return template.format(**replacements)
+        except Exception:  # pragma: no cover - template errors fall back silently
+            return None
+
+    @staticmethod
+    def _coerce_int(value: Any) -> int | None:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
 
 
 def _subsystems_from_context(graph_context: dict[str, Any] | None) -> set[str]:

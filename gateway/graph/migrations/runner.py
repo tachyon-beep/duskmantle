@@ -31,11 +31,11 @@ MIGRATIONS: list[Migration] = [
         ],
     ),
     Migration(
-        id="002_domain_entities",
+        id="003_symbols",
         statements=[
-            "CREATE CONSTRAINT IF NOT EXISTS FOR (m:IntegrationMessage) REQUIRE m.name IS UNIQUE",
-            "CREATE CONSTRAINT IF NOT EXISTS FOR (tc:TelemetryChannel) REQUIRE tc.name IS UNIQUE",
-            "CREATE CONSTRAINT IF NOT EXISTS FOR (cfg:ConfigFile) REQUIRE cfg.path IS UNIQUE",
+            "CREATE CONSTRAINT IF NOT EXISTS FOR (sym:Symbol) REQUIRE sym.id IS UNIQUE",
+            "CREATE INDEX IF NOT EXISTS FOR (sym:Symbol) ON (sym.name)",
+            "CREATE INDEX IF NOT EXISTS FOR (sym:Symbol) ON (sym.language)",
         ],
     ),
 ]

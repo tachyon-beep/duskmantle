@@ -63,6 +63,7 @@ class IngestionConfig:
     incremental: bool = True
     embed_parallel_workers: int = 2
     max_pending_batches: int = 4
+    symbols_enabled: bool = False
 
 
 @dataclass(slots=True)
@@ -141,6 +142,7 @@ class IngestionPipeline:
                             DiscoveryConfig(
                                 repo_root=self.config.repo_root,
                                 include_patterns=self.config.include_patterns,
+                                symbols_enabled=self.config.symbols_enabled,
                             )
                         )
                     )

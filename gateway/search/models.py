@@ -60,6 +60,9 @@ class FilterState:
     allowed_types: set[str]
     allowed_namespaces: set[str]
     allowed_tags: set[str]
+    allowed_symbol_names: set[str]
+    allowed_symbol_kinds: set[str]
+    allowed_symbol_languages: set[str]
     filters_applied: dict[str, Any]
     recency_cutoff: datetime | None
     recency_warning_emitted: bool = False

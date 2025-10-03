@@ -150,6 +150,12 @@ SEARCH_SCORE_DELTA = Histogram(
     "Distribution of adjusted minus vector scores",
 )
 
+SEARCH_SYMBOL_FILTERS_TOTAL = Counter(
+    "km_search_symbol_filters_total",
+    "Search requests with symbol filters, partitioned by filter type",
+    labelnames=["filter_type"],
+)
+
 GRAPH_CYPHER_DENIED_TOTAL = Counter(
     "km_graph_cypher_denied_total",
     "Maintainer Cypher requests blocked by read-only safeguards",
