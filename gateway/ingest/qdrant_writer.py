@@ -6,6 +6,7 @@ import logging
 import time
 import uuid
 from collections.abc import Iterable
+from typing import Sequence
 
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as qmodels
@@ -88,23 +89,32 @@ class QdrantWriter:
             optimizers_config=qmodels.OptimizersConfigDiff(default_segment_number=2),
         )
 
-    def upsert_chunks(self, chunks: Iterable[ChunkEmbedding]) -> None:
+    def upsert_chunks(self, chunks: Iterable[ChunkEmbedding], *, batch_size: int = 64) -> None:
         """Upsert chunk embeddings into the configured collection."""
-        points = []
+        pending: list[qmodels.PointStruct] = []
+
+        def _flush(batch: Sequence[qmodels.PointStruct]) -> None:
+            if not batch:
+                return
+            self.client.upsert(collection_name=self.collection_name, points=list(batch))
+            logger.info("Upserted %d chunk(s) into Qdrant", len(batch))
+
         for item in chunks:
             payload = {**item.chunk.metadata, "chunk_id": item.chunk.chunk_id, "text": item.chunk.text}
             point_id = str(uuid.UUID(item.chunk.content_digest[:32]))
-            points.append(
+            pending.append(
                 qmodels.PointStruct(
                     id=point_id,
                     vector=item.vector,
                     payload=payload,
                 )
             )
-        if not points:
-            return
-        self.client.upsert(collection_name=self.collection_name, points=points)
-        logger.info("Upserted %d chunk(s) into Qdrant", len(points))
+            if len(pending) >= batch_size:
+                _flush(pending)
+                pending = []
+
+        if pending:
+            _flush(pending)
 
     def delete_artifact(self, artifact_path: str) -> None:
         """Delete all points belonging to an artifact path."""
@@ -154,23 +164,88 @@ class QdrantWriter:
             return False
         config = getattr(info, "config", None)
         params = getattr(config, "params", None)
-        size = None
-        if params is not None:
-            if hasattr(params, "size"):
-                size = getattr(params, "size", None)
-            elif hasattr(params, "values"):
-                values = getattr(params, "values", None)
-                if isinstance(values, dict):
-                    default = values.get("default")
-                    if default is not None:
-                        size = getattr(default, "size", None)
+        if params is None:
+            return False
+
+        def _extract_vector_size(source: object) -> int | None:
+            """Best-effort extraction that handles legacy and modern Qdrant shapes."""
+
+            seen: set[int] = set()
+
+            def _inner(candidate: object) -> int | None:
+                if candidate is None:
+                    return None
+                if isinstance(candidate, (int, float)):
+                    return int(candidate)
+
+                candidate_id = id(candidate)
+                if candidate_id in seen:
+                    return None
+                seen.add(candidate_id)
+
+                size_attr = getattr(candidate, "size", None)
+                if size_attr is not None:
+                    try:
+                        return int(size_attr)
+                    except (TypeError, ValueError):
+                        return None
+
+                vectors_attr = getattr(candidate, "vectors", None)
+                if vectors_attr is not candidate:
+                    maybe_size = _inner(vectors_attr)
+                    if maybe_size is not None:
+                        return maybe_size
+
+                values_attr = getattr(candidate, "values", None)
+                if isinstance(values_attr, dict):
+                    default_value = values_attr.get("default")
+                    maybe_size = _inner(default_value)
+                    if maybe_size is not None:
+                        return maybe_size
+                    for value in values_attr.values():
+                        maybe_size = _inner(value)
+                        if maybe_size is not None:
+                            return maybe_size
+
+                if isinstance(candidate, dict):
+                    default_value = candidate.get("default")
+                    maybe_size = _inner(default_value)
+                    if maybe_size is not None:
+                        return maybe_size
+                    for value in candidate.values():
+                        maybe_size = _inner(value)
+                        if maybe_size is not None:
+                            return maybe_size
+
+                if isinstance(candidate, (list, tuple, set)):
+                    for value in candidate:
+                        maybe_size = _inner(value)
+                        if maybe_size is not None:
+                            return maybe_size
+
+                to_dict = getattr(candidate, "to_dict", None)
+                if callable(to_dict):
+                    try:
+                        as_dict = to_dict()
+                    except Exception:  # pragma: no cover - defensive
+                        as_dict = None
+                    if isinstance(as_dict, dict):
+                        maybe_size = _inner(as_dict)
+                        if maybe_size is not None:
+                            return maybe_size
+
+                return None
+
+            return _inner(source)
+
+        size = _extract_vector_size(params)
         if size is None:
             return False
         try:
-            size = int(size)
+            expected = int(expected_size)
         except (TypeError, ValueError):
             return False
-        return size == int(expected_size)
+        return size == expected
 
     def _create_collection(self, vector_size: int) -> None:
         create_fn = getattr(self.client, "create_collection", None)

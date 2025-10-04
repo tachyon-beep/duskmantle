@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import time
@@ -13,6 +14,7 @@ from uuid import uuid4
 
 import pytest
 from neo4j import GraphDatabase
+from urllib.parse import urlparse
 
 warnings.filterwarnings(
     "ignore",
@@ -24,6 +26,50 @@ warnings.filterwarnings(
     category=DeprecationWarning,
     module=r"neo4j\._sync\.driver",
 )
+
+_INTEGRATION_ENV_VAR = "KM_TEST_RUN_INTEGRATION"
+
+
+def _integration_enabled(config: pytest.Config) -> bool:
+    if config.getoption("run_integration", default=False):
+        return True
+    value = os.getenv(_INTEGRATION_ENV_VAR, "").strip().lower()
+    return value in {"1", "true", "yes", "on"}
+
+
+def _check_socket(host: str | None, port: int | None, *, timeout: float = 1.0) -> bool:
+    if not host or port is None:
+        return False
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def _probe_integration_services() -> dict[str, bool]:
+    results: dict[str, bool] = {}
+
+    neo4j_uri = os.getenv("NEO4J_TEST_URI") or os.getenv("KM_NEO4J_URI") or "bolt://127.0.0.1:7687"
+    parsed_neo4j = urlparse(neo4j_uri)
+    results["neo4j"] = _check_socket(parsed_neo4j.hostname, parsed_neo4j.port or 7687)
+
+    qdrant_url = os.getenv("KM_QDRANT_URL", "http://127.0.0.1:6333")
+    parsed_qdrant = urlparse(qdrant_url)
+    default_port = 443 if parsed_qdrant.scheme == "https" else 6333
+    results["qdrant"] = _check_socket(parsed_qdrant.hostname, parsed_qdrant.port or default_port)
+
+    return results
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    parser.addoption(
+        "--run-integration",
+        dest="run_integration",
+        action="store_true",
+        default=False,
+        help="Run integration tests that require external services (Neo4j, Qdrant, etc.)",
+    )
 
 
 try:  # pragma: no cover - simple import guard
@@ -258,11 +304,42 @@ def neo4j_test_environment() -> Iterator[dict[str, str | None]]:
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    integration_enabled = _integration_enabled(config)
+    service_status: dict[str, bool] = {}
+    if integration_enabled:
+        service_status = _probe_integration_services()
+
     for item in items:
-        if "neo4j" not in item.keywords:
-            continue
-        fixturenames = getattr(item, "fixturenames", None)
-        if not isinstance(fixturenames, list):
-            continue
-        if "neo4j_test_environment" not in fixturenames:
-            fixturenames.insert(0, "neo4j_test_environment")
+        integration_marker = item.get_closest_marker("integration")
+        requires_integration = integration_marker is not None or "neo4j" in item.keywords
+
+        if requires_integration:
+            if not integration_enabled:
+                item.add_marker(
+                    pytest.mark.skip(
+                        reason="Integration tests require external services; pass --run-integration or set KM_TEST_RUN_INTEGRATION=1",
+                    )
+                )
+                continue
+
+            required_services = set(integration_marker.args if integration_marker else ())
+            if "neo4j" in item.keywords:
+                required_services.add("neo4j")
+            if not required_services:
+                required_services = {"neo4j", "qdrant"}
+
+            missing = [name for name in sorted(required_services) if not service_status.get(name, False)]
+            if missing:
+                item.add_marker(
+                    pytest.mark.skip(
+                        reason="Integration dependencies unavailable: " + ", ".join(missing),
+                    )
+                )
+                continue
+
+        if "neo4j" in item.keywords:
+            fixturenames = getattr(item, "fixturenames", None)
+            if not isinstance(fixturenames, list):
+                continue
+            if "neo4j_test_environment" not in fixturenames:
+                fixturenames.insert(0, "neo4j_test_environment")

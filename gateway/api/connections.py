@@ -225,14 +225,19 @@ class QdrantConnectionManager:
             self.mark_failure(exc)
             return False
         self._record_success()
+        self._client = client
         return True
 
     def _create_client(self) -> QdrantClient:
         try:
+            timeout = getattr(self._settings, 'qdrant_timeout_seconds', 60.0)
             client = QDRANT_CLIENT_FACTORY(
                 url=self._settings.qdrant_url,
                 api_key=self._settings.qdrant_api_key,
+                timeout=timeout,
             )
+            if not hasattr(client, 'get_collections'):
+                raise RuntimeError('Qdrant client does not expose get_collections()')
         except (ValueError, ConnectionError, RuntimeError) as exc:
             self._log.warning("Qdrant client initialization failed: %s", exc)
             self.mark_failure(exc)

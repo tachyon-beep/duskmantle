@@ -45,6 +45,8 @@ _IMAGE_SUFFIXES = {
     ".gif",
 }
 
+_EXCLUDED_FILENAMES = {'.env'}
+
 _MESSAGE_PATTERN = re.compile(r"[A-Z]\w*Message")
 _TELEMETRY_PATTERN = re.compile(r"Telemetry\w+")
 
@@ -81,6 +83,8 @@ def discover(config: DiscoveryConfig) -> Iterable[Artifact]:
         if not path.is_file():
             continue
         if not _should_include(path, repo_root, config.include_patterns):
+            continue
+        if _is_excluded(path):
             continue
         suffix = path.suffix.lower()
         is_image = suffix in _IMAGE_SUFFIXES
@@ -142,6 +146,15 @@ def discover(config: DiscoveryConfig) -> Iterable[Artifact]:
             git_timestamp=git_timestamp,
             extra_metadata=extra,
         )
+
+
+def _is_excluded(path: Path) -> bool:
+    name = path.name
+    if name in _EXCLUDED_FILENAMES:
+        return True
+    if name.startswith('.env.') and not name.endswith('.env.example'):
+        return True
+    return False
 
 
 def _should_include(path: Path, repo_root: Path, include_patterns: tuple[str, ...]) -> bool:

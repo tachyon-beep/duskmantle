@@ -124,6 +124,7 @@ def _stub_managers(
 
 
 @pytest.mark.neo4j
+@pytest.mark.integration("neo4j")
 def test_auto_migrate_runs_when_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("KM_GRAPH_AUTO_MIGRATE", "true")
 
@@ -147,6 +148,7 @@ def test_auto_migrate_runs_when_enabled(monkeypatch: pytest.MonkeyPatch) -> None
 
 
 @pytest.mark.neo4j
+@pytest.mark.integration("neo4j")
 def test_auto_migrate_skipped_when_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("KM_GRAPH_AUTO_MIGRATE", raising=False)
 
@@ -164,6 +166,7 @@ def test_auto_migrate_skipped_when_disabled(monkeypatch: pytest.MonkeyPatch) -> 
 
 
 @pytest.mark.neo4j
+@pytest.mark.integration("neo4j")
 def test_auto_migrate_records_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("KM_GRAPH_AUTO_MIGRATE", "true")
 
@@ -187,6 +190,7 @@ def test_auto_migrate_records_failure(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.neo4j
+@pytest.mark.integration("neo4j")
 def test_missing_database_disables_graph_driver(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("KM_GRAPH_AUTO_MIGRATE", raising=False)
 

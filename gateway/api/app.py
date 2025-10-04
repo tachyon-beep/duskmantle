@@ -22,6 +22,7 @@ from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from slowapi.util import get_remote_address
+from starlette.middleware.sessions import SessionMiddleware
 
 from gateway import get_version
 from gateway.api import connections as connection_utils
@@ -370,6 +371,15 @@ def create_app() -> FastAPI:
         lifespan=_build_lifespan(settings),
     )
     app.state.settings = settings
+
+    if settings.ui_login_enabled:
+        app.add_middleware(
+            SessionMiddleware,
+            secret_key=settings.resolved_ui_session_secret(),
+            same_site="lax",
+            https_only=settings.ui_session_secure_cookie,
+        )
+
     app.mount("/ui/static", StaticFiles(directory=str(get_static_path())), name="ui-static")
     app.include_router(ui_router)
 

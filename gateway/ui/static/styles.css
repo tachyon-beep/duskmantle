@@ -101,6 +101,10 @@ body {
   box-shadow: 0 16px 40px rgba(8, 12, 20, 0.45);
 }
 
+.dm-card--form {
+  max-width: 420px;
+}
+
 .dm-card--wide {
   grid-column: 1 / -1;
 }
@@ -195,6 +199,15 @@ body {
   flex-wrap: wrap;
 }
 
+.dm-inline-form {
+  display: inline;
+  margin: 0;
+}
+
+.dm-inline-form .dm-button {
+  margin-left: 0.5rem;
+}
+
 .dm-form {
   display: grid;
   gap: 1rem;
@@ -206,7 +219,8 @@ body {
 }
 
 .dm-form input[type="text"],
-.dm-form input[type="number"] {
+.dm-form input[type="number"],
+.dm-form input[type="password"] {
   margin-top: 0.35rem;
   width: 100%;
   padding: 0.6rem 0.75rem;

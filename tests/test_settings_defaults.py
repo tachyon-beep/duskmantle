@@ -67,3 +67,15 @@ def test_editor_uri_template_respects_env(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setenv("KM_EDITOR_URI_TEMPLATE", "vscode://file/{abs_path}:{line_start}")
     settings = AppSettings()
     assert settings.editor_uri_template == "vscode://file/{abs_path}:{line_start}"
+
+
+def test_qdrant_timeout_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("KM_QDRANT_TIMEOUT_SECONDS", raising=False)
+    settings = AppSettings()
+    assert settings.qdrant_timeout_seconds == 60.0
+
+
+def test_qdrant_timeout_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("KM_QDRANT_TIMEOUT_SECONDS", "120")
+    settings = AppSettings()
+    assert settings.qdrant_timeout_seconds == 120.0

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+import hashlib
 from pathlib import Path
 from typing import Literal
 
@@ -62,6 +63,7 @@ class AppSettings(BaseSettings):
     qdrant_url: str = Field("http://localhost:6333", alias="KM_QDRANT_URL")
     qdrant_api_key: str | None = Field(None, alias="KM_QDRANT_API_KEY")
     qdrant_collection: str = Field("km_knowledge_v1", alias="KM_QDRANT_COLLECTION")
+    qdrant_timeout_seconds: float = Field(60.0, alias="KM_QDRANT_TIMEOUT_SECONDS")
     image_qdrant_collection: str = Field("km_media_v1", alias="KM_QDRANT_COLLECTION_IMAGES")
 
     neo4j_uri: str = Field("bolt://localhost:7687", alias="KM_NEO4J_URI")
@@ -97,6 +99,12 @@ class AppSettings(BaseSettings):
     backup_destination: Path | None = Field(None, alias="KM_BACKUP_DEST_PATH")
     backup_script_path: Path | None = Field(None, alias="KM_BACKUP_SCRIPT")
     strict_dependency_startup: bool = Field(True, alias="KM_STRICT_DEPENDENCY_STARTUP")
+
+    ui_login_enabled: bool = Field(False, alias="KM_UI_LOGIN_ENABLED")
+    ui_username: str = Field("admin", alias="KM_UI_USERNAME")
+    ui_password: str | None = Field(None, alias="KM_UI_PASSWORD")
+    ui_session_secret: str | None = Field(None, alias="KM_UI_SESSION_SECRET")
+    ui_session_secure_cookie: bool = Field(True, alias="KM_UI_SESSION_SECURE_COOKIE")
 
     lifecycle_report_enabled: bool = Field(True, alias="KM_LIFECYCLE_REPORT_ENABLED")
     lifecycle_stale_days: int = Field(30, alias="KM_LIFECYCLE_STALE_DAYS")
@@ -145,6 +153,10 @@ class AppSettings(BaseSettings):
             values.text_embedding_model = values.embedding_model
         if values.image_embedding_model is not None and not values.image_embedding_model.strip():
             values.image_embedding_model = None
+        if values.ui_login_enabled and not (values.ui_password and values.ui_password.strip()):
+            raise ValueError(
+                "KM_UI_LOGIN_ENABLED=true but KM_UI_PASSWORD is unset; provide a UI password distinct from API tokens.",
+            )
         return values
 
     model_config = {
@@ -197,6 +209,12 @@ class AppSettings(BaseSettings):
         if value < 0:
             return 0
         return value
+
+    def resolved_ui_session_secret(self) -> str:
+        """Return a deterministic secret for UI sessions."""
+
+        seed = self.ui_session_secret or self.ui_password or self.maintainer_token or "duskmantle-ui"
+        return hashlib.sha256(seed.encode("utf-8")).hexdigest()
 
     @field_validator("graph_subsystem_cache_max_entries")
     @classmethod

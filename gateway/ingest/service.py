@@ -55,7 +55,12 @@ def execute_ingestion(
         if qdrant_manager is not None:
             qdrant_client = qdrant_manager.get_client()
         else:
-            qdrant_client = QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
+            timeout = getattr(settings, 'qdrant_timeout_seconds', 60.0)
+            qdrant_client = QdrantClient(
+                url=settings.qdrant_url,
+                api_key=settings.qdrant_api_key,
+                timeout=timeout,
+            )
         qdrant_writer = QdrantWriter(qdrant_client, settings.qdrant_collection)
         if settings.image_embedding_model:
             image_qdrant_writer = QdrantWriter(qdrant_client, settings.image_qdrant_collection)

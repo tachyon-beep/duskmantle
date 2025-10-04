@@ -24,6 +24,11 @@
         <button class="dm-button dm-button--ghost" type="button" data-dm-toggle-contrast aria-pressed="false">Enable high contrast</button>
         <button class="dm-button dm-button--ghost" type="button" data-dm-toggle-motion aria-pressed="false">Reduce motion</button>
         <button class="dm-button" type="button" data-dm-open-tokens>Tokens</button>
+        {% if request.state.ui_authenticated %}
+        <form method="post" action="/ui/logout" class="dm-inline-form">
+          <button class="dm-button dm-button--ghost" type="submit">Sign out</button>
+        </form>
+        {% endif %}
       </div>
     </header>
 

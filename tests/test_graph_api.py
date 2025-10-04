@@ -16,6 +16,18 @@ from gateway.graph.migrations.runner import MigrationRunner
 from gateway.ingest.neo4j_writer import Neo4jWriter
 from gateway.ingest.pipeline import IngestionConfig, IngestionPipeline
 
+
+def _ensure_neo4j_available(uri: str, auth: tuple[str, str] | None, database: str) -> None:
+    try:
+        driver = GraphDatabase.driver(uri, auth=auth, connection_timeout=1.0)
+        try:
+            with driver.session(database=database) as session:
+                session.run("RETURN 1 AS ok").consume()
+        finally:
+            driver.close()
+    except Exception as exc:  # pragma: no cover - connectivity guard
+        pytest.skip(f"Neo4j unavailable at {uri}: {exc}")
+
 GRAPH_PREFIX = f"{API_V1_PREFIX}/graph"
 
 
@@ -249,6 +261,7 @@ def test_graph_node_accepts_slash_encoded_ids(app: FastAPI) -> None:
 
 
 @pytest.mark.neo4j
+@pytest.mark.integration("neo4j")
 def test_graph_node_endpoint_live(monkeypatch: pytest.MonkeyPatch, tmp_path: pytest.PathLike[str]) -> None:
     uri = os.getenv("NEO4J_TEST_URI")
     user = os.getenv("NEO4J_TEST_USER", "neo4j")
@@ -257,6 +270,9 @@ def test_graph_node_endpoint_live(monkeypatch: pytest.MonkeyPatch, tmp_path: pyt
 
     if not uri:
         pytest.skip("Set NEO4J_TEST_URI to run Neo4j integration tests")
+
+    auth = (user, password) if user is not None else None
+    _ensure_neo4j_available(uri, auth, database)
 
     monkeypatch.setenv("KM_NEO4J_DATABASE", database)
     monkeypatch.setenv("KM_NEO4J_URI", uri)
@@ -299,6 +315,7 @@ def test_graph_node_endpoint_live(monkeypatch: pytest.MonkeyPatch, tmp_path: pyt
 
 
 @pytest.mark.neo4j
+@pytest.mark.integration("neo4j")
 def test_graph_search_endpoint_live(monkeypatch: pytest.MonkeyPatch, tmp_path: pytest.PathLike[str]) -> None:
     uri = os.getenv("NEO4J_TEST_URI")
     user = os.getenv("NEO4J_TEST_USER", "neo4j")
@@ -307,6 +324,9 @@ def test_graph_search_endpoint_live(monkeypatch: pytest.MonkeyPatch, tmp_path: p
 
     if not uri:
         pytest.skip("Set NEO4J_TEST_URI to run Neo4j integration tests")
+
+    auth = (user, password) if user is not None else None
+    _ensure_neo4j_available(uri, auth, database)
 
     monkeypatch.setenv("KM_NEO4J_DATABASE", database)
     monkeypatch.setenv("KM_NEO4J_URI", uri)
