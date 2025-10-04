@@ -226,6 +226,7 @@ Launch `gateway-mcp` to expose the gateway over the Model Context Protocol so ag
    | Tool | Scope | Purpose |
    |------|-------|---------|
    | `km-search` | reader | Hybrid search with scoring breakdown and optional graph context. |
+   | `km-graph-tests-of` | reader | List tests associated with a symbol via `EXERCISES` edges. |
    | `km-graph-node` | reader | Fetch a node and relationships by ID (`DesignDoc:docs/...`). |
    | `km-graph-subsystem` | reader | Inspect subsystem metadata, related nodes, and artifacts. |
    | `km-graph-search` | reader | Term search across graph entities. |

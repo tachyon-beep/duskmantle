@@ -27,7 +27,7 @@ The tool pack consists of three cooperative services plus automation:
 - Written in Python 3.12+.
 - Responsibilities:
   - Ingest/normalize repository artifacts.
-  - Generate embeddings via a chosen model (default: `sentence-transformers/all-MiniLM-L6-v2`, configurable).
+  - Generate text embeddings with `FlagEmbedding` (`BAAI/bge-m3`, 8192-token context, automatic GPU detection) and reserve a multimodal encoder (`sentence-transformers/clip-ViT-L-14`) for visual assets. Configure overrides with `KM_TEXT_EMBEDDING_MODEL` and `KM_IMAGE_EMBEDDING_MODEL` when experimenting.
   - Upsert vectors into Qdrant with rich payload metadata.
   - Maintain Neo4j nodes/edges reflecting the contract-first architecture.
   - Expose a REST API for combined vector + graph queries.
@@ -57,7 +57,7 @@ Each ingested artifact must capture:
 ## 4. Vector Index Schema (Qdrant)
 
 - Collection name: `km_knowledge_v1` (suffix version allows future migrations).
-- Vector size: determined by embedding model; store in collection metadata.
+- Vector size: 1,024 dimensions (default BGE-M3); store in collection metadata to guard collection resets when switching models.
 - Payload fields (all indexed):
   - `path` (string)
   - `artifact_type` (enum string)

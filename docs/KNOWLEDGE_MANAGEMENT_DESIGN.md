@@ -47,7 +47,7 @@ The runtime is a trio of co-located services managed inside the container by a l
 ### 3.2 Qdrant Vector Store
 
 - Runs using the official Qdrant binary inside the container.
-- Collection `km_knowledge_v1` sized for MiniLM (384 dimensions). Uses on-disk storage rooted at `/opt/knowledge/var/qdrant`.
+- Collection `km_knowledge_v1` sized for BGE-M3 (1,024 dimensions). Uses on-disk storage rooted at `/opt/knowledge/var/qdrant`.
 - HNSW parameters preset for balanced recall/latency given modest corpus (<5M chunks).
 
 ### 3.3 Neo4j Graph Database
@@ -96,7 +96,7 @@ The runtime is a trio of co-located services managed inside the container by a l
 ### 5.2 Chunking & Embedding
 
 - 1,000-character windows with 200-character overlap by default; runtime chunker implemented in `gateway/ingest/chunking.py` with environment-tunable window/overlap values.
-- Uses `sentence-transformers/all-MiniLM-L6-v2` shipped offline. Batched inference (batch=64) via CPU; togglable GPU support if container launched with `--gpus`. A deterministic dummy embedder supports dry runs and tests.
+- Uses FlagEmbedding `BAAI/bge-m3` for text and sentence-transformers `sentence-transformers/clip-ViT-L-14` for images. Batched inference auto-detects CUDA and falls back to CPU. Override via `KM_TEXT_EMBEDDING_MODEL`/`KM_IMAGE_EMBEDDING_MODEL`. A deterministic dummy embedder supports dry runs and tests.
 
 ### 5.3 Index & Graph Upserts
 

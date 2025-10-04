@@ -3,14 +3,20 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
+import json
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, Mapping
 
 from rich.console import Console
 
 from gateway.config.settings import AppSettings, get_settings
 from gateway.observability import configure_logging, configure_tracing
+from gateway.mcp.client import GatewayClient
+from gateway.mcp.config import MCPSettings
+from gateway.mcp.exceptions import GatewayRequestError, MissingTokenError
 from gateway.search.evaluation import evaluate_model
 from gateway.search.exporter import (
     ExportOptions,
@@ -139,6 +145,55 @@ def build_parser() -> argparse.ArgumentParser:
         "model",
         type=Path,
         help="Path to the model artifact JSON",
+    )
+
+    search_parser = subparsers.add_parser(
+        "search",
+        help="Execute a search query against the gateway API",
+    )
+    search_parser.add_argument("query", help="Search query text")
+    search_parser.add_argument(
+        "--limit",
+        type=int,
+        default=10,
+        help="Maximum number of results to return (default: 10, max: 25)",
+    )
+    search_parser.add_argument(
+        "--symbol",
+        action="append",
+        dest="symbols",
+        help="Symbol filter (repeatable or comma-separated)",
+    )
+    search_parser.add_argument(
+        "--kind",
+        action="append",
+        dest="symbol_kinds",
+        help="Symbol kind filter (repeatable or comma-separated)",
+    )
+    search_parser.add_argument(
+        "--lang",
+        action="append",
+        dest="symbol_languages",
+        help="Symbol language filter (repeatable or comma-separated)",
+    )
+    search_parser.add_argument(
+        "--filters",
+        help="Additional filters JSON payload to merge with flag-provided filters",
+    )
+    search_parser.add_argument(
+        "--no-graph",
+        action="store_true",
+        help="Disable graph enrichment in responses (enabled by default)",
+    )
+    search_parser.add_argument(
+        "--sort-by-vector",
+        action="store_true",
+        help="Sort strictly by vector score (otherwise hybrid scoring applies)",
+    )
+    search_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit raw JSON instead of a human-friendly summary",
     )
 
     subparsers.add_parser(
@@ -344,6 +399,201 @@ def evaluate_trained_model(*, dataset: Path, model: Path) -> None:
     )
 
 
+def command_search(args: argparse.Namespace) -> None:
+    """Execute a search request against the gateway API."""
+    filters = _load_filters(args.filters)
+
+    symbol_terms = _collect_symbol_terms(args.symbols)
+    if symbol_terms:
+        _merge_symbol_filter(filters, symbol_terms)
+
+    kind_terms = _collect_lower_terms(args.symbol_kinds)
+    if kind_terms:
+        _merge_lowercase_filter(filters, "symbol_kinds", kind_terms)
+
+    language_terms = _collect_lower_terms(args.symbol_languages)
+    if language_terms:
+        _merge_lowercase_filter(filters, "symbol_languages", language_terms)
+
+    payload: dict[str, Any] = {
+        "query": args.query,
+        "limit": max(1, min(args.limit, 25)),
+        "include_graph": not args.no_graph,
+    }
+    if args.sort_by_vector:
+        payload["sort_by_vector"] = True
+    if filters:
+        payload["filters"] = filters
+
+    settings = MCPSettings()
+
+    async def _execute() -> dict[str, Any]:
+        async with GatewayClient(settings) as client:
+            return await client.search(payload)
+
+    try:
+        result = asyncio.run(_execute())
+    except MissingTokenError as exc:  # pragma: no cover - depends on env configuration
+        console.print(f"Missing token: {exc}", style="red")
+        raise SystemExit(1) from exc
+    except GatewayRequestError as exc:  # pragma: no cover - network path
+        detail = exc.detail or "gateway request failed"
+        console.print(f"Search failed ({exc.status_code}): {detail}", style="red")
+        payload = getattr(exc, "payload", None)
+        if payload:
+            try:
+                console.print_json(data=payload)
+            except Exception:  # pragma: no cover - defensive
+                console.print(str(payload))
+        raise SystemExit(1) from exc
+    except Exception as exc:  # pragma: no cover - defensive
+        console.print(f"Search failed: {exc}", style="red")
+        raise SystemExit(1) from exc
+
+    if args.json:
+        console.print_json(data=result)
+    else:
+        _render_search_results(result)
+
+
+def _load_filters(raw: str | None) -> dict[str, Any]:
+    if not raw:
+        return {}
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        console.print(f"Invalid filters JSON: {exc}", style="red")
+        raise SystemExit(1) from exc
+    if not isinstance(data, dict):
+        console.print("Filters payload must be a JSON object", style="red")
+        raise SystemExit(1)
+    return dict(data)
+
+
+def _collect_symbol_terms(values: list[str] | None) -> list[str]:
+    if not values:
+        return []
+    terms: list[str] = []
+    seen: set[str] = set()
+    for raw in values:
+        for part in str(raw).split(","):
+            term = part.strip()
+            if not term:
+                continue
+            key = term.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            terms.append(term)
+    return terms
+
+
+def _collect_lower_terms(values: list[str] | None) -> list[str]:
+    if not values:
+        return []
+    terms: list[str] = []
+    seen: set[str] = set()
+    for raw in values:
+        for part in str(raw).split(","):
+            term = part.strip().lower()
+            if not term or term in seen:
+                continue
+            seen.add(term)
+            terms.append(term)
+    return terms
+
+
+def _merge_symbol_filter(filters: dict[str, Any], additions: list[str]) -> None:
+    existing = filters.get("symbols")
+    merged: list[str] = []
+    seen: set[str] = set()
+    if isinstance(existing, list):
+        for value in existing:
+            text = str(value).strip()
+            if not text:
+                continue
+            key = text.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(text)
+    for value in additions:
+        key = value.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(value)
+    filters["symbols"] = merged
+
+
+def _merge_lowercase_filter(filters: dict[str, Any], key: str, additions: list[str]) -> None:
+    existing = filters.get(key)
+    merged: list[str] = []
+    seen: set[str] = set()
+    if isinstance(existing, list):
+        for value in existing:
+            text = str(value).strip().lower()
+            if not text or text in seen:
+                continue
+            seen.add(text)
+            merged.append(text)
+    for value in additions:
+        if value in seen:
+            continue
+        seen.add(value)
+        merged.append(value)
+    filters[key] = merged
+
+
+def _render_search_results(result: Mapping[str, Any]) -> None:
+    request_id = result.get("request_id") if isinstance(result, Mapping) else None
+    if request_id:
+        console.print(f"Request ID: {request_id}")
+
+    hits = []
+    if isinstance(result, Mapping):
+        raw_hits = result.get("results")
+        if isinstance(raw_hits, list):
+            hits = raw_hits
+
+    console.print(f"[bold]{len(hits)} result(s)[/bold]")
+    for idx, entry in enumerate(hits, 1):
+        if not isinstance(entry, Mapping):
+            continue
+        chunk = entry.get("chunk")
+        if not isinstance(chunk, Mapping):
+            chunk = {}
+        score_info = entry.get("score")
+        combined_score = None
+        if isinstance(score_info, Mapping):
+            combined_score = score_info.get("combined")
+        path = (
+            chunk.get("path")
+            or chunk.get("artifact_path")
+            or (chunk.get("metadata") or {}).get("path")
+        )
+        console.print(f"[bold]{idx}. {path or 'unknown path'}[/bold]")
+        if combined_score is not None:
+            console.print(f"   combined score: {combined_score}")
+        snippet = chunk.get("snippet") or chunk.get("text")
+        if isinstance(snippet, str) and snippet.strip():
+            preview_line = snippet.strip().splitlines()[0][:160]
+            console.print(f"   snippet: {preview_line}")
+        symbols = chunk.get("symbols")
+        if isinstance(symbols, list) and symbols:
+            first = symbols[0]
+            if isinstance(first, Mapping):
+                qualifier = first.get("qualified_name") or first.get("name")
+                kind = first.get("kind")
+                language = first.get("language")
+                console.print(
+                    "   symbol: {qual} ({kind}/{lang})".format(
+                        qual=qualifier or "?",
+                        kind=kind or "?",
+                        lang=language or "?",
+                    )
+                )
+
 def main(argv: list[str] | None = None) -> None:
     """Entry point for the `gateway-search` command-line interface."""
     configure_logging()
@@ -352,7 +602,9 @@ def main(argv: list[str] | None = None) -> None:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    if args.command == "export-training-data":
+    if args.command == "search":
+        command_search(args)
+    elif args.command == "export-training-data":
         export_training_data(
             output=args.output,
             fmt=args.format,

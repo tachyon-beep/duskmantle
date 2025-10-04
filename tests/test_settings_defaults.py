@@ -22,6 +22,28 @@ def test_auth_enabled_defaults_true(monkeypatch: pytest.MonkeyPatch) -> None:
     settings = AppSettings()
     assert settings.auth_enabled is True
 
+def test_embedding_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("KM_EMBEDDING_MODEL", raising=False)
+    monkeypatch.delenv("KM_TEXT_EMBEDDING_MODEL", raising=False)
+    monkeypatch.delenv("KM_IMAGE_EMBEDDING_MODEL", raising=False)
+    settings = AppSettings()
+    assert settings.embedding_model == "BAAI/bge-m3"
+    assert settings.text_embedding_model == "BAAI/bge-m3"
+    assert settings.image_embedding_model == "sentence-transformers/clip-ViT-L-14"
+
+
+def test_text_embedding_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("KM_TEXT_EMBEDDING_MODEL", "BAAI/bge-base-en")
+    settings = AppSettings()
+    assert settings.text_embedding_model == "BAAI/bge-base-en"
+    assert settings.embedding_model == "BAAI/bge-m3"
+
+
+def test_image_embedding_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("KM_IMAGE_EMBEDDING_MODEL", "sentence-transformers/clip-ViT-B-16")
+    settings = AppSettings()
+    assert settings.image_embedding_model == "sentence-transformers/clip-ViT-B-16"
+
 def test_symbols_disabled_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("KM_SYMBOLS_ENABLED", raising=False)
     settings = AppSettings()

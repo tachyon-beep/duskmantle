@@ -48,7 +48,9 @@ class IngestionConfig:
     dry_run: bool = False
     chunk_window: int = 1000
     chunk_overlap: int = 200
-    embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+    embedding_model: str = "BAAI/bge-m3"
+    text_embedding_model: str | None = None
+    image_embedding_model: str | None = "sentence-transformers/clip-ViT-L-14"
     use_dummy_embeddings: bool = False
     environment: str = "local"
     include_patterns: tuple[str, ...] = (
@@ -65,6 +67,10 @@ class IngestionConfig:
     embed_parallel_workers: int = 2
     max_pending_batches: int = 4
     symbols_enabled: bool = False
+
+    def __post_init__(self) -> None:
+        if self.text_embedding_model is None:
+            self.text_embedding_model = self.embedding_model
 
 
 @dataclass(slots=True)
@@ -91,9 +97,11 @@ class IngestionPipeline:
         qdrant_writer: QdrantWriter | None,
         neo4j_writer: Neo4jWriter | None,
         config: IngestionConfig,
+        image_qdrant_writer: QdrantWriter | None = None,
     ) -> None:
         """Initialise the pipeline with writer backends and configuration."""
         self.qdrant_writer = qdrant_writer
+        self.image_qdrant_writer = image_qdrant_writer
         self.neo4j_writer = neo4j_writer
         self.config = config
         self._ledger_lock: FileLock | None = None
@@ -122,7 +130,7 @@ class IngestionPipeline:
                 "km.profile": profile,
                 "km.repo_head": repo_head or "",
                 "km.dry_run": self.config.dry_run,
-                "km.embedding_model": self.config.embedding_model,
+                "km.embedding_model": self.config.text_embedding_model,
             },
         )
 
@@ -167,8 +175,33 @@ class IngestionPipeline:
                 total_chunk_count = 0
 
                 embedder = self._build_embedder()
+                image_embedder: Embedder | None = None
+                if (
+                    not self.config.use_dummy_embeddings
+                    and self.config.image_embedding_model
+                ):
+                    try:
+                        image_embedder = Embedder(self.config.image_embedding_model, kind="image")
+                    except Exception as exc:
+                        logger.warning("Image embedder unavailable: %s", exc)
+                        image_embedder = None
+
+                image_artifacts: list[Artifact] = []
+                text_artifacts: list[Artifact] = []
+                for artifact in artifacts:
+                    if artifact.artifact_type == "image":
+                        image_artifacts.append(artifact)
+                    else:
+                        text_artifacts.append(artifact)
+
                 if self.qdrant_writer and not self.config.dry_run:
                     self.qdrant_writer.ensure_collection(embedder.dimension)
+                if (
+                    self.image_qdrant_writer
+                    and image_embedder is not None
+                    and not self.config.dry_run
+                ):
+                    self.image_qdrant_writer.ensure_collection(image_embedder.dimension)
 
                 pending_batches: deque[tuple[Future[list[list[float]]], list[Chunk]]] = deque()
 
@@ -181,9 +214,9 @@ class IngestionPipeline:
 
                 with ThreadPoolExecutor(max_workers=max_workers) as executor:
                     with tracer.start_as_current_span("ingestion.chunk") as chunk_span:
-                        for artifact in artifacts:
+                        for artifact in text_artifacts:
                             artifact_counts[artifact.artifact_type] = artifact_counts.get(artifact.artifact_type, 0) + 1
-                            artifact_digest = hashlib.sha256(artifact.content.encode("utf-8")).hexdigest()
+                            artifact_digest, _ = self._compute_artifact_digest(artifact)
                             path_text = artifact.path.as_posix()
                             existing_entry = ledger_previous.get(path_text)
                             subsystem_criticality = artifact.extra_metadata.get("subsystem_criticality")
@@ -276,6 +309,106 @@ class IngestionPipeline:
                         while pending_batches:
                             _drain_one()
 
+                        for artifact in image_artifacts:
+                            artifact_counts[artifact.artifact_type] = artifact_counts.get(artifact.artifact_type, 0) + 1
+                            artifact_digest, artifact_bytes = self._compute_artifact_digest(artifact)
+                            path_text = artifact.path.as_posix()
+                            existing_entry = ledger_previous.get(path_text)
+                            subsystem_criticality = artifact.extra_metadata.get("subsystem_criticality")
+
+                            chunk_count_existing: int | None = None
+                            coverage_ratio_existing: float | None = None
+                            if self.config.incremental and existing_entry and existing_entry.get("digest") == artifact_digest:
+                                chunk_count_existing = _coerce_int(existing_entry.get("chunk_count"))
+                                if chunk_count_existing is not None:
+                                    coverage_ratio_existing = _coerce_float(existing_entry.get("coverage_ratio"))
+                                    if coverage_ratio_existing is None:
+                                        coverage_ratio_existing = 1.0 if chunk_count_existing else 0.0
+                            if chunk_count_existing is not None:
+                                artifact_details.append(
+                                    {
+                                        "path": path_text,
+                                        "artifact_type": artifact.artifact_type,
+                                        "subsystem": artifact.subsystem,
+                                        "chunk_count": chunk_count_existing,
+                                        "git_commit": artifact.git_commit,
+                                        "git_timestamp": artifact.git_timestamp,
+                                        "subsystem_criticality": subsystem_criticality,
+                                        "coverage_ratio": coverage_ratio_existing,
+                                        "content_digest": artifact_digest,
+                                        "skipped": True,
+                                        "symbols": artifact.extra_metadata.get("symbols"),
+                                        "exercises_symbols": artifact.extra_metadata.get("exercises_symbols"),
+                                    }
+                                )
+                                current_ledger_entries[path_text] = {
+                                    "artifact_type": artifact.artifact_type,
+                                    "subsystem": artifact.subsystem,
+                                    "digest": artifact_digest,
+                                    "git_commit": artifact.git_commit,
+                                    "git_timestamp": artifact.git_timestamp,
+                                    "chunk_count": chunk_count_existing,
+                                    "coverage_ratio": coverage_ratio_existing,
+                                    "last_seen": started,
+                                }
+                                INGEST_SKIPS_TOTAL.labels(reason="unchanged").inc()
+                                continue
+
+                            if self.neo4j_writer and not self.config.dry_run:
+                                self.neo4j_writer.sync_artifact(artifact)
+
+                            image_embeddings: list[ChunkEmbedding] = []
+                            if (
+                                not self.config.dry_run
+                                and self.image_qdrant_writer is not None
+                                and image_embedder is not None
+                            ):
+                                image_embeddings = self._embed_image_artifact(artifact, image_embedder, artifact_bytes)
+                                if image_embeddings:
+                                    for embedding in image_embeddings:
+                                        chunk = embedding.chunk
+                                        chunk.metadata["environment"] = profile
+                                        if subsystem_criticality is not None:
+                                            chunk.metadata["subsystem_criticality"] = subsystem_criticality
+                                        chunk.metadata["coverage_ratio"] = 1.0
+                                        chunk.metadata["coverage_missing"] = 0.0
+                                    total_chunk_count += self._persist_image_embeddings(image_embeddings)
+                            else:
+                                if image_embedder is None and not self.config.dry_run:
+                                    logger.warning("Image embedder not available; skipping vector index for %s", artifact.path)
+                                image_embeddings = []
+
+                            coverage_chunks = len(image_embeddings)
+                            coverage_ratio = 1.0 if coverage_chunks else 0.0
+
+                            artifact_details.append(
+                                {
+                                    "path": path_text,
+                                    "artifact_type": artifact.artifact_type,
+                                    "subsystem": artifact.subsystem,
+                                    "chunk_count": coverage_chunks,
+                                    "git_commit": artifact.git_commit,
+                                    "git_timestamp": artifact.git_timestamp,
+                                    "subsystem_criticality": subsystem_criticality,
+                                    "coverage_ratio": coverage_ratio,
+                                    "content_digest": artifact_digest,
+                                    "skipped": False,
+                                    "symbols": artifact.extra_metadata.get("symbols"),
+                                    "exercises_symbols": artifact.extra_metadata.get("exercises_symbols"),
+                                }
+                            )
+                            current_ledger_entries[path_text] = {
+                                "artifact_type": artifact.artifact_type,
+                                "subsystem": artifact.subsystem,
+                                "digest": artifact_digest,
+                                "git_commit": artifact.git_commit,
+                                "git_timestamp": artifact.git_timestamp,
+                                "chunk_count": coverage_chunks,
+                                "coverage_ratio": coverage_ratio,
+                                "last_seen": started,
+                            }
+                            total_chunk_count += coverage_chunks
+
                         chunk_span.set_attribute("km.ingest.chunk_total", total_chunk_count)
                         chunk_span.set_attribute(
                             "km.ingest.artifact_kinds",
@@ -338,11 +471,64 @@ class IngestionPipeline:
                     },
                 )
 
+    def _compute_artifact_digest(self, artifact: Artifact) -> tuple[str, bytes | None]:
+        if artifact.artifact_type == "image":
+            image_path = self.config.repo_root / artifact.path
+            try:
+                data = image_path.read_bytes()
+            except OSError as exc:
+                logger.warning("Failed to read image artifact %s: %s", artifact.path, exc)
+                return hashlib.sha256(artifact.path.as_posix().encode("utf-8")).hexdigest(), None
+            return hashlib.sha256(data).hexdigest(), data
+        return hashlib.sha256(artifact.content.encode("utf-8")).hexdigest(), None
+
+    def _embed_image_artifact(
+        self,
+        artifact: Artifact,
+        embedder: Embedder,
+        artifact_bytes: bytes | None,
+    ) -> list[ChunkEmbedding]:
+        image_path = self.config.repo_root / artifact.path
+        try:
+            vectors = embedder.encode([str(image_path)])
+        except Exception as exc:  # pragma: no cover - hardware dependent
+            logger.warning("Failed to embed image artifact %s: %s", artifact.path, exc)
+            return []
+        if not vectors:
+            return []
+        vector = vectors[0]
+        namespace = artifact.path.parts[0] if artifact.path.parts else ""
+        media_type = artifact.extra_metadata.get("media_type")
+        digest_source = artifact_bytes if artifact_bytes is not None else image_path.as_posix().encode("utf-8")
+        digest = hashlib.sha256(digest_source).hexdigest()
+        metadata = {
+            "path": artifact.path.as_posix(),
+            "artifact_type": artifact.artifact_type,
+            "subsystem": artifact.subsystem,
+            "git_commit": artifact.git_commit,
+            "git_timestamp": artifact.git_timestamp,
+            "content_digest": digest,
+            "chunk_index": 0,
+            "namespace": namespace,
+            "media_type": media_type,
+        }
+        metadata.update(artifact.extra_metadata)
+        chunk = Chunk(
+            artifact=artifact,
+            chunk_id=f"{artifact.path.as_posix()}::image",
+            text=artifact.path.name,
+            sequence=0,
+            content_digest=digest,
+            metadata=metadata,
+        )
+        return [ChunkEmbedding(chunk=chunk, vector=list(vector))]
+
     def _build_embedder(self) -> Embedder:
         if self.config.use_dummy_embeddings:
             logger.warning("Using dummy embeddings; results are not suitable for production")
             return DummyEmbedder()
-        return Embedder(self.config.embedding_model)
+        model_name = self.config.text_embedding_model or self.config.embedding_model
+        return Embedder(model_name, kind="text")
 
     def _encode_batch(self, embedder: Embedder, chunks: Sequence[Chunk]) -> list[list[float]]:
         return embedder.encode(chunk.text for chunk in chunks)
@@ -352,6 +538,15 @@ class IngestionPipeline:
         for chunk, vector in zip(chunks, vectors, strict=True):
             embeddings.append(ChunkEmbedding(chunk=chunk, vector=list(vector)))
         return embeddings
+
+    def _persist_image_embeddings(self, embeddings: Sequence[ChunkEmbedding]) -> int:
+        if not embeddings:
+            return 0
+        if self.image_qdrant_writer and not self.config.dry_run:
+            self.image_qdrant_writer.upsert_chunks(embeddings)
+        if self.neo4j_writer and not self.config.dry_run:
+            self.neo4j_writer.sync_chunks(embeddings)
+        return len(embeddings)
 
     def _persist_embeddings(self, embeddings: Sequence[ChunkEmbedding]) -> int:
         if not embeddings:
@@ -418,6 +613,11 @@ class IngestionPipeline:
                 self.qdrant_writer.delete_artifact(path)
             except Exception as exc:  # pragma: no cover - network error
                 errors.append(f"qdrant: {exc}")
+        if self.image_qdrant_writer is not None:
+            try:
+                self.image_qdrant_writer.delete_artifact(path)
+            except Exception as exc:  # pragma: no cover - network error
+                errors.append(f"qdrant_image: {exc}")
 
         if errors:
             message = ", ".join(errors)

@@ -200,6 +200,8 @@ def test_startup_logs_configuration(monkeypatch: pytest.MonkeyPatch, tmp_path: P
     record = startup_records[-1]
     assert record.version == get_version()
     assert record.embedding_model
+    assert record.text_embedding_model
+    assert record.image_embedding_model
     assert isinstance(record.search_weights, dict)
     assert record.search_weight_profile
 

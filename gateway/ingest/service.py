@@ -49,6 +49,7 @@ def execute_ingestion(
     state_path = settings.state_path
 
     qdrant_writer = None
+    image_qdrant_writer = None
     qdrant_client: QdrantClient | None = None
     if not dry:
         if qdrant_manager is not None:
@@ -56,6 +57,8 @@ def execute_ingestion(
         else:
             qdrant_client = QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
         qdrant_writer = QdrantWriter(qdrant_client, settings.qdrant_collection)
+        if settings.image_embedding_model:
+            image_qdrant_writer = QdrantWriter(qdrant_client, settings.image_qdrant_collection)
 
     neo4j_writer = None
     driver = None
@@ -87,7 +90,9 @@ def execute_ingestion(
         dry_run=dry,
         chunk_window=settings.ingest_window,
         chunk_overlap=settings.ingest_overlap,
-        embedding_model=settings.embedding_model,
+        embedding_model=settings.text_embedding_model or settings.embedding_model,
+        text_embedding_model=settings.text_embedding_model,
+        image_embedding_model=settings.image_embedding_model,
         use_dummy_embeddings=use_dummy,
         environment=profile,
         audit_path=audit_path,
@@ -100,7 +105,12 @@ def execute_ingestion(
         symbols_enabled=settings.symbols_enabled,
     )
 
-    pipeline = IngestionPipeline(qdrant_writer=qdrant_writer, neo4j_writer=neo4j_writer, config=config)
+    pipeline = IngestionPipeline(
+        qdrant_writer=qdrant_writer,
+        neo4j_writer=neo4j_writer,
+        config=config,
+        image_qdrant_writer=image_qdrant_writer,
+    )
 
     graph_service = None
     if driver is not None and settings.lifecycle_report_enabled:

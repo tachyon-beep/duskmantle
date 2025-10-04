@@ -31,26 +31,23 @@ class QdrantWriter:
         retries: int = 3,
         retry_backoff: float = 0.5,
     ) -> None:
-        """Ensure the collection exists without destructive recreation.
+        """Ensure the collection exists and matches the expected vector size."""
 
-        The method prefers non-destructive `create_collection` calls. Transient
-        errors trigger bounded retries with exponential backoff; conflicts are
-        treated as success. Destructive resets are exposed separately via
-        :meth:`reset_collection` to make data loss an explicit operator choice.
-        """
+        if self._collection_matches(vector_size):
+            return
 
         attempts = max(1, retries)
         for attempt in range(1, attempts + 1):
-            if self._collection_exists():
-                return
-
             try:
                 self._create_collection(vector_size)
                 return
             except UnexpectedResponse as exc:
                 status_code = getattr(exc, "status_code", None)
-                if status_code == 409:  # collection already exists
-                    logger.info("Qdrant collection %s already exists", self.collection_name)
+                if status_code == 409:
+                    logger.info("Qdrant collection %s exists; verifying vector size", self.collection_name)
+                    if not self._collection_matches(vector_size):
+                        logger.warning("Recreating Qdrant collection %s due to vector size change", self.collection_name)
+                        self.reset_collection(vector_size)
                     return
                 logger.warning(
                     "Qdrant create_collection failed for %s (attempt %d/%d): %s",
@@ -76,6 +73,7 @@ class QdrantWriter:
             if sleep_seconds:
                 time.sleep(sleep_seconds)
 
+    
     def reset_collection(self, vector_size: int) -> None:
         """Destructively recreate the collection, wiping all stored vectors."""
 
@@ -145,6 +143,34 @@ class QdrantWriter:
                 return False
 
         return False
+
+    def _collection_matches(self, expected_size: int) -> bool:
+        get_collection = getattr(self.client, "get_collection", None)
+        if not callable(get_collection):
+            return False
+        try:
+            info = get_collection(self.collection_name)
+        except Exception:
+            return False
+        config = getattr(info, "config", None)
+        params = getattr(config, "params", None)
+        size = None
+        if params is not None:
+            if hasattr(params, "size"):
+                size = getattr(params, "size", None)
+            elif hasattr(params, "values"):
+                values = getattr(params, "values", None)
+                if isinstance(values, dict):
+                    default = values.get("default")
+                    if default is not None:
+                        size = getattr(default, "size", None)
+        if size is None:
+            return False
+        try:
+            size = int(size)
+        except (TypeError, ValueError):
+            return False
+        return size == int(expected_size)
 
     def _create_collection(self, vector_size: int) -> None:
         create_fn = getattr(self.client, "create_collection", None)

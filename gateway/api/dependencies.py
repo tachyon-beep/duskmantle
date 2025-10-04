@@ -92,7 +92,8 @@ def get_search_service_dependency(
     embedder = getattr(request.app.state, "search_embedder", None)
     if embedder is None:
         try:
-            embedder = Embedder(settings.embedding_model)
+            model_name = settings.text_embedding_model or settings.embedding_model
+            embedder = Embedder(model_name, kind="text")
         except (RuntimeError, ValueError, OSError) as exc:  # pragma: no cover - loading errors logged
             logger.warning("Failed to initialize embedder: %s", exc)
             return None

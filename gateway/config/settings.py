@@ -6,7 +6,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 SEARCH_WEIGHT_PROFILES: dict[str, dict[str, float]] = {
@@ -62,6 +62,7 @@ class AppSettings(BaseSettings):
     qdrant_url: str = Field("http://localhost:6333", alias="KM_QDRANT_URL")
     qdrant_api_key: str | None = Field(None, alias="KM_QDRANT_API_KEY")
     qdrant_collection: str = Field("km_knowledge_v1", alias="KM_QDRANT_COLLECTION")
+    image_qdrant_collection: str = Field("km_media_v1", alias="KM_QDRANT_COLLECTION_IMAGES")
 
     neo4j_uri: str = Field("bolt://localhost:7687", alias="KM_NEO4J_URI")
     neo4j_user: str = Field("neo4j", alias="KM_NEO4J_USER")
@@ -72,7 +73,9 @@ class AppSettings(BaseSettings):
     neo4j_readonly_user: str | None = Field(None, alias="KM_NEO4J_READONLY_USER")
     neo4j_readonly_password: str | None = Field(None, alias="KM_NEO4J_READONLY_PASSWORD")
 
-    embedding_model: str = Field("sentence-transformers/all-MiniLM-L6-v2", alias="KM_EMBEDDING_MODEL")
+    embedding_model: str = Field("BAAI/bge-m3", alias="KM_EMBEDDING_MODEL")
+    text_embedding_model: str | None = Field(None, alias="KM_TEXT_EMBEDDING_MODEL")
+    image_embedding_model: str | None = Field("sentence-transformers/clip-ViT-L-14", alias="KM_IMAGE_EMBEDDING_MODEL")
     ingest_window: int = Field(1000, alias="KM_INGEST_WINDOW")
     ingest_overlap: int = Field(200, alias="KM_INGEST_OVERLAP")
     ingest_use_dummy_embeddings: bool = Field(False, alias="KM_INGEST_USE_DUMMY")
@@ -135,6 +138,14 @@ class AppSettings(BaseSettings):
     feedback_log_max_files: int = Field(5, alias="KM_FEEDBACK_LOG_MAX_FILES")
 
     dry_run: bool = Field(False, alias="KM_INGEST_DRY_RUN")
+
+    @model_validator(mode="after")
+    def _populate_embedding_models(cls, values: "AppSettings") -> "AppSettings":
+        if values.text_embedding_model is None:
+            values.text_embedding_model = values.embedding_model
+        if values.image_embedding_model is not None and not values.image_embedding_model.strip():
+            values.image_embedding_model = None
+        return values
 
     model_config = {
         "env_file": ".env",

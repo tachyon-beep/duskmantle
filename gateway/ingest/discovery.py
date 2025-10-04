@@ -36,6 +36,15 @@ _TEXTUAL_SUFFIXES = {
     ".sql",
 }
 
+_IMAGE_SUFFIXES = {
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".webp",
+    ".bmp",
+    ".gif",
+}
+
 _MESSAGE_PATTERN = re.compile(r"[A-Z]\w*Message")
 _TELEMETRY_PATTERN = re.compile(r"Telemetry\w+")
 
@@ -73,13 +82,18 @@ def discover(config: DiscoveryConfig) -> Iterable[Artifact]:
             continue
         if not _should_include(path, repo_root, config.include_patterns):
             continue
-        if not _is_textual(path):
+        suffix = path.suffix.lower()
+        is_image = suffix in _IMAGE_SUFFIXES
+        if not is_image and not _is_textual(path):
             continue
-        try:
-            content = path.read_text(encoding="utf-8")
-        except UnicodeDecodeError:
-            logger.debug("Skipping non-utf8 file %s", path)
-            continue
+        if is_image:
+            content = ""
+        else:
+            try:
+                content = path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                logger.debug("Skipping non-utf8 file %s", path)
+                continue
 
         relative_path = path.relative_to(repo_root)
         artifact_type = _infer_artifact_type(path, repo_root)
@@ -100,10 +114,11 @@ def discover(config: DiscoveryConfig) -> Iterable[Artifact]:
         git_commit, git_timestamp = _lookup_git_metadata(path, repo_root)
 
         extra: dict[str, Any] = {
-            "message_entities": sorted(set(_MESSAGE_PATTERN.findall(content))),
-            "telemetry_signals": sorted(set(_TELEMETRY_PATTERN.findall(content))),
+            "message_entities": sorted(set(_MESSAGE_PATTERN.findall(content))) if not is_image else [],
+            "telemetry_signals": sorted(set(_TELEMETRY_PATTERN.findall(content))) if not is_image else [],
             "subsystem_metadata": subsystem_meta,
             "subsystem_criticality": subsystem_meta.get("criticality"),
+            "media_type": suffix.lstrip(".") if is_image and suffix else None,
         }
 
         if config.symbols_enabled:

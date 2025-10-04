@@ -54,13 +54,13 @@ graph TD
 - **Scheduler**: APScheduler 3.10 for ingestion/backup automation.
 - **Vector Store**: Qdrant 1.7+ (HTTP client, HNSW retrieval).
 - **Graph Database**: Neo4j 5.14+ via official Python driver.
-- **Embeddings**: sentence-transformers `all-MiniLM-L6-v2` by default (configurable).
+- **Embeddings**: FlagEmbedding `BAAI/bge-m3` for text (8192-token context) and sentence-transformers `sentence-transformers/clip-ViT-L-14` for images; both auto-detect CUDA with CPU fallback.
 - **Observability**: Prometheus client metrics, python-json-logger for structured logs, OpenTelemetry exporters (`otlp`, console debugging).
 - **MCP Adapter**: FastMCP 2.12 bridging Codex CLI tools to gateway services.
 - **UI**: Jinja2 templates + static assets bundled under `gateway/ui` served by FastAPI.
 - **Testing/Linting**: pytest, pytest-asyncio, pytest-cov, Ruff, Black, mypy, Pylint (dev extras).
 
-Upgrade notes: Align on latest stable FastAPI/Uvicorn, Neo4j driver, and Qdrant client; monitor sentence-transformers releases for embedding quality, and keep OpenTelemetry exporters in lockstep (OTLP 1.24 currently).
+Upgrade notes: Align on latest stable FastAPI/Uvicorn, Neo4j driver, and Qdrant client; monitor FlagEmbedding and sentence-transformers releases for embedding quality, and keep OpenTelemetry exporters in lockstep (OTLP 1.24 currently).
 
 ## Key Features & Capabilities
 - Hybrid search API combines dense vector retrieval (Qdrant) with graph-aware enrichment (Neo4j) and supports heuristic or ML-based ranking.
