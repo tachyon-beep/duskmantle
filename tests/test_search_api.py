@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from gateway.api.app import create_app
+from gateway.api.constants import API_V1_PREFIX
 from gateway.search.service import SearchResponse, SearchResult
 
 
@@ -38,6 +39,20 @@ class DummySearchService:
                         "subsystem": "core",
                         "text": "snippet",
                         "score": 0.9,
+                        "symbols": [
+                            {
+                                "id": "src/module.py::Example.method",
+                                "name": "method",
+                                "qualified_name": "Example.method",
+                                "kind": "method",
+                                "language": "python",
+                                "line_start": 10,
+                                "line_end": 12,
+                            }
+                        ],
+                        "symbol_names": ["Example.method"],
+                        "symbol_kinds": ["method"],
+                        "symbol_languages": ["python"],
                     },
                     graph_context={"primary_node": {"id": "SourceFile:src/module.py"}},
                     scoring={
@@ -67,7 +82,7 @@ def test_search_endpoint_returns_results(monkeypatch: pytest.MonkeyPatch, tmp_pa
     app.dependency_overrides[app.state.search_service_dependency] = lambda: service
     client = TestClient(app)
 
-    resp = client.post("/search", json={"query": "telemetry"})
+    resp = client.post(f"{API_V1_PREFIX}/search", json={"query": "telemetry"})
     assert resp.status_code == 200
     request_id_header = resp.headers.get("x-request-id")
     assert request_id_header
@@ -93,7 +108,7 @@ def test_search_reuses_incoming_request_id(monkeypatch: pytest.MonkeyPatch, tmp_
 
     custom_request_id = "test-request-123"
     resp = client.post(
-        "/search",
+        f"{API_V1_PREFIX}/search",
         json={"query": "telemetry"},
         headers={"X-Request-ID": custom_request_id},
     )
@@ -117,11 +132,11 @@ def test_search_requires_reader_token(monkeypatch: pytest.MonkeyPatch, tmp_path:
     app.dependency_overrides[app.state.search_service_dependency] = lambda: service
     client = TestClient(app)
 
-    resp = client.post("/search", json={"query": "telemetry"})
+    resp = client.post(f"{API_V1_PREFIX}/search", json={"query": "telemetry"})
     assert resp.status_code == 401
 
     resp = client.post(
-        "/search",
+        f"{API_V1_PREFIX}/search",
         json={"query": "telemetry"},
         headers={"Authorization": "Bearer reader-token"},
     )
@@ -143,7 +158,7 @@ def test_search_allows_maintainer_token(monkeypatch: pytest.MonkeyPatch, tmp_pat
     client = TestClient(app)
 
     resp = client.post(
-        "/search",
+        f"{API_V1_PREFIX}/search",
         json={"query": "telemetry"},
         headers={"Authorization": "Bearer admin-token"},
     )
@@ -163,7 +178,7 @@ def test_search_feedback_logged(monkeypatch: pytest.MonkeyPatch, tmp_path: Path)
     client = TestClient(app)
 
     resp = client.post(
-        "/search",
+        f"{API_V1_PREFIX}/search",
         json={
             "query": "telemetry",
             "feedback": {"vote": 4, "note": "useful"},
@@ -196,7 +211,7 @@ def test_search_filters_passed_to_service(monkeypatch: pytest.MonkeyPatch, tmp_p
     client = TestClient(app)
 
     resp = client.post(
-        "/search",
+        f"{API_V1_PREFIX}/search",
         json={
             "query": "telemetry",
             "filters": {
@@ -204,6 +219,9 @@ def test_search_filters_passed_to_service(monkeypatch: pytest.MonkeyPatch, tmp_p
                 "artifact_types": ["code", "doc"],
                 "namespaces": ["src", "docs"],
                 "tags": ["IntegrationAlpha", "telemetrySignal"],
+                "symbols": ["Example.method"],
+                "symbol_kinds": ["method"],
+                "symbol_languages": ["python"],
                 "updated_after": "2024-01-01T00:00:00Z",
                 "max_age_days": 14,
             },
@@ -216,6 +234,9 @@ def test_search_filters_passed_to_service(monkeypatch: pytest.MonkeyPatch, tmp_p
     assert filters["artifact_types"] == ["code", "doc"]
     assert filters["namespaces"] == ["src", "docs"]
     assert filters["tags"] == ["IntegrationAlpha", "telemetrySignal"]
+    assert filters["symbols"] == ["Example.method"]
+    assert filters["symbol_kinds"] == ["method"]
+    assert filters["symbol_languages"] == ["python"]
     assert isinstance(filters["updated_after"], datetime)
     assert filters["updated_after"].tzinfo is not None
     assert filters["max_age_days"] == 14
@@ -232,7 +253,7 @@ def test_search_filters_invalid_type(monkeypatch: pytest.MonkeyPatch, tmp_path: 
     client = TestClient(app)
 
     resp = client.post(
-        "/search",
+        f"{API_V1_PREFIX}/search",
         json={
             "query": "telemetry",
             "filters": {"artifact_types": ["invalid"]},
@@ -252,7 +273,7 @@ def test_search_filters_invalid_namespaces(monkeypatch: pytest.MonkeyPatch, tmp_
     client = TestClient(app)
 
     resp = client.post(
-        "/search",
+        f"{API_V1_PREFIX}/search",
         json={
             "query": "telemetry",
             "filters": {"namespaces": "src"},
@@ -272,7 +293,7 @@ def test_search_filters_invalid_updated_after(monkeypatch: pytest.MonkeyPatch, t
     client = TestClient(app)
 
     resp = client.post(
-        "/search",
+        f"{API_V1_PREFIX}/search",
         json={
             "query": "telemetry",
             "filters": {"updated_after": "not-a-date"},
@@ -292,7 +313,7 @@ def test_search_filters_invalid_max_age(monkeypatch: pytest.MonkeyPatch, tmp_pat
     client = TestClient(app)
 
     resp = client.post(
-        "/search",
+        f"{API_V1_PREFIX}/search",
         json={
             "query": "telemetry",
             "filters": {"max_age_days": 0},
@@ -313,11 +334,11 @@ def test_search_weights_endpoint(monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     app = create_app()
     client = TestClient(app)
 
-    resp = client.get("/search/weights")
+    resp = client.get(f"{API_V1_PREFIX}/search/weights")
     assert resp.status_code == 401
 
     resp = client.get(
-        "/search/weights",
+        f"{API_V1_PREFIX}/search/weights",
         headers={"Authorization": "Bearer maintainer-token"},
     )
     assert resp.status_code == 200
@@ -325,3 +346,42 @@ def test_search_weights_endpoint(monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     assert "profile" in payload
     assert "weights" in payload
     assert "weight_criticality" in payload["weights"]
+
+def test_search_filters_invalid_symbol_types(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("KM_AUTH_ENABLED", "false")
+    monkeypatch.setenv("KM_STATE_PATH", str(tmp_path))
+
+    from gateway.config.settings import get_settings
+
+    get_settings.cache_clear()
+    app = create_app()
+    client = TestClient(app)
+
+    resp = client.post(
+        f"{API_V1_PREFIX}/search",
+        json={
+            "query": "telemetry",
+            "filters": {"symbol_kinds": "function"},
+        },
+    )
+    assert resp.status_code == 422
+
+
+def test_search_filters_invalid_symbol_language(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("KM_AUTH_ENABLED", "false")
+    monkeypatch.setenv("KM_STATE_PATH", str(tmp_path))
+
+    from gateway.config.settings import get_settings
+
+    get_settings.cache_clear()
+    app = create_app()
+    client = TestClient(app)
+
+    resp = client.post(
+        f"{API_V1_PREFIX}/search",
+        json={
+            "query": "telemetry",
+            "filters": {"symbol_languages": ["kotlin"]},
+        },
+    )
+    assert resp.status_code == 422

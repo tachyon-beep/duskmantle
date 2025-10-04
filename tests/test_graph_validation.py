@@ -19,7 +19,20 @@ from gateway.ingest.pipeline import IngestionConfig, IngestionPipeline
 from gateway.search import SearchService
 
 
+def _ensure_neo4j_available(uri: str, auth: tuple[str, str] | None, database: str) -> None:
+    try:
+        driver = GraphDatabase.driver(uri, auth=auth, connection_timeout=1.0)
+        try:
+            with driver.session(database=database) as session:
+                session.run("RETURN 1 AS ok").consume()
+        finally:
+            driver.close()
+    except Exception as exc:  # pragma: no cover - best effort availability check
+        pytest.skip(f"Neo4j unavailable at {uri}: {exc}")
+
+
 @pytest.mark.neo4j
+@pytest.mark.integration("neo4j")
 def test_ingestion_populates_graph(tmp_path: Path) -> None:
     """Run ingestion and verify graph nodes, edges, and metadata."""
     uri = os.getenv("NEO4J_TEST_URI")
@@ -29,6 +42,9 @@ def test_ingestion_populates_graph(tmp_path: Path) -> None:
 
     if not uri:
         pytest.skip("Set NEO4J_TEST_URI to run Neo4j integration tests")
+
+    auth = (user, password) if user is not None else None
+    _ensure_neo4j_available(uri, auth, database)
 
     repo_root = tmp_path / "repo"
     (repo_root / "docs").mkdir(parents=True)
@@ -148,6 +164,7 @@ class _DummyQdrantClient:
 
 
 @pytest.mark.neo4j
+@pytest.mark.integration("neo4j")
 def test_search_replay_against_real_graph(tmp_path: Path) -> None:
     """Replay saved search results against the populated knowledge graph."""
     uri = os.getenv("NEO4J_TEST_URI")
@@ -157,6 +174,9 @@ def test_search_replay_against_real_graph(tmp_path: Path) -> None:
 
     if not uri:
         pytest.skip("Set NEO4J_TEST_URI to run Neo4j integration tests")
+
+    auth = (user, password) if user is not None else None
+    _ensure_neo4j_available(uri, auth, database)
 
     repo_root = tmp_path / "repo"
     (repo_root / "docs").mkdir(parents=True)

@@ -6,8 +6,11 @@ import logging
 from pathlib import Path
 
 from neo4j import GraphDatabase
+from neo4j.exceptions import Neo4jError
 from qdrant_client import QdrantClient
+from qdrant_client.http.exceptions import UnexpectedResponse
 
+from gateway.api.connections import Neo4jConnectionManager, QdrantConnectionManager
 from gateway.config.settings import AppSettings
 from gateway.ingest.audit import AuditLogger
 from gateway.ingest.coverage import write_coverage_report
@@ -27,10 +30,18 @@ def execute_ingestion(
     dry_run: bool | None = None,
     use_dummy_embeddings: bool | None = None,
     incremental: bool | None = None,
+    graph_manager: Neo4jConnectionManager | None = None,
+    qdrant_manager: QdrantConnectionManager | None = None,
 ) -> IngestionResult:
     """Run ingestion using shared settings and return result."""
 
     repo_root = repo_override or settings.repo_root
+    sample_marker = repo_root / ".km-sample-repo"
+    if sample_marker.exists():
+        logger.warning(
+            "Repository %s still contains bundled sample content; replace it or set KM_SEED_SAMPLE_REPO=false to disable seeding.",
+            repo_root,
+        )
     dry = settings.dry_run if dry_run is None else dry_run
     use_dummy = settings.ingest_use_dummy_embeddings if use_dummy_embeddings is None else use_dummy_embeddings
     incremental_enabled = settings.ingest_incremental_enabled if incremental is None else incremental
@@ -38,14 +49,34 @@ def execute_ingestion(
     state_path = settings.state_path
 
     qdrant_writer = None
+    image_qdrant_writer = None
+    qdrant_client: QdrantClient | None = None
     if not dry:
-        qdrant_client = QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
+        if qdrant_manager is not None:
+            qdrant_client = qdrant_manager.get_client()
+        else:
+            timeout = getattr(settings, 'qdrant_timeout_seconds', 60.0)
+            qdrant_client = QdrantClient(
+                url=settings.qdrant_url,
+                api_key=settings.qdrant_api_key,
+                timeout=timeout,
+            )
         qdrant_writer = QdrantWriter(qdrant_client, settings.qdrant_collection)
+        if settings.image_embedding_model:
+            image_qdrant_writer = QdrantWriter(qdrant_client, settings.image_qdrant_collection)
 
     neo4j_writer = None
     driver = None
+    own_driver = False
     if not dry:
-        driver = GraphDatabase.driver(settings.neo4j_uri, auth=(settings.neo4j_user, settings.neo4j_password))
+        if graph_manager is not None:
+            driver = graph_manager.get_write_driver()
+        else:
+            driver = GraphDatabase.driver(
+                settings.neo4j_uri,
+                auth=(settings.neo4j_user, settings.neo4j_password),
+            )
+            own_driver = True
         neo4j_writer = Neo4jWriter(driver, database=settings.neo4j_database)
 
     audit_logger = None
@@ -64,7 +95,9 @@ def execute_ingestion(
         dry_run=dry,
         chunk_window=settings.ingest_window,
         chunk_overlap=settings.ingest_overlap,
-        embedding_model=settings.embedding_model,
+        embedding_model=settings.text_embedding_model or settings.embedding_model,
+        text_embedding_model=settings.text_embedding_model,
+        image_embedding_model=settings.image_embedding_model,
         use_dummy_embeddings=use_dummy,
         environment=profile,
         audit_path=audit_path,
@@ -74,9 +107,15 @@ def execute_ingestion(
         incremental=incremental_enabled,
         embed_parallel_workers=max(1, settings.ingest_parallel_workers),
         max_pending_batches=max(1, settings.ingest_max_pending_batches),
+        symbols_enabled=settings.symbols_enabled,
     )
 
-    pipeline = IngestionPipeline(qdrant_writer=qdrant_writer, neo4j_writer=neo4j_writer, config=config)
+    pipeline = IngestionPipeline(
+        qdrant_writer=qdrant_writer,
+        neo4j_writer=neo4j_writer,
+        config=config,
+        image_qdrant_writer=image_qdrant_writer,
+    )
 
     graph_service = None
     if driver is not None and settings.lifecycle_report_enabled:
@@ -108,6 +147,14 @@ def execute_ingestion(
                 graph_service=graph_service,
             )
         return result
+    except Neo4jError as exc:
+        if graph_manager is not None:
+            graph_manager.mark_failure(exc)
+        raise
+    except UnexpectedResponse as exc:
+        if qdrant_manager is not None:
+            qdrant_manager.mark_failure(exc)
+        raise
     finally:
-        if driver is not None:
+        if driver is not None and own_driver:
             driver.close()

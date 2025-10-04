@@ -7,9 +7,9 @@ This guide explains how to operate and monitor the Duskmantle Knowledge Gateway.
 - **Metrics:** Prometheus-compatible counters, gauges, and histograms published at `/metrics`.
 - **Logs:** JSON-structured stdout/stderr streams captured by the container runtime. Each record carries `ingest_run_id`, subsystem, and key counts.
 - **Tracing:** Optional OpenTelemetry spans that capture HTTP requests and ingestion stages. Export spans to an OTLP collector, APM tool, or stdout.
-- **Audit Ledger:** SQLite database under `/opt/knowledge/var/audit/audit.db` with per-run provenance records accessible via `/audit/history`.
-- **Coverage Report:** Accessible via `/coverage` (maintainer scope) or `/opt/knowledge/var/reports/coverage_report.json`, detailing indexed artifacts, missing coverage, and the `removed_artifacts` list for files deleted from the repo but recently cleaned from the graph. Historical snapshots live under `/opt/knowledge/var/reports/history/coverage_*.json` and are pruned to the limit defined by `KM_COVERAGE_HISTORY_LIMIT`.
-- **Lifecycle Report:** Available at `/lifecycle` (maintainer scope) or `/opt/knowledge/var/reports/lifecycle_report.json`, capturing isolated graph nodes, stale design docs (older than `KM_LIFECYCLE_STALE_DAYS`), and subsystems missing tests. Use it to prioritise authoring or tagging work after each ingest. Historical snapshots live under `/opt/knowledge/var/reports/lifecycle_history/` and are surfaced via `/lifecycle/history` for the UI spark lines.
+- **Audit Ledger:** SQLite database under `/opt/knowledge/var/audit/audit.db` with per-run provenance records accessible via `/api/v1/audit/history` (maintainer scope, capped at `KM_AUDIT_HISTORY_MAX_LIMIT`, default 100).
+- **Coverage Report:** Accessible via `/api/v1/coverage` (maintainer scope) or `/opt/knowledge/var/reports/coverage_report.json`, detailing indexed artifacts, missing coverage, and the `removed_artifacts` list for files deleted from the repo but recently cleaned from the graph. Historical snapshots live under `/opt/knowledge/var/reports/history/coverage_*.json` and are pruned to the limit defined by `KM_COVERAGE_HISTORY_LIMIT`.
+- **Lifecycle Report:** Available at `/api/v1/lifecycle` (maintainer scope) or `/opt/knowledge/var/reports/lifecycle_report.json`, capturing isolated graph nodes, stale design docs (older than `KM_LIFECYCLE_STALE_DAYS`), and subsystems missing tests. Use it to prioritise authoring or tagging work after each ingest. Historical snapshots live under `/opt/knowledge/var/reports/lifecycle_history/` and are surfaced via `/api/v1/lifecycle/history` for the UI spark lines.
 - **Recipe Audit:** Running `km-recipe-run` appends JSONL entries to `/opt/knowledge/var/audit/recipes.log` summarising step status and captured outputs. Tail this log to monitor automation runs or integrate with alerting.
 
 ## 2. Metrics Reference
@@ -37,10 +37,19 @@ Key time-series:
 | `km_ingest_skips_total` | Counter | `reason` | Scheduler/automation ingest skips partitioned by reason. | Alert on sustained `auth`, `lock`, or `head` growth. |
 | `km_watch_runs_total` | Counter | `result` | Watcher outcomes (`success`, `error`, `no_change`). | Alert when `error` outpaces `success` or `no_change` dominates unexpectedly. |
 | `km_coverage_history_snapshots` | Gauge | `profile` | Number of retained coverage snapshots under `reports/history/`. | Alert when value drops below configured history limit (e.g., disk cleanup failure). |
+| `km_backup_runs_total` | Counter | `result` (`success`,`failure`,`skipped_lock`) | Scheduled backup outcomes. | Alert when failures grow or locks skip repeatedly. |
+| `km_backup_last_status` | Gauge | _none_ | Last backup status (1=success, 0=failure). | Alert when zero for sustained intervals. |
+| `km_backup_last_success_timestamp` | Gauge | _none_ | Unix timestamp of the last successful backup run. | Alert when stale relative to expected cadence. |
 | `km_search_requests_total` | Counter | `status` (`success`,`failure`) | Search API requests partitioned by outcome. | Alert when failure ratio rises above baseline. |
+| `km_search_symbol_filters_total` | Counter | `filter_type` (`name`,`kind`,`language`) | Search requests tagging symbol filters. | Alert if usage suddenly drops (feature disabled) or spikes unexpectedly. |
 | `km_search_graph_cache_events_total` | Counter | `status` (`miss`,`hit`,`error`) | Tracks graph context cache utilisation. | Alert when `status="error"` climbs or hit ratio drops suddenly. |
 | `km_search_graph_lookup_seconds` | Histogram | _none_ | Latency of Neo4j lookups for search enrichment. | Alert when P95 exceeds expected threshold (e.g., >250 ms). |
 | `km_search_adjusted_minus_vector` | Histogram | _none_ | Distribution of adjusted minus vector scores per result. | Alert when distribution skews heavily positive/negative (ranking drift). |
+| `km_graph_dependency_status` | Gauge | _none_ | 1 when Neo4j dependency is healthy, 0 when connection attempts fail. | Page if value stays at 0 across scrapes (graph unavailable). |
+| `km_graph_dependency_last_success_timestamp` | Gauge | _none_ | Unix timestamp of the last successful Neo4j heartbeat. | Alert when timestamp is older than the expected heartbeat window. |
+| `km_qdrant_dependency_status` | Gauge | _none_ | 1 when Qdrant health checks succeed, 0 for failures. | Page if value stays at 0 across scrapes (vector store unavailable). |
+| `km_qdrant_dependency_last_success_timestamp` | Gauge | _none_ | Unix timestamp of the last successful Qdrant heartbeat. | Alert when timestamp is older than the expected heartbeat window. |
+| `km_graph_cypher_denied_total` | Counter | `reason` (`keyword`,`procedure`,`structure`,`mutation`) | Maintainer `/graph/cypher` requests blocked by read-only safeguards. | Alert when non-zero growth occurs outside intentional testing (possible intrusion or misconfiguration). |
 | `km_ui_requests_total` | Counter | `view` | Embedded console visits by view (`landing`, `search`, `subsystems`, `lifecycle`). | Alert on prolonged spikes (possible scraping) or sudden drops during active adoption. |
 | `km_ui_events_total` | Counter | `event` | UI-triggered events (`lifecycle_download`, MCP recipe copy buttons, subsystem downloads). | Alert when error events appear or download volume surges unexpectedly. |
 | `km_lifecycle_stale_docs` | Gauge | `profile` | Latest stale document count emitted during ingest. | Alert when value exceeds the stale-days threshold for >24h. |
@@ -61,7 +70,7 @@ Grafana dashboard updates:
 
 ### Lifecycle Sparklines & History
 
-- `/lifecycle/history` returns enriched entries with a `counts` map powering the UI spark lines. The console requests this endpoint after loading `/lifecycle` and renders inline SVGs for stale docs, isolated nodes, missing tests, and removed artifacts.
+- `/api/v1/lifecycle/history` returns enriched entries with a `counts` map powering the UI spark lines. The console requests this endpoint after loading `/api/v1/lifecycle` and renders inline SVGs for stale docs, isolated nodes, missing tests, and removed artifacts.
 - Persist at least three history snapshots per environment so trends are visible. Set `KM_LIFECYCLE_HISTORY_LIMIT` to balance storage vs fidelity (default 30).
 - When plotting in Grafana, combine the gauges (`km_lifecycle_*`) with transforms or the history endpoint to show short-term trends alongside absolute counts.
 
@@ -86,16 +95,17 @@ scrape_configs:
 - **Stale Coverage:** `time() - km_coverage_last_run_timestamp > 7200` or `km_coverage_last_run_status == 0` for two scrapes.
 - **Search Failure Ratio:** `rate(km_search_requests_total{status="failure"}[15m]) / rate(km_search_requests_total[15m]) > 0.05` sustained for 10 minutes.
 - **Graph Lookup Latency:** `histogram_quantile(0.95, rate(km_search_graph_lookup_seconds_bucket[10m])) > 0.25` indicates Neo4j responsiveness issues—investigate database health or enable caching.
+- **Cypher Denials:** Alert when `increase(km_graph_cypher_denied_total[15m]) > 0` and `reason` is not tied to load-testing. Blocked write attempts may indicate a leaked maintainer token or a broken client.
 - **Ranking Drift:** Monitor `km_search_adjusted_minus_vector` moving average; sustained positive deltas may mean graph weighting dominates vectors (or vice versa if negative). Alert when mean delta leaves the [-0.2, 0.2] band.
 - **Rate Limit Hotspot:** `rate(uvicorn_requests_total{status_code="429"}[5m]) > 5` indicates throttling pressure; investigate abusive clients or increase `KM_RATE_LIMIT_REQUESTS`.
 - **High Ingestion Latency:** `histogram_quantile(0.95, sum(rate(km_ingest_duration_seconds_bucket[15m])) by (le)) > <SLO>`.
 - **Scheduler Regression:** Alert when `time() - km_scheduler_last_success_timestamp > 2 * expected_interval` or when `rate(km_scheduler_runs_total{result="failure"}[30m]) > 0`.
-- **Lifecycle Regression:** Trigger when `km_lifecycle_stale_docs > threshold` or `km_lifecycle_isolated_nodes > 0` for more than 24 h. Use `/lifecycle/history` as a secondary check to confirm trend direction before paging.
+- **Lifecycle Regression:** Trigger when `km_lifecycle_stale_docs > threshold` or `km_lifecycle_isolated_nodes > 0` for more than 24 h. Use `/api/v1/lifecycle/history` as a secondary check to confirm trend direction before paging.
 - **UI Engagement Drop:** Alert when `rate(km_ui_requests_total[30m])` drops below baseline during active business hours, or when `km_ui_events_total{event="lifecycle_download"}` flatlines (users may have lost access).
 
 ### Health Endpoints
 
-- `GET /healthz` returns an overall `status` (`ok` or `degraded`) plus detailed checks for `coverage`, `audit`, and `scheduler`.
+- `GET /healthz` returns an overall `status` (`ok` or `degraded`) plus detailed checks for `coverage`, `audit`, `scheduler`, `graph`, `qdrant`, and `backup`.
   - Coverage check tracks file freshness, missing artifact count, and falls back to `stale` when older than twice the scheduler interval (or 24h without a scheduler).
   - Audit check ensures the SQLite ledger is present and readable.
   - Scheduler check reports `running`, `stopped`, or `disabled` alongside the configured interval.
@@ -129,8 +139,10 @@ Use the `ingest_run_id` from logs to fetch provenance:
 
 ```bash
 curl -H "Authorization: Bearer $KM_ADMIN_TOKEN" \
-  "http://localhost:8000/audit/history?limit=5" | jq
+  "http://localhost:8000/api/v1/audit/history?limit=5" | jq
 ```
+
+If you request more rows than allowed, the API clamps the response, sets `X-KM-Audit-Limit` to the effective limit, and returns a HTTP `Warning` header explaining the adjustment. Override the ceiling with `KM_AUDIT_HISTORY_MAX_LIMIT` when operators need broader windows (keep it modest to avoid large SQLite reads).
 
 ## 4. Tracing
 
@@ -263,7 +275,7 @@ jq '.summary' /opt/knowledge/var/reports/coverage_report.json
 - **Feedback hygiene:** schedule `gateway-search prune-feedback` to keep `/opt/knowledge/var/feedback/events.log` under control (age + max-request bounds). Run before daily exports to avoid stale training data.
 - **Dataset privacy:** if exporting datasets beyond the trust boundary, run `gateway-search redact-dataset` to blank queries, context payloads, and reviewer notes. Redacted files retain the numeric features required by the trainer/evaluator.
 - **Evaluation cadence:** keep a holdout dataset (e.g., `feedback/datasets/validation.csv`) and benchmark new models with `gateway-search evaluate-model` before flipping `KM_SEARCH_SCORING_MODE=ml`. Record MSE/NDCG deltas in release notes for auditability.
-- **CI health checks:** GitHub Actions workflow `Observability Checks` runs nightly (03:00 UTC) to build the container, launch it locally, and assert `/readyz`, `/healthz`, `/metrics`, and `/coverage` behave as expected. Monitor workflow results for early warning signals.
+- **CI health checks:** GitHub Actions workflow `Observability Checks` runs nightly (03:00 UTC) to build the container, launch it locally, and assert `/readyz`, `/healthz`, `/metrics`, and `/api/v1/coverage` behave as expected. Monitor workflow results for early warning signals.
 | Show audit history via CLI | `gateway-ingest audit-history --limit 10` |
 | Verify scheduler status | `ls -l /opt/knowledge/var/scheduler` |
 | Inspect audit DB | `sqlite3 /opt/knowledge/var/audit/audit.db "select * from audit_runs order by created_at desc limit 5;"` |

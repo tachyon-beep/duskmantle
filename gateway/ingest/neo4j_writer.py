@@ -31,6 +31,9 @@ class Neo4jWriter:
             "CREATE CONSTRAINT IF NOT EXISTS FOR (m:IntegrationMessage) REQUIRE m.name IS UNIQUE",
             "CREATE CONSTRAINT IF NOT EXISTS FOR (tc:TelemetryChannel) REQUIRE tc.name IS UNIQUE",
             "CREATE CONSTRAINT IF NOT EXISTS FOR (cfg:ConfigFile) REQUIRE cfg.path IS UNIQUE",
+            "CREATE CONSTRAINT IF NOT EXISTS FOR (sym:Symbol) REQUIRE sym.id IS UNIQUE",
+            "CREATE INDEX IF NOT EXISTS FOR (sym:Symbol) ON (sym.name)",
+            "CREATE INDEX IF NOT EXISTS FOR (sym:Symbol) ON (sym.language)",
         ]
         with self.driver.session(database=self.database) as session:
             for stmt in cypher_statements:
@@ -112,6 +115,19 @@ class Neo4jWriter:
                         signals=telemetry_signals,
                     )
 
+            if label == "TestCase":
+                exercises = metadata.get("exercises_symbols")
+                session.run(
+                    "MATCH (t:TestCase {path: $path})-[r:EXERCISES]->(:Symbol)\nDELETE r",
+                    path=artifact.path.as_posix(),
+                )
+                if exercises:
+                    session.run(
+                        "MATCH (t:TestCase {path: $path})\nUNWIND $symbols AS symbol_id\nMERGE (sym:Symbol {id: symbol_id})\nMERGE (t)-[:EXERCISES]->(sym)",
+                        path=artifact.path.as_posix(),
+                        symbols=list(dict.fromkeys(str(symbol_id) for symbol_id in exercises if symbol_id)),
+                    )
+
             if label == "SourceFile" and message_entities:
                 session.run(
                     "MATCH (f:SourceFile {path: $path})\n"
@@ -121,6 +137,37 @@ class Neo4jWriter:
                     path=artifact.path.as_posix(),
                     entities=message_entities,
                 )
+
+            symbol_records = metadata.get("symbols")
+            if label == "SourceFile" and symbol_records:
+                prepared = [
+                    {
+                        "id": str(record.get("id")),
+                        "name": record.get("name"),
+                        "kind": record.get("kind"),
+                        "language": record.get("language"),
+                        "line_start": record.get("line_start"),
+                        "line_end": record.get("line_end"),
+                        "qualified_name": record.get("qualified_name"),
+                    }
+                    for record in symbol_records
+                    if isinstance(record, Mapping) and record.get("id")
+                ]
+                if prepared:
+                    session.run(
+                        "MATCH (f:SourceFile {path: $path})\n"
+                        "UNWIND $symbols AS symbol\n"
+                        "MERGE (sym:Symbol {id: symbol.id})\n"
+                        "SET sym.name = symbol.name,\n"
+                        "    sym.kind = symbol.kind,\n"
+                        "    sym.language = symbol.language,\n"
+                        "    sym.line_start = symbol.line_start,\n"
+                        "    sym.line_end = symbol.line_end,\n"
+                        "    sym.qualified_name = symbol.qualified_name\n"
+                        "MERGE (f)-[:DECLARES_SYMBOL]->(sym)",
+                        path=artifact.path.as_posix(),
+                        symbols=prepared,
+                    )
 
     def sync_chunks(self, chunk_embeddings: Iterable[ChunkEmbedding]) -> None:
         """Upsert chunk nodes and connect them to their owning artifacts."""
@@ -150,8 +197,10 @@ class Neo4jWriter:
             session.run(
                 "MATCH (n {path: $path})\n"
                 "OPTIONAL MATCH (n)-[:HAS_CHUNK]->(c:Chunk)\n"
-                "WITH n, collect(c) AS chunks\n"
+                "OPTIONAL MATCH (n)-[:DECLARES_SYMBOL]->(sym:Symbol)\n"
+                "WITH n, collect(DISTINCT c) AS chunks, collect(DISTINCT sym) AS symbols\n"
                 "FOREACH (chunk IN chunks | DETACH DELETE chunk)\n"
+                "FOREACH (symbol IN symbols | DETACH DELETE symbol)\n"
                 "DETACH DELETE n",
                 path=path,
             )

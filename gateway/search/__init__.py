@@ -5,7 +5,15 @@ from .evaluation import EvaluationMetrics, evaluate_model
 from .exporter import ExportOptions, ExportStats, export_training_dataset
 from .feedback import SearchFeedbackStore
 from .maintenance import PruneOptions, PruneStats, RedactOptions, RedactStats, prune_feedback_log, redact_dataset
-from .service import SearchOptions, SearchResponse, SearchResult, SearchService, SearchWeights
+from .models import (
+    CoverageInfo,
+    FilterState,
+    SearchOptions,
+    SearchResponse,
+    SearchResult,
+    SearchWeights,
+)
+from .service import SearchService
 
 __all__ = [
     "SearchService",
@@ -14,6 +22,8 @@ __all__ = [
     "SearchWeights",
     "SearchResponse",
     "SearchFeedbackStore",
+    "FilterState",
+    "CoverageInfo",
     "DatasetLoadError",
     "load_dataset_records",
     "build_feature_matrix",

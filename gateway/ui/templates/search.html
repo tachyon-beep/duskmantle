@@ -18,6 +18,61 @@
         <input type="checkbox" name="include_graph" checked /> Include graph context
       </label>
     </div>
+    <fieldset class="dm-form__fieldset">
+      <legend>Symbol filters (optional)</legend>
+      <div class="dm-chip-groups">
+        <div class="dm-chip-group" data-dm-symbol-filter="kind">
+          <span class="dm-chip-group__label">Kind</span>
+          <label class="dm-chip">
+            <input type="checkbox" name="symbol_kinds" value="class" />
+            <span>Class</span>
+          </label>
+          <label class="dm-chip">
+            <input type="checkbox" name="symbol_kinds" value="function" />
+            <span>Function</span>
+          </label>
+          <label class="dm-chip">
+            <input type="checkbox" name="symbol_kinds" value="method" />
+            <span>Method</span>
+          </label>
+          <label class="dm-chip">
+            <input type="checkbox" name="symbol_kinds" value="interface" />
+            <span>Interface</span>
+          </label>
+          <label class="dm-chip">
+            <input type="checkbox" name="symbol_kinds" value="type" />
+            <span>Type</span>
+          </label>
+          <label class="dm-chip">
+            <input type="checkbox" name="symbol_kinds" value="module" />
+            <span>Module</span>
+          </label>
+        </div>
+        <div class="dm-chip-group" data-dm-symbol-filter="language">
+          <span class="dm-chip-group__label">Language</span>
+          <label class="dm-chip">
+            <input type="checkbox" name="symbol_languages" value="python" />
+            <span>Python</span>
+          </label>
+          <label class="dm-chip">
+            <input type="checkbox" name="symbol_languages" value="typescript" />
+            <span>TypeScript</span>
+          </label>
+          <label class="dm-chip">
+            <input type="checkbox" name="symbol_languages" value="tsx" />
+            <span>TSX</span>
+          </label>
+          <label class="dm-chip">
+            <input type="checkbox" name="symbol_languages" value="javascript" />
+            <span>JavaScript</span>
+          </label>
+          <label class="dm-chip">
+            <input type="checkbox" name="symbol_languages" value="go" />
+            <span>Go</span>
+          </label>
+        </div>
+      </div>
+    </fieldset>
     <div class="dm-form__actions">
       <button class="dm-button" type="submit">Search</button>
       <span class="dm-form__status" role="status" aria-live="polite" data-dm-search-status>Provide a reader token before querying.</span>
@@ -32,6 +87,7 @@
 <section class="dm-card dm-card--wide" data-dm-search-results hidden>
   <h3>Results</h3>
   <div data-dm-search-feedback class="dm-feedback" role="status" aria-live="polite"></div>
+  <div data-dm-search-filters class="dm-filter-summary" hidden></div>
   <ol data-dm-search-list class="dm-results"></ol>
 </section>
 {% endblock %}

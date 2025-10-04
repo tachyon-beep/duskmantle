@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from datetime import UTC, datetime
 from functools import lru_cache
@@ -32,6 +32,9 @@ TOOL_USAGE = {
         "details": dedent(
             """
             Required: `query` text. Optional: `limit` (default 10, max 25), `include_graph`, structured `filters`, `sort_by_vector`.
+            Filters now accept `symbols`, `symbol_kinds`, and `symbol_languages` for symbol-aware search. Pass
+            `--symbol`, `--kind`, or `--lang` flags (repeatable or comma-separated) to append filter terms without
+            building JSON by hand.
             Example: `/sys mcp run duskmantle km-search --query "ingest pipeline" --limit 5`.
             Returns scored chunks with metadata and optional graph enrichments.
             """
@@ -55,6 +58,16 @@ TOOL_USAGE = {
             Optional: `depth` (default 1, max 5), `include_artifacts`, pagination `cursor`, `limit` (default 25, max 100).
             Example: `/sys mcp run duskmantle km-graph-subsystem --name Kasmina --depth 2`.
             """
+        ).strip(),
+    },
+    "km-graph-tests-of": {
+        "description": "List tests that exercise a given symbol",
+        "details": dedent(
+            """
+        Required: `symbol_id` such as `src/project/module.py::Example.method`.
+        Example: `/sys mcp run duskmantle km-graph-tests-of --symbol-id "src/project/module.py::Example.method"`.
+        Returns the symbol metadata plus any `TestCase` nodes linked via `EXERCISES` edges.
+        """
         ).strip(),
     },
     "km-graph-search": {
@@ -227,19 +240,30 @@ def build_server(settings: MCPSettings | None = None) -> FastMCP:
         include_graph: bool = True,
         filters: dict[str, Any] | None = None,
         sort_by_vector: bool | None = None,
+        symbol: str | Sequence[str] | None = None,
+        kind: str | Sequence[str] | None = None,
+        lang: str | Sequence[str] | None = None,
         context: Context | None = None,
     ) -> dict[str, Any]:
         if not query or not query.strip():
             raise ValueError("query must be a non-empty string")
         limit = _clamp(limit, minimum=1, maximum=25)
 
+        filters_payload = dict(filters) if filters else {}
+        filters_merged = _merge_symbol_filters(
+            filters_payload,
+            symbol=symbol,
+            kind=kind,
+            lang=lang,
+        )
+
         payload: dict[str, Any] = {
             "query": query.strip(),
             "limit": limit,
             "include_graph": include_graph,
         }
-        if filters:
-            payload["filters"] = _normalise_filters(filters)
+        if filters_merged:
+            payload["filters"] = _normalise_filters(filters_merged)
         if sort_by_vector is not None:
             payload["sort_by_vector"] = bool(sort_by_vector)
 
@@ -286,6 +310,29 @@ def build_server(settings: MCPSettings | None = None) -> FastMCP:
             raise
         _record_success("km-graph-node", start)
         return result
+
+
+    @server.tool(name="km-graph-tests-of", description=TOOL_USAGE["km-graph-tests-of"]["description"])
+    async def km_graph_tests_of(
+        symbol_id: str,
+        context: Context | None = None,
+    ) -> dict[str, Any]:
+        symbol_id = symbol_id.strip()
+        if not symbol_id:
+            raise ValueError("symbol_id must be a non-empty string")
+        start = perf_counter()
+        try:
+            response = await state.require_client().symbol_tests(symbol_id)
+        except GatewayRequestError as exc:
+            await _report_error(context, f"Symbol lookup failed: {exc.detail}")
+            _record_failure("km-graph-tests-of", exc, start)
+            raise
+        except Exception as exc:  # pragma: no cover - defensive
+            _record_failure("km-graph-tests-of", exc, start)
+            raise
+        _record_success("km-graph-tests-of", start)
+        await _report_info(context, f"Found {len(response.get('tests', []))} test(s)")
+        return response
 
     @server.tool(name="km-graph-subsystem", description=TOOL_USAGE["km-graph-subsystem"]["description"])
     async def km_graph_subsystem(
@@ -594,6 +641,9 @@ def _normalise_filters(payload: dict[str, Any]) -> dict[str, Any]:
         "artifact_types",
         "namespaces",
         "tags",
+        "symbols",
+        "symbol_kinds",
+        "symbol_languages",
         "updated_after",
         "max_age_days",
     }
@@ -605,6 +655,105 @@ def _normalise_filters(payload: dict[str, Any]) -> dict[str, Any]:
             continue
         result[key] = value
     return result
+
+
+_FilterArg = str | Sequence[str] | None
+
+
+def _merge_symbol_filters(
+    base_filters: dict[str, Any],
+    *,
+    symbol: _FilterArg,
+    kind: _FilterArg,
+    lang: _FilterArg,
+) -> dict[str, Any]:
+    filters = dict(base_filters)
+
+    _merge_filter_terms(
+        filters,
+        "symbols",
+        _coerce_filter_terms(symbol, lowercase=False),
+        compare_key=lambda value: value.lower(),
+        transform=lambda value: value,
+    )
+    _merge_filter_terms(
+        filters,
+        "symbol_kinds",
+        _coerce_filter_terms(kind, lowercase=True),
+        compare_key=lambda value: value,
+        transform=lambda value: value,
+    )
+    _merge_filter_terms(
+        filters,
+        "symbol_languages",
+        _coerce_filter_terms(lang, lowercase=True),
+        compare_key=lambda value: value,
+        transform=lambda value: value,
+    )
+
+    return filters
+
+
+def _coerce_filter_terms(value: _FilterArg, *, lowercase: bool) -> list[str]:
+    if value is None:
+        return []
+
+    if isinstance(value, str):
+        raw_values = value.split(",")
+    elif isinstance(value, Sequence):
+        raw_values = [str(item) for item in value]
+    else:
+        return []
+
+    items: list[str] = []
+    for raw_value in raw_values:
+        text = str(raw_value).strip()
+        if not text:
+            continue
+        if lowercase:
+            text = text.lower()
+        items.append(text)
+
+    return items
+
+
+def _merge_filter_terms(
+    filters: dict[str, Any],
+    key: str,
+    new_terms: Sequence[str],
+    *,
+    compare_key: Callable[[str], str],
+    transform: Callable[[str], str],
+) -> None:
+    if not new_terms and key not in filters:
+        return
+
+    existing_value = filters.get(key)
+    combined: list[str] = []
+    seen: set[str] = set()
+
+    if isinstance(existing_value, list):
+        for item in existing_value:
+            text = str(item).strip()
+            if not text:
+                continue
+            marker = compare_key(text)
+            if marker in seen:
+                continue
+            seen.add(marker)
+            combined.append(transform(text))
+
+    for term in new_terms:
+        marker = compare_key(term)
+        if marker in seen:
+            continue
+        seen.add(marker)
+        combined.append(transform(term))
+
+    if combined:
+        filters[key] = combined
+    elif key in filters:
+        filters.pop(key, None)
 
 
 def _resolve_usage(tool: str | None) -> dict[str, Any]:

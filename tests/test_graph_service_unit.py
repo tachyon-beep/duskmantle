@@ -2,13 +2,27 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 from types import SimpleNamespace, TracebackType
+from unittest import mock
 
 import pytest
 
 from gateway.graph import service as graph_service
 from gateway.graph.service import GraphNotFoundError, GraphQueryError, GraphService
+from gateway.observability.metrics import GRAPH_CYPHER_DENIED_TOTAL
 
 DriverFixture = tuple[GraphService, "DummySession", "DummyDriver"]
+
+
+def _reset_metric(reason: str) -> None:
+    try:
+        GRAPH_CYPHER_DENIED_TOTAL.remove(reason)
+    except KeyError:
+        pass
+
+
+def _metric_value(reason: str) -> float:
+    sample = GRAPH_CYPHER_DENIED_TOTAL._metrics.get((reason,))
+    return sample._value.get() if sample else 0.0
 
 
 class DummyNode(dict[str, object]):
@@ -64,13 +78,22 @@ class DummyDriver:
         self.last_execute_query: tuple[str, dict[str, object], str] | None = None
         self.execute_query_result = SimpleNamespace(
             records=[],
-            summary=SimpleNamespace(result_available_after=None, database=None),
+            summary=SimpleNamespace(
+                result_available_after=None,
+                database=None,
+                counters=SimpleNamespace(contains_updates=False),
+            ),
         )
 
     def session(self, **kwargs: object) -> DummySession:
         return self._session
 
-    def execute_query(self, query: str, parameters: dict[str, object], database_: str) -> SimpleNamespace:
+    def execute_query(
+        self,
+        query: str,
+        parameters: dict[str, object],
+        database_: str,
+    ) -> SimpleNamespace:
         self.last_execute_query = (query, parameters, database_)
         return self.execute_query_result
 
@@ -85,7 +108,11 @@ def patch_graph_types(monkeypatch: pytest.MonkeyPatch) -> None:
 def dummy_driver() -> DriverFixture:
     session = DummySession()
     driver = DummyDriver(session)
-    service = GraphService(driver=driver, database="knowledge")
+    service = GraphService(
+        driver_provider=lambda: driver,
+        database="knowledge",
+        readonly_provider=lambda: driver,
+    )
     return service, session, driver
 
 
@@ -189,6 +216,19 @@ def test_get_subsystem_graph_returns_nodes_and_edges(
     node_ids = {node["id"] for node in graph_payload["nodes"]}
     assert node_ids.issuperset({"Subsystem:Kasmina", "Subsystem:Telemetry", "IntegrationMessage:Sync"})
     assert graph_payload["artifacts"][0]["id"] == "DesignDoc:docs/telemetry.md"
+
+
+def test_fetch_subsystem_paths_inlines_depth_literal(monkeypatch: pytest.MonkeyPatch) -> None:
+    tx = mock.Mock()
+    tx.run.return_value = []
+
+    graph_service._fetch_subsystem_paths(tx, name="Kasmina", depth=3)
+
+    assert tx.run.call_count == 1
+    args = tx.run.call_args.args
+    kwargs = tx.run.call_args.kwargs
+    assert "*1..3" in args[0]
+    assert kwargs == {"name": "Kasmina"}
 
 
 def test_get_node_with_relationships(
@@ -326,7 +366,11 @@ def test_run_cypher_serializes_records(monkeypatch: pytest.MonkeyPatch, dummy_dr
 
     driver.execute_query_result = SimpleNamespace(
         records=[DummyRecord([node, 42])],
-        summary=SimpleNamespace(result_available_after=12, database=SimpleNamespace(name="knowledge")),
+        summary=SimpleNamespace(
+            result_available_after=12,
+            database=SimpleNamespace(name="knowledge"),
+            counters=SimpleNamespace(contains_updates=False),
+        ),
     )
 
     payload = service.run_cypher("MATCH (n) RETURN n LIMIT 1", parameters=None)
@@ -339,5 +383,103 @@ def test_run_cypher_serializes_records(monkeypatch: pytest.MonkeyPatch, dummy_dr
 def test_run_cypher_rejects_non_read_queries(dummy_driver: DriverFixture) -> None:
     service, _, _ = dummy_driver
 
+    _reset_metric("keyword")
+    before = _metric_value("keyword")
     with pytest.raises(GraphQueryError):
         service.run_cypher("CREATE (n:Test) RETURN n LIMIT 1", parameters=None)
+
+    after = _metric_value("keyword")
+    assert after == pytest.approx(before + 1)
+
+
+def test_run_cypher_rejects_updates_detected_in_counters(dummy_driver: DriverFixture) -> None:
+    service, _, driver = dummy_driver
+    driver.execute_query_result = SimpleNamespace(
+        records=[],
+        summary=SimpleNamespace(
+            result_available_after=None,
+            database=None,
+            counters=SimpleNamespace(contains_updates=True),
+        ),
+    )
+
+    _reset_metric("mutation")
+    before = _metric_value("mutation")
+    with pytest.raises(GraphQueryError):
+        service.run_cypher("MATCH (n) RETURN n LIMIT 1", parameters=None)
+
+    after = _metric_value("mutation")
+    assert after == pytest.approx(before + 1)
+
+
+def test_run_cypher_allows_whitelisted_procedure(dummy_driver: DriverFixture) -> None:
+    service, _, driver = dummy_driver
+    driver.execute_query_result = SimpleNamespace(
+        records=[],
+        summary=SimpleNamespace(
+            result_available_after=None,
+            database=None,
+            counters=SimpleNamespace(contains_updates=False),
+        ),
+    )
+
+    _reset_metric("procedure")
+    service.run_cypher(
+        "CALL db.schema.nodeTypeProperties() YIELD nodeType RETURN nodeType LIMIT 5",
+        parameters=None,
+    )
+
+    assert driver.last_execute_query[0].startswith("CALL db.schema")
+    assert _metric_value("procedure") == 0
+
+
+def test_run_cypher_rejects_disallowed_procedure(dummy_driver: DriverFixture) -> None:
+    service, _, _ = dummy_driver
+
+    _reset_metric("procedure")
+    before = _metric_value("procedure")
+    with pytest.raises(GraphQueryError):
+        service.run_cypher(
+            "CALL dbms.procedures() YIELD name RETURN name LIMIT 5",
+            parameters=None,
+        )
+
+    after = _metric_value("procedure")
+    assert after == pytest.approx(before + 1)
+
+
+def test_get_symbol_tests_returns_serialized_payload(monkeypatch: pytest.MonkeyPatch, dummy_driver: DriverFixture) -> None:
+    service, _session, _driver = dummy_driver
+
+    symbol_node = DummyNode(
+        ["Symbol"],
+        "Symbol:src/module.py::Example.method",
+        id="src/module.py::Example.method",
+        name="Example",
+        qualified_name="Example.method",
+    )
+    test_node = DummyNode(["TestCase"], "TestCase:tests/test_example.py", path="tests/test_example.py", subsystem="Example")
+
+    def fake_fetch_symbol_tests(_tx: object, symbol_id: str) -> dict[str, object] | None:
+        assert symbol_id == "src/module.py::Example.method"
+        return {"symbol": symbol_node, "tests": [test_node]}
+
+    monkeypatch.setattr(graph_service, "_fetch_symbol_tests", fake_fetch_symbol_tests)
+
+    payload = service.get_symbol_tests("src/module.py::Example.method")
+
+    assert payload["symbol"]["id"] == "Symbol:src/module.py::Example.method"
+    assert payload["symbol"]["properties"]["qualified_name"] == "Example.method"
+    assert payload["tests"][0]["id"] == "TestCase:tests/test_example.py"
+
+
+def test_get_symbol_tests_missing_symbol_raises(monkeypatch: pytest.MonkeyPatch, dummy_driver: DriverFixture) -> None:
+    service, _session, _driver = dummy_driver
+
+    def fake_fetch_symbol_tests(_tx: object, symbol_id: str) -> dict[str, object] | None:
+        return None
+
+    monkeypatch.setattr(graph_service, "_fetch_symbol_tests", fake_fetch_symbol_tests)
+
+    with pytest.raises(GraphNotFoundError):
+        service.get_symbol_tests("missing::symbol")

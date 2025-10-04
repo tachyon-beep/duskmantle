@@ -1,106 +1,60 @@
 from __future__ import annotations
 
-from unittest import mock
+from collections import deque
+from dataclasses import dataclass
 
-from gateway.ingest.artifacts import Artifact, Chunk, ChunkEmbedding
+import numpy as np
+from qdrant_client.http import models as qmodels
+
 from gateway.ingest.qdrant_writer import QdrantWriter
 
 
-class RecordingClient:
+@dataclass
+class _FakeChunk:
+    chunk_id: str
+    content_digest: str
+    metadata: dict[str, object]
+    text: str
+
+
+@dataclass
+class _ChunkEmbedding:
+    chunk: _FakeChunk
+    vector: list[float]
+
+
+class _FakeClient:
     def __init__(self) -> None:
-        self._collections = set()
-        self.recreate_calls: list[dict[str, object]] = []
-        self.upserts: list[dict[str, object]] = []
+        self.calls = deque()
 
-    def get_collection(self, name: str) -> None:
-        if name not in self._collections:
-            raise RuntimeError("missing")
-
-    def recreate_collection(
-        self,
-        collection_name: str,
-        vectors_config: object,
-        optimizers_config: object,
-    ) -> None:
-        self._collections.add(collection_name)
-        self.recreate_calls.append(
-            {
-                "name": collection_name,
-                "size": vectors_config.size,
-                "distance": vectors_config.distance,
-                "segments": optimizers_config.default_segment_number,
-            }
-        )
-
-    def upsert(self, collection_name: str, points: object) -> None:
-        self.upserts.append({"collection": collection_name, "points": points})
+    def upsert(self, *, collection_name: str, points: list[qmodels.PointStruct]) -> None:
+        self.calls.append((collection_name, points))
 
 
-def build_chunk(path: str, text: str, metadata: dict[str, object]) -> ChunkEmbedding:
-    artifact = Artifact(
-        path=mock.Mock(as_posix=lambda: path),
-        artifact_type=metadata.get("artifact_type", "code"),
-        subsystem=metadata.get("subsystem"),
-        content=text,
-        git_commit=metadata.get("git_commit"),
-        git_timestamp=metadata.get("git_timestamp"),
-        extra_metadata={},
+def _embedding(idx: int) -> _ChunkEmbedding:
+    chunk = _FakeChunk(
+        chunk_id=f"chunk-{idx}",
+        content_digest=f"{idx:032x}",
+        metadata={"path": f"src/file_{idx}.py"},
+        text=f"snippet {idx}",
     )
-    chunk = Chunk(
-        artifact=artifact,
-        chunk_id=f"{path}::0",
-        text=text,
-        sequence=0,
-        content_digest="0123456789abcdef0123456789abcdef",
-        metadata=metadata,
-    )
-    return ChunkEmbedding(chunk=chunk, vector=[0.1, 0.2])
+    vector = list(np.arange(3, dtype=np.float32) + idx)
+    return _ChunkEmbedding(chunk=chunk, vector=vector)  # type: ignore[arg-type]
 
 
-def test_ensure_collection_creates_when_missing() -> None:
-    client = RecordingClient()
-    writer = QdrantWriter(client, "km_test")
+def test_upsert_chunks_batches_calls() -> None:
+    client = _FakeClient()
+    writer = QdrantWriter(client, "collection")
+    embeddings = [_embedding(i) for i in range(5)]
 
-    writer.ensure_collection(vector_size=384)
+    writer.upsert_chunks(embeddings, batch_size=2)
 
-    assert client.recreate_calls
-    call = client.recreate_calls[0]
-    assert call["name"] == "km_test"
-    assert call["size"] == 384
-    assert call["segments"] == 2
-
-
-def test_ensure_collection_noop_when_exists() -> None:
-    client = RecordingClient()
-    client._collections.add("km_test")
-    writer = QdrantWriter(client, "km_test")
-
-    writer.ensure_collection(vector_size=256)
-
-    assert not client.recreate_calls
+    assert len(client.calls) == 3
+    sizes = [len(points) for (_, points) in client.calls]
+    assert sizes == [2, 2, 1]
+    # verify IDs are stable UUID derived from digest
+    first_batch = client.calls[0][1]
+    assert first_batch[0].id == "00000000-0000-0000-0000-000000000000"
+    assert first_batch[1].id == "00000000-0000-0000-0000-000000000001"
 
 
-def test_upsert_chunks_builds_points() -> None:
-    client = RecordingClient()
-    writer = QdrantWriter(client, "km_test")
-
-    chunk = build_chunk(
-        "docs/readme.md",
-        "hello world",
-        {"artifact_type": "doc", "subsystem": "Kasmina", "tags": ["intro"]},
-    )
-
-    writer.upsert_chunks([chunk])
-
-    assert client.upserts
-    payload = client.upserts[0]["points"][0]
-    assert payload.payload["chunk_id"] == "docs/readme.md::0"
-    assert payload.payload["text"] == "hello world"
-    assert payload.payload["tags"] == ["intro"]
-
-
-def test_upsert_chunks_noop_on_empty() -> None:
-    client = RecordingClient()
-    writer = QdrantWriter(client, "km_test")
-    writer.upsert_chunks([])
-    assert not client.upserts

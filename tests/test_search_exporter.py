@@ -82,6 +82,7 @@ def test_export_training_data_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
         fmt="jsonl",
         require_vote=True,
         limit=None,
+        include_rotations=False,
     )
 
     assert output_path.exists()

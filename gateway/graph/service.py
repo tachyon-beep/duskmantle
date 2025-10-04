@@ -1,15 +1,22 @@
+"""Read-only graph service utilities backed by Neo4j."""
+
 from __future__ import annotations
 
 import base64
 from collections import OrderedDict
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from threading import Lock
 from time import monotonic
-from typing import Any
+from typing import Any, TypeVar, cast
 
-from neo4j import Driver, ManagedTransaction
+from neo4j import Driver, ManagedTransaction, Session
+from neo4j.exceptions import Neo4jError, ServiceUnavailable
 from neo4j.graph import Node, Relationship
+
+from gateway.observability.metrics import GRAPH_CYPHER_DENIED_TOTAL
+
+T = TypeVar("T")
 
 
 class GraphServiceError(RuntimeError):
@@ -26,6 +33,8 @@ class GraphQueryError(GraphServiceError):
 
 @dataclass(slots=True)
 class SubsystemGraphSnapshot:
+    """Snapshot of a subsystem node and its related graph context."""
+
     subsystem: dict[str, Any]
     related: list[dict[str, Any]]
     nodes: list[dict[str, Any]]
@@ -46,12 +55,14 @@ class SubsystemGraphCache:
     """Simple TTL cache for subsystem graph snapshots."""
 
     def __init__(self, ttl_seconds: float, max_entries: int) -> None:
+        """Create a cache with an expiry window and bounded size."""
         self._ttl = max(0.0, ttl_seconds)
         self._max_entries = max(1, max_entries)
         self._entries: OrderedDict[tuple[str, int], tuple[float, SubsystemGraphSnapshot]] = OrderedDict()
         self._lock = Lock()
 
     def get(self, key: tuple[str, int]) -> SubsystemGraphSnapshot | None:
+        """Return a cached snapshot if it exists and has not expired."""
         if self._ttl <= 0:
             return None
         now = monotonic()
@@ -67,6 +78,7 @@ class SubsystemGraphCache:
             return snapshot
 
     def set(self, key: tuple[str, int], snapshot: SubsystemGraphSnapshot) -> None:
+        """Cache a snapshot for the given key, evicting oldest entries if needed."""
         if self._ttl <= 0:
             return
         expires_at = monotonic() + self._ttl
@@ -77,17 +89,77 @@ class SubsystemGraphCache:
                 self._entries.popitem(last=False)
 
     def clear(self) -> None:
+        """Remove all cached subsystem snapshots."""
         with self._lock:
             self._entries.clear()
 
 
-@dataclass(slots=True)
 class GraphService:
     """Service layer for read-only graph queries."""
 
-    driver: Driver
-    database: str
-    subsystem_cache: SubsystemGraphCache | None = None
+    __slots__ = (
+        "_driver_provider",
+        "_readonly_provider",
+        "_failure_callback",
+        "database",
+        "subsystem_cache",
+    )
+
+    def __init__(
+        self,
+        driver_provider: Callable[[], Driver],
+        database: str,
+        *,
+        cache_ttl: float | None = None,
+        cache_max_entries: int = 128,
+        readonly_provider: Callable[[], Driver] | None = None,
+        failure_callback: Callable[[Exception], None] | None = None,
+    ) -> None:
+        self._driver_provider = driver_provider
+        self._readonly_provider = readonly_provider
+        self._failure_callback = failure_callback
+        self.database = database
+        self.subsystem_cache = SubsystemGraphCache(cache_ttl, cache_max_entries) if cache_ttl is not None and cache_ttl > 0 else None
+
+    def clear_cache(self) -> None:
+        """Wipe the subsystem snapshot cache if caching is enabled."""
+        if self.subsystem_cache is not None:
+            self.subsystem_cache.clear()
+
+    def _get_driver(self, *, readonly: bool = False) -> Driver:
+        if readonly and self._readonly_provider is not None:
+            return self._readonly_provider()
+        return self._driver_provider()
+
+    def _execute(self, operation: Callable[[Driver], T], *, readonly: bool = False) -> T:
+        attempts = 2 if self._failure_callback is not None else 1
+        for attempt in range(attempts):
+            driver = self._get_driver(readonly=readonly)
+            try:
+                return operation(driver)
+            except GraphServiceError:
+                raise
+            except (Neo4jError, ServiceUnavailable, OSError) as exc:
+                if self._failure_callback is not None:
+                    self._failure_callback(exc)
+                if attempt == attempts - 1:
+                    raise
+        raise RuntimeError("unreachable")
+
+    def _run_with_session(
+        self,
+        operation: Callable[[Session], T],
+        *,
+        readonly: bool = False,
+        **session_kwargs: object,
+    ) -> T:
+        def _invoke(driver: Driver) -> T:
+            kwargs = {"database": self.database}
+            kwargs.update(session_kwargs)
+            with driver.session(**kwargs) as session:
+                return operation(session)
+
+        return self._execute(_invoke, readonly=readonly)
 
     def get_subsystem(
         self,
@@ -98,6 +170,7 @@ class GraphService:
         cursor: str | None,
         include_artifacts: bool,
     ) -> dict[str, Any]:
+        """Return a windowed view of related nodes for the requested subsystem."""
         offset = max(0, _decode_cursor(cursor))
         limit = max(1, limit)
         snapshot = self._load_subsystem_snapshot(name, depth)
@@ -122,6 +195,7 @@ class GraphService:
         }
 
     def get_subsystem_graph(self, name: str, *, depth: int) -> dict[str, Any]:
+        """Return the full node/edge snapshot for a subsystem."""
         snapshot = self._load_subsystem_snapshot(name, depth)
         return {
             "subsystem": snapshot.subsystem,
@@ -137,26 +211,43 @@ class GraphService:
         cursor: str | None,
         limit: int,
     ) -> dict[str, Any]:
+        """List nodes that have no relationships of the allowed labels."""
         if label and label not in ORPHAN_DEFAULT_LABELS:
             raise GraphQueryError(f"Unsupported orphan label '{label}'")
         offset = max(0, _decode_cursor(cursor))
         limit = max(1, limit)
-        with self.driver.session(database=self.database) as session:
-            records = session.execute_read(
+
+        records = self._run_with_session(
+            lambda session: session.execute_read(
                 _fetch_orphan_nodes,
                 label,
                 offset,
                 limit,
-            )
+            ),
+            readonly=True,
+        )
         nodes = [_serialize_node(record) for record in records]
         next_cursor = None
         if len(nodes) == limit:
             next_cursor = _encode_cursor(offset + limit)
         return {"nodes": nodes, "cursor": next_cursor}
 
-    def clear_cache(self) -> None:
-        if self.subsystem_cache is not None:
-            self.subsystem_cache.clear()
+    def get_symbol_tests(self, symbol_id: str) -> dict[str, Any]:
+        """Return tests linked to the specified symbol identifier."""
+
+        def _operation(session: Session) -> dict[str, Any]:
+            record = session.execute_read(_fetch_symbol_tests, symbol_id)
+            if record is None:
+                raise GraphNotFoundError(f"Symbol '{symbol_id}' not found")
+            return record
+
+        data = self._run_with_session(_operation, readonly=True)
+        symbol_node = _ensure_node(data["symbol"])
+        tests = [_ensure_node(node) for node in data.get("tests", [])]
+        return {
+            "symbol": _serialize_node(symbol_node),
+            "tests": [_serialize_node(node) for node in tests],
+        }
 
     def _load_subsystem_snapshot(self, name: str, depth: int) -> SubsystemGraphSnapshot:
         depth = max(1, depth)
@@ -171,18 +262,23 @@ class GraphService:
         return snapshot
 
     def _build_subsystem_snapshot(self, name: str, depth: int) -> SubsystemGraphSnapshot:
-        with self.driver.session(database=self.database) as session:
+        def _op(session: Session) -> tuple[Node, Sequence[Mapping[str, Any]], Sequence[Node]]:
             subsystem_node = session.execute_read(_fetch_subsystem_node, name)
             if subsystem_node is None:
                 raise GraphNotFoundError(f"Subsystem '{name}' not found")
-            subsystem_node = _ensure_node(subsystem_node)
-
+            resolved_node = _ensure_node(subsystem_node)
             path_records = session.execute_read(
                 _fetch_subsystem_paths,
                 name,
                 depth,
             )
             artifact_records = session.execute_read(_fetch_artifacts_for_subsystem, name)
+            return resolved_node, path_records, artifact_records
+
+        subsystem_node, path_records, artifact_records = self._run_with_session(
+            _op,
+            readonly=True,
+        )
 
         subsystem_serialized = _serialize_node(subsystem_node)
         nodes_by_id: OrderedDict[str, dict[str, Any]] = OrderedDict()
@@ -216,8 +312,10 @@ class GraphService:
         )
 
     def get_node(self, node_id: str, *, relationships: str, limit: int) -> dict[str, Any]:
+        """Return a node and a limited set of relationships using Cypher lookups."""
         label, key, value = _parse_node_id(node_id)
-        with self.driver.session(database=self.database) as session:
+
+        def _op(session: Session) -> tuple[Node, list[dict[str, Any]]]:
             node = session.execute_read(_fetch_node_by_id, label, key, value)
             if node is None:
                 raise GraphNotFoundError(f"Node '{node_id}' not found")
@@ -234,6 +332,9 @@ class GraphService:
                     limit,
                 )
                 rels = [_serialize_relationship(record) for record in rel_records]
+            return node, rels
+
+        node, rels = self._run_with_session(_op, readonly=True)
 
         return {
             "node": _serialize_node(node),
@@ -241,11 +342,14 @@ class GraphService:
         }
 
     def search(self, term: str, *, limit: int) -> dict[str, Any]:
+        """Search the graph for nodes matching the provided term."""
         if not term.strip():
             return {"results": []}
         lower_term = term.lower()
-        with self.driver.session(database=self.database) as session:
-            records = session.execute_read(_search_entities, lower_term, limit)
+        records = self._run_with_session(
+            lambda session: session.execute_read(_search_entities, lower_term, limit),
+            readonly=True,
+        )
         results = [
             {
                 "id": _canonical_node_id(_ensure_node(record["node"])),
@@ -277,8 +381,12 @@ class GraphService:
         )
 
         try:
-            with self.driver.session(database=self.database) as session:
-                record = session.run(query, value=value).single()
+            record = self._run_with_session(
+                lambda session: session.run(query, value=value).single(),
+                readonly=True,
+            )
+        except (Neo4jError, ServiceUnavailable, OSError) as exc:  # pragma: no cover - driver failure
+            raise GraphServiceError(str(exc)) from exc
         except Exception as exc:  # pragma: no cover - defensive guard
             raise GraphServiceError(str(exc)) from exc
         if record is None:
@@ -294,18 +402,51 @@ class GraphService:
     def run_cypher(
         self,
         query: str,
-        parameters: dict[str, Any] | None,
+        parameters: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
+        """Execute an arbitrary Cypher query and serialize the response."""
         _validate_cypher(query)
         params = parameters or {}
         try:
-            result = self.driver.execute_query(
-                query,
-                parameters=params,
-                database_=self.database,
+            result = self._execute(
+                lambda driver: driver.execute_query(
+                    query,
+                    parameters=params,
+                    database_=self.database,
+                ),
+                readonly=True,
             )
-        except Exception as exc:  # pragma: no cover - driver errors wrapped for clients
+        except (Neo4jError, ServiceUnavailable, OSError) as exc:  # pragma: no cover - driver errors wrapped
             raise GraphQueryError(str(exc)) from exc
+        except Exception as exc:  # pragma: no cover - defensive guard
+            raise GraphQueryError(str(exc)) from exc
+
+        summary = result.summary
+        if summary is not None:
+            counters = getattr(summary, "counters", None)
+            if counters:
+                contains_updates = getattr(counters, "contains_updates", None)
+                if callable(contains_updates):
+                    has_updates = bool(contains_updates())
+                elif isinstance(contains_updates, bool):
+                    has_updates = contains_updates
+                else:  # pragma: no cover - fallback for older driver variants
+                    update_fields = [
+                        "nodes_created",
+                        "nodes_deleted",
+                        "relationships_created",
+                        "relationships_deleted",
+                        "properties_set",
+                        "labels_added",
+                        "labels_removed",
+                        "indexes_added",
+                        "indexes_removed",
+                        "constraints_added",
+                        "constraints_removed",
+                    ]
+                    has_updates = any(getattr(counters, field, 0) for field in update_fields)
+                if has_updates:
+                    _deny_cypher("mutation", "Only read-only Cypher queries are permitted")
 
         data = [
             {
@@ -313,7 +454,6 @@ class GraphService:
             }
             for record in result.records
         ]
-        summary = result.summary
         consumed_ms = None
         if summary and summary.result_available_after is not None:
             consumed_ms = summary.result_available_after
@@ -335,16 +475,35 @@ class GraphService:
 
 
 def get_graph_service(
-    driver: Driver,
+    driver: Driver | Callable[[], Driver],
     database: str,
     *,
     cache_ttl: float | None = None,
     cache_max_entries: int = 128,
+    readonly_driver: Driver | Callable[[], Driver] | None = None,
+    failure_callback: Callable[[Exception], None] | None = None,
 ) -> GraphService:
-    cache = None
-    if cache_ttl is not None and cache_ttl > 0:
-        cache = SubsystemGraphCache(cache_ttl, cache_max_entries)
-    return GraphService(driver=driver, database=database, subsystem_cache=cache)
+    """Factory helper that constructs a `GraphService` with optional caching."""
+
+    def _ensure_provider(candidate: Driver | Callable[[], Driver]) -> Callable[[], Driver]:
+        if callable(candidate):
+            return cast(Callable[[], Driver], candidate)
+        driver_obj = candidate
+        return lambda: driver_obj
+
+    driver_provider = _ensure_provider(driver)
+    readonly_provider = None
+    if readonly_driver is not None:
+        readonly_provider = _ensure_provider(readonly_driver)
+
+    return GraphService(
+        driver_provider=driver_provider,
+        database=database,
+        cache_ttl=cache_ttl,
+        cache_max_entries=cache_max_entries,
+        readonly_provider=readonly_provider,
+        failure_callback=failure_callback,
+    )
 
 
 def _extract_path_components(
@@ -460,8 +619,11 @@ def _fetch_subsystem_paths(
     depth: int,
 ) -> list[dict[str, Any]]:
     bounded_depth = max(1, int(depth))
+    depth_clause = f"[rel*1..{bounded_depth}]"
     query = (
-        "MATCH p=(s:Subsystem {name: $name})-[rel*1..$depth]-(n) "
+        "MATCH p=(s:Subsystem {name: $name})-"
+        f"{depth_clause}"
+        "-(n) "
         "WHERE n <> s "
         "WITH n, p "
         "ORDER BY length(p) ASC "
@@ -470,7 +632,7 @@ def _fetch_subsystem_paths(
         "RETURN n AS node, nodes(path) AS nodes, relationships(path) AS relationships "
         "ORDER BY coalesce(n.name, n.title, n.path, elementId(n))"
     )
-    result = tx.run(query, name=name, depth=bounded_depth)
+    result = tx.run(query, name=name)
     return [
         {
             "node": record["node"],
@@ -570,6 +732,25 @@ def _search_entities(tx: ManagedTransaction, /, term: str, limit: int) -> list[d
         }
         for record in result
     ]
+
+
+def _fetch_symbol_tests(tx: ManagedTransaction, symbol_id: str) -> dict[str, Any] | None:
+    record = tx.run(
+        """
+        MATCH (sym:Symbol {id: $symbol_id})
+        OPTIONAL MATCH (test:TestCase)-[:EXERCISES]->(sym)
+        RETURN sym AS symbol, collect(test) AS tests
+        """,
+        symbol_id=symbol_id,
+    ).single()
+    if record is None:
+        return None
+    symbol = record.get("symbol")
+    if symbol is None:
+        return None
+    tests = [node for node in record.get("tests", []) if isinstance(node, Node)]
+    tests.sort(key=lambda node: str(node.get("path") or ""))
+    return {"symbol": symbol, "tests": tests}
 
 
 # --- Serialization helpers -------------------------------------------------
@@ -701,11 +882,129 @@ def _decode_cursor(cursor: str | None) -> int:
 
 
 def _validate_cypher(query: str) -> None:
-    forbidden = {"CREATE", "MERGE", "DELETE", "SET", "DROP", "REMOVE"}
-    normalized = query.upper()
-    if any(keyword in normalized for keyword in forbidden):
-        raise GraphQueryError("Only read-only Cypher is permitted")
-    if "RETURN" not in normalized:
-        raise GraphQueryError("Cypher query must include RETURN")
-    if "LIMIT" not in normalized:
-        raise GraphQueryError("Cypher query must include LIMIT")
+    sanitized = _strip_literals_and_comments(query)
+    upper_query = " ".join(sanitized.upper().split())
+    tokens = _tokenize_query(upper_query)
+
+    forbidden_tokens = {
+        "CREATE",
+        "MERGE",
+        "DELETE",
+        "DETACH",
+        "SET",
+        "DROP",
+        "REMOVE",
+        "ALTER",
+        "GRANT",
+        "REVOKE",
+        "LOAD",
+        "CSV",
+    }
+    if any(token in forbidden_tokens for token in tokens):
+        _deny_cypher("keyword", "Only read-only Cypher is permitted")
+
+    for procedure in _extract_procedure_calls(tokens):
+        if not any(procedure.startswith(prefix) for prefix in _ALLOWED_PROCEDURE_PREFIXES):
+            _deny_cypher("procedure", "CALL to procedure is not permitted in this context")
+
+    normalized = f" {upper_query} "
+    if " RETURN " not in normalized:
+        _deny_cypher("structure", "Cypher query must include RETURN")
+    if " LIMIT " not in normalized:
+        _deny_cypher("structure", "Cypher query must include LIMIT")
+
+
+def _strip_literals_and_comments(query: str) -> str:
+    result: list[str] = []
+    length = len(query)
+    i = 0
+    while i < length:
+        ch = query[i]
+        if ch in {'"', "'", "`"}:
+            quote = ch
+            result.append(" ")
+            i += 1
+            while i < length:
+                current = query[i]
+                if current == "\\" and i + 1 < length:
+                    i += 2
+                    continue
+                if current == quote:
+                    i += 1
+                    break
+                i += 1
+            continue
+        if ch == "/" and i + 1 < length:
+            nxt = query[i + 1]
+            if nxt == "/":
+                result.append(" ")
+                i += 2
+                while i < length and query[i] not in {"\n", "\r"}:
+                    i += 1
+                continue
+            if nxt == "*":
+                result.append(" ")
+                i += 2
+                while i + 1 < length and not (query[i] == "*" and query[i + 1] == "/"):
+                    i += 1
+                i = min(length, i + 2)
+                continue
+        result.append(ch)
+        i += 1
+    return "".join(result)
+
+
+def _tokenize_query(upper_query: str) -> list[str]:
+    tokens: list[str] = []
+    current: list[str] = []
+    for ch in upper_query:
+        if ch.isalpha():
+            current.append(ch)
+        else:
+            if current:
+                tokens.append("".join(current))
+                current = []
+    if current:
+        tokens.append("".join(current))
+    return tokens
+
+
+def _extract_procedure_calls(tokens: list[str]) -> list[str]:
+    procedures: list[str] = []
+    total = len(tokens)
+    i = 0
+    while i < total:
+        if tokens[i] == "CALL":
+            proc_tokens: list[str] = []
+            j = i + 1
+            while j < total:
+                token = tokens[j]
+                if token in {"YIELD", "RETURN", "WITH", "WHERE"}:
+                    break
+                proc_tokens.append(token)
+                j += 1
+            if not proc_tokens:
+                _deny_cypher("procedure", "Procedure name missing after CALL")
+            procedures.append(".".join(proc_tokens))
+            i = j
+        else:
+            i += 1
+    return procedures
+
+
+_ALLOWED_PROCEDURE_PREFIXES = (
+    "DB.SCHEMA.",
+    "DB.LABELS",
+    "DB.RELATIONSHIPTYPES",
+    "DB.INDEXES",
+    "DB.CONSTRAINTS",
+    "DB.PROPERTYKEYS",
+)
+
+
+def _deny_cypher(reason: str, message: str) -> None:
+    try:
+        GRAPH_CYPHER_DENIED_TOTAL.labels(reason=reason).inc()
+    except Exception:  # pragma: no cover - metric updates should not mask errors
+        pass
+    raise GraphQueryError(message)

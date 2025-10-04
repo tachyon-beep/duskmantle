@@ -132,6 +132,15 @@ def audit_history(
     _ensure_maintainer_scope(settings)
     audit_path = settings.state_path / "audit" / "audit.db"
     audit_logger = AuditLogger(audit_path)
+    max_limit = settings.audit_history_max_limit
+    requested_limit = limit
+    limit = max(1, min(limit, max_limit))
+    if limit != requested_limit:
+        console.print(
+            f"Requested limit {requested_limit} adjusted to {limit} (cap {max_limit}).",
+            style="yellow",
+        )
+
     entries = audit_logger.recent(limit=limit)
 
     if output_json:

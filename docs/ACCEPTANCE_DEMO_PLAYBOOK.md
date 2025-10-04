@@ -89,8 +89,9 @@ curl -s "http://localhost:8000/graph/nodes/DesignDoc%3Adocs%2FWORK_PACKAGES.md"
 Expect 200 responses with node payloads. If nodes are missing, confirm ingestion populated Neo4j by running:
 
 ```bash
+PASSWORD=$(grep '^KM_NEO4J_PASSWORD=' .duskmantle/config/secrets.env | cut -d '=' -f2)
 docker exec duskmantle /opt/knowledge/bin/neo4j-distribution/bin/cypher-shell \
-  -a bolt://localhost:7687 -u neo4j -p neo4jadmin \
+  -a bolt://localhost:7687 -u neo4j -p "$PASSWORD" \
   "MATCH (d:DesignDoc) RETURN d.path LIMIT 5"
 ```
 
@@ -98,10 +99,10 @@ Capture any discrepancies for debugging.
 
 ## 6. Coverage Report
 
-Confirm `/coverage` is available:
+Confirm `/api/v1/coverage` is available:
 
 ```bash
-curl -s http://localhost:8000/coverage | jq '.summary'
+curl -s http://localhost:8000/api/v1/coverage | jq '.summary'
 ```
 
 Record total artifacts and chunk counts.
@@ -112,7 +113,7 @@ Record total artifacts and chunk counts.
 
    ```bash
    bin/km-backup
-   ls backups
+   ls backups/archives
    ```
 
    Note the archive name.
@@ -126,10 +127,10 @@ Record total artifacts and chunk counts.
 
    ```bash
    docker run --rm -v $(pwd)/.duskmantle/config:/data alpine:3.20 sh -c "rm -rf /data/*"
-   tar -xzf backups/<archive>.tgz -C .duskmantle/config
+   tar -xzf backups/archives/<archive>.tgz -C .duskmantle/config
    ```
 
-4. Relaunch the container and rerun health checks (`/readyz`, `/healthz`, `/coverage`).
+4. Relaunch the container and rerun health checks (`/readyz`, `/healthz`, `/api/v1/coverage`).
 
 ## 8. Smoke Test (Automated)
 
@@ -137,7 +138,7 @@ Record total artifacts and chunk counts.
 ./infra/smoke-test.sh duskmantle/km:<demo-tag>
 ```
 
-This script builds the image, runs a container, triggers a smoke ingest (dummy embeddings), validates `/coverage`, and tears down.
+This script builds the image, runs a container, triggers a smoke ingest (dummy embeddings), validates `/api/v1/coverage`, and tears down.
 
 ## 9. Capture Results for Release Notes
 

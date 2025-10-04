@@ -149,6 +149,9 @@ class GatewayToolExecutor(ToolExecutor):
             term = _coerce_optional_str(params.get("term")) or ""
             limit = _coerce_positive_int(params.get("limit"), default=20)
             return await client.graph_search(term, limit=limit)
+        if tool == "km-graph-tests-of":
+            symbol_id = _require_str(params, "symbol_id")
+            return await client.symbol_tests(symbol_id)
         if tool == "km-coverage-summary":
             return await client.coverage_summary()
         if tool == "km-lifecycle-report":

@@ -28,7 +28,7 @@ This plan translates the turnkey single-container design into concrete implement
 - Task 2.4 Enhance `/search` to include graph context; expose `/graph/...` endpoints; add contract tests.
 - Task 2.5 Generate nightly coverage report and store under `/opt/knowledge/var/reports/`.
 - **Exit Criteria:** End-to-end ingestion populates both stores; search payloads include subsystem metadata; graph endpoints return expected relationships.
-- **Status (Sept 2025):** Complete — ingestion writes full graph/linkage, coverage reports surface via `/coverage`, and graph/search contract tests exercise the enriched payloads.
+- **Status (Sept 2025):** Complete — ingestion writes full graph/linkage, coverage reports surface via `/api/v1/coverage`, and graph/search contract tests exercise the enriched payloads.
 
 ### Phase 3: Turnkey Hardening (Weeks 5-6)
 
@@ -181,7 +181,7 @@ This plan translates the turnkey single-container design into concrete implement
 ## 3. Dependencies & Tooling
 
 - **Runtime:** Python 3.12+, FastAPI, APScheduler, `qdrant-client`, `neo4j` driver.
-- **Embedding Assets:** `sentence-transformers/all-MiniLM-L6-v2` downloaded during image build; optional GPU support documented.
+- **Embedding Assets:** Text embeddings use `FlagEmbedding` with `BAAI/bge-m3` (8192-token context); image embeddings rely on `sentence-transformers` (`sentence-transformers/clip-ViT-L-14`). Models download on first start or can be baked into the image; both backends auto-detect CUDA. Override via `KM_TEXT_EMBEDDING_MODEL` and `KM_IMAGE_EMBEDDING_MODEL` when experimenting with alternates.
 - **Build Tooling:** Docker (BuildKit recommended), Makefile or task runner for repeatable builds.
 - **Repository Access:** Users mount repository directories when running container; plan assumes Linux/macOS hosts.
 

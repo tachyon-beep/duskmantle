@@ -16,6 +16,7 @@ This specification defines the Model Context Protocol (MCP) surface for the Dusk
 | `km-graph-node` | reader | Fetch a graph node and relationships by canonical ID (e.g., `DesignDoc:docs/README.md`). |
 | `km-graph-subsystem` | reader | Inspect subsystem details, related nodes, and artifacts. |
 | `km-graph-search` | reader | Search graph entities by term (subsystems, design docs, source files). |
+| `km-graph-tests-of` | reader | List tests linked to a symbol via `EXERCISES` relationships. |
 | `km-coverage-summary` | reader | Retrieve latest coverage summary (artifacts, chunks, missing list). |
 | `km-lifecycle-report` | maintainer | Summarise isolated graph nodes, stale design docs, and subsystems missing tests. |
 | `km-ingest-status` | maintainer | Report last ingest run (run ID, success, counts, timestamp). |
@@ -48,11 +49,15 @@ The MCP server exposes the following helper summaries. These mirror the metadata
   - Required: `term`.
   - Optional: `limit` (default 20, max 50).
   - Example: `/sys mcp run duskmantle km-graph-search --term coverage`.
+- `km-graph-tests-of`
+  - Required: `symbol_id` such as `src/service.py::handler`.
+  - Example: `/sys mcp run duskmantle km-graph-tests-of --symbol-id "src/service.py::handler"`.
+  - Response includes the symbol metadata plus sorted `TestCase` nodes.
 - `km-coverage-summary`
-  - No parameters. Mirrors `/coverage` and returns artifact/chunk counts plus freshness stats.
+  - No parameters. Mirrors `/api/v1/coverage` and returns artifact/chunk counts plus freshness stats.
   - Example: `/sys mcp run duskmantle km-coverage-summary`.
 - `km-lifecycle-report`
-  - No parameters. Mirrors `/lifecycle` and lists isolated graph nodes, stale design docs (by age threshold), and subsystems missing tests.
+  - No parameters. Mirrors `/api/v1/lifecycle` and lists isolated graph nodes, stale design docs (by age threshold), and subsystems missing tests.
   - Example: `/sys mcp run duskmantle km-lifecycle-report`.
 - `km-ingest-status`
   - Optional: `profile` filter (default: latest run regardless of profile).
@@ -94,13 +99,21 @@ The MCP server exposes the following helper summaries. These mirror the metadata
     "artifact_types": ["doc", "code"],
     "namespaces": ["docs"],
     "tags": ["Integration"],
+    "symbols": ["Example.method"],
+    "symbol_kinds": ["method"],
+    "symbol_languages": ["python"],
     "updated_after": "2024-01-01T00:00:00Z",
     "max_age_days": 30
   },
   "sort_by_vector": false
 }
 ```
-- **Response:** hybrid search results (chunk, graph context, scoring). Include `metadata.request_id` for follow-up feedback.
+
+- `filters.symbols`: array of qualified symbol names (case-insensitive).
+- `filters.symbol_kinds`: array of symbol kinds (`class`, `function`, `method`, `interface`, `type`, `module`).
+- `filters.symbol_languages`: array of languages (`python`, `typescript`, `tsx`, `javascript`, `go`).
+- **Response:** hybrid search results (chunk, graph context, scoring). Include `metadata.request_id` for follow-up feedback. Each chunk now includes a `symbols` array when symbol indexing is enabled; entries contain `id`, `qualified_name`, span details, and an `editor_uri` when `KM_EDITOR_URI_TEMPLATE` is configured.
+- **CLI shortcut:** When invoking via FastMCP or Codex CLI, use `--symbol`, `--kind`, or `--lang` flags (repeatable/comma-separated) to append filter terms without hand-crafting the `filters` payload.
 
 ### 3.2 `km-graph-node`
 - **Request:** `{ "node_id": "DesignDoc:docs/archive/WORK_PACKAGES.md", "relationships": "all", "limit": 25 }`
@@ -114,15 +127,20 @@ The MCP server exposes the following helper summaries. These mirror the metadata
 - **Request:** `{ "term": "ingest", "limit": 10 }`
 - **Response:** `results` array with `id`, `label`, `score`, `snippet`.
 
-### 3.5 `km-coverage-summary`
+### 3.5 `km-graph-tests-of`
+- **Request:** `{ "symbol_id": "src/service.py::handler" }`
+- **Response:** `symbol` metadata plus `tests` array of `TestCase` nodes (empty when no coverage).
+- **Errors:** `not_found` when the symbol identifier is absent.
+
+### 3.6 `km-coverage-summary`
 - **Request:** `{}`
 - **Response:** coverage summary (artifact totals, chunk count, missing artifacts).
 
-### 3.6 `km-ingest-status`
+### 3.7 `km-ingest-status`
 - **Request:** `{ "profile": "scheduled" }` (default `"scheduled"`; allow `"demo"`, `"local"`, or custom).
 - **Response:** `{ "run_id": "...", "profile": "demo", "started_at": 1699999999.0, "success": true, "artifact_counts": {...}, "chunk_count": 320 }` plus `duration_seconds` and optional `repo_head`.
 
-### 3.7 `km-ingest-trigger`
+### 3.8 `km-ingest-trigger`
 - **Request:**
 ```json
 {
@@ -138,20 +156,20 @@ The MCP server exposes the following helper summaries. These mirror the metadata
 - **Response:** accepts once the job is queued/completed. For synchronous call, return the resulting `km-ingest-status` payload; for async call (future enhancement), return a job ID.
 - **Errors:** `upstream_error`, `unsupported_operation` (if incremental ingest not supported), `unauthorized`.
 
-### 3.8 `km-feedback-submit`
+### 3.9 `km-feedback-submit`
 - **Request:** `{ "request_id": "uuid", "chunk_id": "docs/README.md::3", "vote": 1, "note": "useful", "context": {"task": "demo"} }`
 - **Response:** acknowledgement with timestamp.
 
-### 3.9 `km-backup-trigger`
-### 3.10 `km-recipe-run`
+### 3.10 `km-backup-trigger`
+### 3.11 `km-recipe-run`
 - **Request:** `{ "recipe": "release-prep", "vars": {"profile": "release"} }`
 - **Response:** `{ "status": "success", "outputs": {...}, "steps": [...] }` where `steps` describes each tool invocation.
 - **Errors:** `recipe_not_found`, `tool_failed`, `assert_failed`, `timeout`.
 
 - **Request:** `{ "destination": null }`
-- **Response:** `{ "archive": "backups/km-backup-20250927T195120.tgz" }`
+- **Response:** `{ "archive": "backups/archives/km-backup-20250927T195120.tgz" }`
 
-### 3.10 `km-upload`
+### 3.12 `km-upload`
 - **Request:**
 ```json
 {
@@ -178,7 +196,7 @@ The MCP server exposes the following helper summaries. These mirror the metadata
 ```
 - **Errors:** `invalid_request` (missing/invalid path), `forbidden` (insufficient scope), `upstream_error` (ingest failure).
 
-### 3.11 `km-storetext`
+### 3.13 `km-storetext`
 - **Request:**
 ```json
 {

@@ -47,7 +47,7 @@ The runtime is a trio of co-located services managed inside the container by a l
 ### 3.2 Qdrant Vector Store
 
 - Runs using the official Qdrant binary inside the container.
-- Collection `km_knowledge_v1` sized for MiniLM (384 dimensions). Uses on-disk storage rooted at `/opt/knowledge/var/qdrant`.
+- Collection `km_knowledge_v1` sized for BGE-M3 (1,024 dimensions). Uses on-disk storage rooted at `/opt/knowledge/var/qdrant`.
 - HNSW parameters preset for balanced recall/latency given modest corpus (<5M chunks).
 
 ### 3.3 Neo4j Graph Database
@@ -96,7 +96,7 @@ The runtime is a trio of co-located services managed inside the container by a l
 ### 5.2 Chunking & Embedding
 
 - 1,000-character windows with 200-character overlap by default; runtime chunker implemented in `gateway/ingest/chunking.py` with environment-tunable window/overlap values.
-- Uses `sentence-transformers/all-MiniLM-L6-v2` shipped offline. Batched inference (batch=64) via CPU; togglable GPU support if container launched with `--gpus`. A deterministic dummy embedder supports dry runs and tests.
+- Uses FlagEmbedding `BAAI/bge-m3` for text and sentence-transformers `sentence-transformers/clip-ViT-L-14` for images. Batched inference auto-detects CUDA and falls back to CPU. Override via `KM_TEXT_EMBEDDING_MODEL`/`KM_IMAGE_EMBEDDING_MODEL`. A deterministic dummy embedder supports dry runs and tests.
 
 ### 5.3 Index & Graph Upserts
 
@@ -130,7 +130,7 @@ The runtime is a trio of co-located services managed inside the container by a l
 
 ### 6.3 API Surface
 
-- `GET /healthz`, `/readyz`, `/metrics`, `/coverage`, `/audit/history`.
+- `GET /healthz`, `/readyz`, `/metrics`, `/api/v1/coverage`, `/api/v1/audit/history`.
 - `POST /ingest/run` for ad-hoc ingestion (maintainer scope).
 - JSON schemas published under `/openapi.json` for client generation.
 
@@ -144,8 +144,9 @@ The runtime is a trio of co-located services managed inside the container by a l
 
 ### 7.2 Security & Access Control
 
-- Local deployments default to static credentials defined via environment variables (`KM_ADMIN_TOKEN`, `KM_READER_TOKEN`).
-- Neo4j authentication starts disabled (`dbms.security.auth_enabled=false`) for local ease-of-use; set `KM_NEO4J_PASSWORD` and flip the setting when deploying to shared environments.
+- Local deployments default to automatically generated credentials persisted under `${KM_VAR}/secrets.env`. Operators can override `KM_ADMIN_TOKEN`, `KM_READER_TOKEN`, or `KM_NEO4J_PASSWORD` explicitly prior to launch.
+- Neo4j authentication is enabled by default; the entrypoint issues a strong password unless `KM_ALLOW_INSECURE_BOOT=true` is set for demo scenarios. Only disable (`KM_NEO4J_AUTH_ENABLED=false`) in isolated development environments.
+- The container seeds `/workspace/repo` with sample content on first boot to aid demos; set `KM_SEED_SAMPLE_REPO=false` (or delete the `.km-sample-repo` marker file) once you mount the real repository so ingest does not warn about demo files.
 - HTTPS termination left to the host environment; documentation provides reverse proxy examples (Caddy, Nginx).
 - Secrets stored in mounted config files; no external secret manager dependency to keep turnkey footprint low.
 

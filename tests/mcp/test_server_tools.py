@@ -139,6 +139,44 @@ async def test_km_search_success_records_metrics(
 
 
 @pytest.mark.asyncio
+async def test_km_search_symbol_flags_merge_filters(
+    mcp_server: ServerFixture,
+) -> None:
+    server, state = mcp_server
+
+    captured: dict[str, Any] = {}
+
+    class StubClient:
+        async def search(self, payload: dict[str, object]) -> dict[str, object]:
+            captured.clear()
+            captured.update(payload)
+            await asyncio.sleep(0)
+            return {"results": [], "metadata": {}}
+
+    state.client = cast(Any, StubClient())
+
+    tool_fn = _tool_fn(await server.get_tool("km-search"))
+    result = await tool_fn(
+        query="symbol filters",
+        limit=4,
+        include_graph=False,
+        filters={"tags": ["integration"], "symbol_kinds": ["class"]},
+        symbol="Gateway.Service, Another.helper",
+        kind=["function", "Class"],
+        lang=["Python", "TypeScript"],
+        context=None,
+    )
+
+    assert result == {"results": [], "metadata": {}}
+    filters = captured.get("filters")
+    assert filters is not None
+    assert filters["tags"] == ["integration"]
+    assert filters["symbols"] == ["Gateway.Service", "Another.helper"]
+    assert filters["symbol_kinds"] == ["class", "function"]
+    assert filters["symbol_languages"] == ["python", "typescript"]
+
+
+@pytest.mark.asyncio
 async def test_km_search_gateway_error_records_failure(
     mcp_server: ServerFixture,
 ) -> None:
@@ -158,6 +196,26 @@ async def test_km_search_gateway_error_records_failure(
     assert _counter_value(MCP_REQUESTS_TOTAL, "km-search", "error") == 1
     assert _counter_value(MCP_FAILURES_TOTAL, "km-search", "GatewayRequestError") == 1
     assert _histogram_sum(MCP_REQUEST_SECONDS, "km-search") > 0.0
+
+
+@pytest.mark.asyncio
+async def test_km_graph_tests_of_gateway_error_records_failure(
+    mcp_server: ServerFixture,
+) -> None:
+    server, state = mcp_server
+
+    class StubClient:
+        async def symbol_tests(self, symbol_id: str) -> dict[str, object]:  # pragma: no cover - exercised in test
+            raise GatewayRequestError(status_code=500, detail="not found")
+
+    state.client = cast(Any, StubClient())
+
+    tool_fn = _tool_fn(await server.get_tool("km-graph-tests-of"))
+    with pytest.raises(GatewayRequestError):
+        await tool_fn(symbol_id="src/module.py::Example.method", context=None)
+
+    assert _counter_value(MCP_REQUESTS_TOTAL, "km-graph-tests-of", "error") == 1
+    assert _counter_value(MCP_FAILURES_TOTAL, "km-graph-tests-of", "GatewayRequestError") == 1
 
 
 @pytest.mark.asyncio
@@ -203,6 +261,11 @@ async def test_graph_tools_delegate_to_client_and_record_metrics(
             await asyncio.sleep(0)
             return {"results": ["node"]}
 
+        async def symbol_tests(self, symbol_id: str) -> dict[str, object]:
+            assert symbol_id == "src/module.py::Example.method"
+            await asyncio.sleep(0)
+            return {"symbol": {"id": symbol_id}, "tests": [{"id": "TestCase:tests/test_module.py"}]}
+
     state.client = cast(Any, StubClient())
 
     node_fn = _tool_fn(await server.get_tool("km-graph-node"))
@@ -224,12 +287,17 @@ async def test_graph_tools_delegate_to_client_and_record_metrics(
     search_fn = _tool_fn(await server.get_tool("km-graph-search"))
     graph_search = await search_fn(term="ingest", limit=7, context=None)
 
+    tests_fn = _tool_fn(await server.get_tool("km-graph-tests-of"))
+    symbol_tests = await tests_fn(symbol_id="src/module.py::Example.method", context=None)
+
     assert node == {"id": "DesignDoc:docs/README.md"}
     assert subsystem == {"name": "Kasmina"}
     assert graph_search == {"results": ["node"]}
+    assert symbol_tests == {"symbol": {"id": "src/module.py::Example.method"}, "tests": [{"id": "TestCase:tests/test_module.py"}]}
     assert _counter_value(MCP_REQUESTS_TOTAL, "km-graph-node", "success") == 1
     assert _counter_value(MCP_REQUESTS_TOTAL, "km-graph-subsystem", "success") == 1
     assert _counter_value(MCP_REQUESTS_TOTAL, "km-graph-search", "success") == 1
+    assert _counter_value(MCP_REQUESTS_TOTAL, "km-graph-tests-of", "success") == 1
 
 
 @pytest.mark.asyncio
@@ -359,14 +427,14 @@ async def test_backup_trigger(
 
     async def stub_trigger_backup(_settings: MCPSettings) -> dict[str, object]:
         await asyncio.sleep(0)
-        return {"archive": "backups/km-backup.tgz"}
+        return {"archive": "backups/archives/km-backup.tgz"}
 
     monkeypatch.setattr("gateway.mcp.server.trigger_backup", stub_trigger_backup)
 
     tool_fn = _tool_fn(await server.get_tool("km-backup-trigger"))
     archive = await tool_fn(context=None)
 
-    assert archive == {"archive": "backups/km-backup.tgz"}
+    assert archive == {"archive": "backups/archives/km-backup.tgz"}
     assert _counter_value(MCP_REQUESTS_TOTAL, "km-backup-trigger", "success") == 1
 
 

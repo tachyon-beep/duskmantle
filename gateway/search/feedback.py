@@ -1,3 +1,5 @@
+"""Persistent storage helpers for search feedback events."""
+
 from __future__ import annotations
 
 import json
@@ -6,18 +8,28 @@ import uuid
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Final
 
+from gateway.observability.metrics import (
+    SEARCH_FEEDBACK_LOG_BYTES,
+    SEARCH_FEEDBACK_ROTATIONS_TOTAL,
+)
 from gateway.search.service import SearchResponse
 
 
 class SearchFeedbackStore:
     """Append-only store for search telemetry and feedback."""
 
-    def __init__(self, root: Path) -> None:
+    LOG_SUFFIX_TEMPLATE: Final[str] = "events.log.{}"
+
+    def __init__(self, root: Path, *, max_bytes: int, max_files: int) -> None:
+        """Initialise the feedback store beneath the given directory."""
         self.base_dir = root
         self.base_dir.mkdir(parents=True, exist_ok=True)
         self.events_path = self.base_dir / "events.log"
         self._lock = threading.Lock()
+        self._max_bytes = max(1, int(max_bytes))
+        self._max_files = max(1, int(max_files))
 
     def record(
         self,
@@ -27,6 +39,7 @@ class SearchFeedbackStore:
         context: object = None,
         request_id: str | None = None,
     ) -> None:
+        """Persist a feedback event for the supplied search response."""
         if not response.results:
             return
 
@@ -64,11 +77,60 @@ class SearchFeedbackStore:
     def _append(self, rows: Sequence[Mapping[str, object]]) -> None:
         if not rows:
             return
-        payload = "\n".join(json.dumps(dict(row), separators=(",", ":"), ensure_ascii=False) for row in rows)
+        payload = "\n".join(
+            json.dumps(dict(row), separators=(",", ":"), ensure_ascii=False) for row in rows
+        ) + "\n"
+        encoded = payload.encode("utf-8")
         with self._lock:
-            with self.events_path.open("a", encoding="utf-8") as handle:
-                handle.write(payload)
-                handle.write("\n")
+            self._rotate_if_needed(len(encoded))
+            with self.events_path.open("ab") as handle:
+                handle.write(encoded)
+            self._update_metrics()
+
+    def _rotate_if_needed(self, incoming_size: int) -> None:
+        current_size = self._current_size()
+        if current_size + incoming_size <= self._max_bytes:
+            return
+        self._perform_rotation()
+        SEARCH_FEEDBACK_ROTATIONS_TOTAL.inc()
+
+    def _perform_rotation(self) -> None:
+        if self._max_files <= 1:
+            if self.events_path.exists():
+                self.events_path.unlink(missing_ok=True)
+            return
+
+        for index in range(self._max_files - 1, 0, -1):
+            src = self._suffix_path(index - 1)
+            dst = self._suffix_path(index)
+            if src.exists():
+                if dst.exists():
+                    dst.unlink()
+                src.rename(dst)
+
+        if self.events_path.exists():
+            first_archive = self._suffix_path(1)
+            if first_archive.exists():
+                first_archive.unlink()
+            self.events_path.rename(first_archive)
+
+    def _suffix_path(self, index: int) -> Path:
+        if index <= 0:
+            return self.events_path
+        return self.base_dir / self.LOG_SUFFIX_TEMPLATE.format(index)
+
+    def _current_size(self) -> int:
+        try:
+            return self.events_path.stat().st_size
+        except FileNotFoundError:
+            return 0
+
+    def _update_metrics(self) -> None:
+        try:
+            size = self.events_path.stat().st_size
+        except FileNotFoundError:
+            size = 0
+        SEARCH_FEEDBACK_LOG_BYTES.set(size)
 
 
 def _serialize_results(

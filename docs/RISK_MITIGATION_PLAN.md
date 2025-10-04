@@ -8,7 +8,7 @@ This document tracks the key delivery risks for the turnkey knowledge management
 - **Status:** Mitigation planned.
 - **Approved Actions:**
   - Use multi-stage Docker builds with separate builder/runtime stages and aggressive layer pruning.
-  - Vendor `sentence-transformers/all-MiniLM-L6-v2` via `pip install --no-cache-dir` in the runtime stage only; confirm model weights are stored under `/opt/knowledge/models` for easy compression.
+  - Vendor `FlagEmbedding BAAI/bge-m3` via `pip install --no-cache-dir` in the runtime stage only; confirm model weights are stored under `/opt/knowledge/models` for easy compression.
   - Add CI job to compute image size after each build and fail if it exceeds the documented budget (target <3.5 GB compressed).
 - **Open Questions:** Further model quantization remains under evaluation; revisit once target accuracy benchmarks are available (tracked in `docs/HYBRID_SEARCH_TODO.md`).
 

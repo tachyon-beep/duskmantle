@@ -20,12 +20,15 @@ dependencies = [
   "neo4j>=5.14",
   "numpy>=1.26",
   "sentence-transformers>=2.2",
+  "FlagEmbedding>=1.1",
+  "Pillow>=10",
   "python-dotenv>=1.0",
   "rich>=13.7",
   "prometheus-client>=0.20",
   "fastmcp>=2.12",
   "httpx>=0.28",
   "python-json-logger>=2.0",
+  "itsdangerous>=2.1",
   "slowapi>=0.1.7",
   "limits>=3.9",
   "filelock>=3.12",
@@ -34,6 +37,8 @@ dependencies = [
   "opentelemetry-exporter-otlp>=1.24",
   "opentelemetry-instrumentation-fastapi>=0.46b0",
   "opentelemetry-instrumentation-requests>=0.46b0",
+  "tree-sitter-languages>=1.9",
+  "tree-sitter>=0.20,<0.21",
 ]
 
 [tool.setuptools]

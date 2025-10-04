@@ -9,7 +9,7 @@ Create a compressed backup of the knowledge gateway state directory.
 
 Environment overrides:
   KM_BACKUP_SOURCE    Source directory to archive (default: ./\.duskmantle/config)
-  KM_BACKUP_DEST      Destination directory for backups (default: ./\.duskmantle/backups)
+  KM_BACKUP_DEST      Destination directory for backups (default: ./\.duskmantle/backups/archives)
 
 When no positional argument is supplied the archive name defaults to
   km-backup-<timestamp>.tgz within KM_BACKUP_DEST.
@@ -23,7 +23,8 @@ fi
 
 BASE_DIR=$(pwd)/.duskmantle
 SOURCE=${KM_BACKUP_SOURCE:-$BASE_DIR/config}
-DEST_DIR=${KM_BACKUP_DEST:-$BASE_DIR/backups}
+DEFAULT_DEST="$BASE_DIR/backups/archives"
+DEST_DIR=${KM_BACKUP_DEST:-$DEFAULT_DEST}
 
 if [[ ! -d "$SOURCE" ]]; then
   echo "Source directory not found: $SOURCE" >&2

@@ -51,6 +51,8 @@ def test_cli_rebuild_requires_maintainer_token(sample_repo: Path, monkeypatch: p
     monkeypatch.setenv("KM_REPO_PATH", str(sample_repo))
     monkeypatch.setenv("KM_AUTH_ENABLED", "true")
     monkeypatch.setenv("KM_STATE_PATH", str(sample_repo / "state"))
+    monkeypatch.delenv("KM_ADMIN_TOKEN", raising=False)
+    monkeypatch.setenv("KM_NEO4J_PASSWORD", "secure-pass")
     get_settings.cache_clear()
 
     with pytest.raises(SystemExit):
@@ -120,6 +122,36 @@ def test_cli_audit_history_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
     assert "chunk_count" in output
 
 
+def test_cli_audit_history_limit_clamped(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    state_path = tmp_path / "state"
+    monkeypatch.setenv("KM_STATE_PATH", str(state_path))
+    monkeypatch.setenv("KM_AUDIT_HISTORY_MAX_LIMIT", "2")
+    get_settings.cache_clear()
+
+    logger = AuditLogger(state_path / "audit" / "audit.db")
+    for idx in range(3):
+        logger.record(
+            IngestionResult(
+                run_id=f"run-{idx}",
+                profile="local",
+                started_at=time.time(),
+                duration_seconds=0.5,
+                artifact_counts={"docs": 1},
+                chunk_count=idx,
+                repo_head=f"sha-{idx}",
+                success=True,
+            )
+        )
+
+    cli.main(["audit-history", "--limit", "5"])
+    output = capsys.readouterr().out
+    assert "adjusted to 2" in output
+
+
 def test_cli_audit_history_no_entries(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     state_path = tmp_path / "state"
     monkeypatch.setenv("KM_STATE_PATH", str(state_path))
@@ -128,3 +160,22 @@ def test_cli_audit_history_no_entries(tmp_path: Path, monkeypatch: pytest.Monkey
     cli.main(["audit-history"])
     output = capsys.readouterr().out
     assert "No audit history records found." in output
+
+
+def test_audit_logger_recent_normalizes_limit(tmp_path: Path) -> None:
+    audit_db = tmp_path / "audit.db"
+    logger = AuditLogger(audit_db)
+    result = IngestionResult(
+        run_id="normalized",
+        profile="local",
+        started_at=time.time(),
+        duration_seconds=1.0,
+        artifact_counts={"docs": 1},
+        chunk_count=1,
+        repo_head="sha-normalized",
+        success=True,
+    )
+    logger.record(result)
+
+    entries = logger.recent(limit=0)
+    assert len(entries) == 1

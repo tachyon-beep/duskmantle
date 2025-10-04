@@ -17,12 +17,12 @@ This document explains how to safely upgrade the Duskmantle knowledge gateway co
 
    ```bash
    bin/km-backup
-   ls .duskmantle/backups
+   ls .duskmantle/backups/archives
    ```
 
-   Copy the archive (`.duskmantle/backups/km-backup-YYYYMMDDTHHMMSS.tgz`) to a safe location.
+   Copy the archive (`.duskmantle/backups/archives/km-backup-YYYYMMDDTHHMMSS.tgz`) to a safe location.
 4. **Note current config:** record `KM_*` env vars, `.codex` MCP entries, and `bin/km-run` overrides.
-5. **Capture the current acceptance snapshot:** run the quick checks from `docs/ACCEPTANCE_DEMO_PLAYBOOK.md` (at minimum `/healthz`, `/coverage`, and a sample `/search`) and refresh `docs/ACCEPTANCE_DEMO_SNAPSHOT.md` so you know the pre-upgrade baseline.
+5. **Capture the current acceptance snapshot:** run the quick checks from `docs/ACCEPTANCE_DEMO_PLAYBOOK.md` (at minimum `/healthz`, `/api/v1/coverage`, and a sample `/search`) and refresh `docs/ACCEPTANCE_DEMO_SNAPSHOT.md` so you know the pre-upgrade baseline.
 
 ## 2. Upgrade Procedure
 
@@ -44,14 +44,12 @@ This document explains how to safely upgrade the Duskmantle knowledge gateway co
 
    ```bash
    KM_IMAGE=duskmantle/km:<new-tag> \
-   KM_NEO4J_DATABASE=knowledge \
-   KM_AUTH_ENABLED=true \
+   KM_NEO4J_DATABASE=neo4j \
    KM_ADMIN_TOKEN=<token> \
    bin/km-run --detach
    ```
 
-   (Include any additional env vars used previously.)
-   Secure mode now refuses to start with default credentials—rotate `KM_ADMIN_TOKEN` and set a non-default `KM_NEO4J_PASSWORD` before flipping `KM_AUTH_ENABLED=true`.
+   (Include any additional env vars used previously; authentication is enabled by default.) Secure mode refuses to start with default credentials—ensure `KM_ADMIN_TOKEN` and a non-default `KM_NEO4J_PASSWORD` are set before launch. Use `KM_ALLOW_INSECURE_BOOT=true` only for isolated demos.
 4. **Run an ingest if required:**
 
    ```bash
@@ -60,7 +58,7 @@ This document explains how to safely upgrade the Duskmantle knowledge gateway co
 
 5. **Validate:**
    - `/healthz` and `/readyz` respond with `status: ok`.
-   - `/coverage` reflects expected artifact/chunk totals.
+   - `/api/v1/coverage` reflects expected artifact/chunk totals.
    - `./infra/smoke-test.sh duskmantle/km:<new-tag>` completes without errors.
    - `KM_GATEWAY_URL=http://localhost:8000 pytest -m mcp_smoke --maxfail=1 --disable-warnings` passes.
    - Update `docs/ACCEPTANCE_DEMO_SNAPSHOT.md` with the new run details.
@@ -72,7 +70,7 @@ This document explains how to safely upgrade the Duskmantle knowledge gateway co
 
    ```bash
    rm -rf .duskmantle/config/*
-   tar -xzf .duskmantle/backups/km-backup-YYYYMMDDTHHMMSS.tgz -C .duskmantle/config
+   tar -xzf .duskmantle/backups/archives/km-backup-YYYYMMDDTHHMMSS.tgz -C .duskmantle/config
    ```
 
 3. **Launch previous version:**
@@ -81,7 +79,7 @@ This document explains how to safely upgrade the Duskmantle knowledge gateway co
    KM_IMAGE=duskmantle/km:<old-tag> bin/km-run --detach
    ```
 
-4. **Verify health and recent metrics** just like the upgrade validation (`/healthz`, `/coverage`, smoke test, MCP smoke) and capture the rollback snapshot in `docs/ACCEPTANCE_DEMO_SNAPSHOT.md`.
+4. **Verify health and recent metrics** just like the upgrade validation (`/healthz`, `/api/v1/coverage`, smoke test, MCP smoke) and capture the rollback snapshot in `docs/ACCEPTANCE_DEMO_SNAPSHOT.md`.
 
 ## 4. Notes
 

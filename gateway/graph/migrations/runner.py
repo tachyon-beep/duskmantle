@@ -1,3 +1,5 @@
+"""Helpers for applying and tracking Neo4j schema migrations."""
+
 from __future__ import annotations
 
 import logging
@@ -11,6 +13,8 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class Migration:
+    """Describe a single migration and the Cypher statements it executes."""
+
     id: str
     statements: Iterable[str]
 
@@ -27,11 +31,11 @@ MIGRATIONS: list[Migration] = [
         ],
     ),
     Migration(
-        id="002_domain_entities",
+        id="003_symbols",
         statements=[
-            "CREATE CONSTRAINT IF NOT EXISTS FOR (m:IntegrationMessage) REQUIRE m.name IS UNIQUE",
-            "CREATE CONSTRAINT IF NOT EXISTS FOR (tc:TelemetryChannel) REQUIRE tc.name IS UNIQUE",
-            "CREATE CONSTRAINT IF NOT EXISTS FOR (cfg:ConfigFile) REQUIRE cfg.path IS UNIQUE",
+            "CREATE CONSTRAINT IF NOT EXISTS FOR (sym:Symbol) REQUIRE sym.id IS UNIQUE",
+            "CREATE INDEX IF NOT EXISTS FOR (sym:Symbol) ON (sym.name)",
+            "CREATE INDEX IF NOT EXISTS FOR (sym:Symbol) ON (sym.language)",
         ],
     ),
 ]
@@ -39,10 +43,13 @@ MIGRATIONS: list[Migration] = [
 
 @dataclass
 class MigrationRunner:
+    """Apply ordered graph migrations using a shared Neo4j driver."""
+
     driver: Driver
     database: str = "knowledge"
 
     def pending_ids(self) -> list[str]:
+        """Return the identifiers of migrations that have not yet been applied."""
         pending: list[str] = []
         for migration in MIGRATIONS:
             if not self._is_applied(migration.id):
@@ -50,6 +57,7 @@ class MigrationRunner:
         return pending
 
     def run(self) -> None:
+        """Apply all pending migrations to the configured Neo4j database."""
         with self.driver.session(database=self.database) as session:
             session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (m:MigrationHistory) REQUIRE m.id IS UNIQUE")
 
@@ -59,6 +67,7 @@ class MigrationRunner:
             self._apply(migration)
 
     def _is_applied(self, migration_id: str) -> bool:
+        """Return whether the given migration has already been recorded."""
         with self.driver.session(database=self.database) as session:
             record = session.run(
                 "MATCH (m:MigrationHistory {id: $id}) RETURN m",
@@ -67,6 +76,7 @@ class MigrationRunner:
             return record is not None
 
     def _apply(self, migration: Migration) -> None:
+        """Execute migration statements and record completion."""
         logger.info("Applying graph migration %s", migration.id)
         with self.driver.session(database=self.database) as session:
             for statement in migration.statements:

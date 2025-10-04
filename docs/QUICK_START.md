@@ -49,17 +49,35 @@ Copy or symlink the material you want the gateway to index into `.duskmantle/dat
 container. Run `bin/km-sweep` whenever you add loose `*.md`, `*.docx`, `*.txt`, `*.doc`, or `*.pdf` files—the helper copies them into
 `.duskmantle/data/docs/` so the next ingest picks them up.
 
-Use the helper script for consistent mounts and ports:
+Use the helper scripts for consistent compose launches:
 
 ```bash
-bin/km-run
+bin/km-bootstrap          # first run – fetches images and generates secrets
+bin/km-run --detach        # subsequent starts, honours KM_COMPOSE_* overrides
 ```
+
+`bin/km-bootstrap` creates `.duskmantle/compose/docker-compose.yml` from the sample,
+mirrors the repository under `.duskmantle/data`, and symlinks `.duskmantle/secrets.env`
+into `compose/gateway.env`. Edit that env file whenever you rotate tokens or
+passwords.
 
 Defaults:
 
-- Ports: API `8000`, Qdrant `6333`, Neo4j `7687`.
-- State directory: `.duskmantle/config` mounted to `/opt/knowledge/var`.
+- Ports: API `8000` exposed to the host; Qdrant/Neo4j stay on the internal compose network.
+- State directory: `.duskmantle/compose/config/gateway` mounted to `/opt/knowledge/var`.
 - Repository mount: `.duskmantle/data` to `/workspace/repo` (read-only by default).
+
+On first boot the gateway seeds `/workspace/repo` with a small sample repository
+(docs plus `.metadata/subsystems.json`) so `/graph/subsystems` has data immediately.
+Set `KM_SEED_SAMPLE_REPO=false` if you prefer a pristine volume. Replace the
+seeded files with your real knowledge base before running a production ingest.
+
+**Swap in your repo**
+
+1. Set `KM_SEED_SAMPLE_REPO=false` (or delete the `.km-sample-repo` marker file inside the mounted repo directory).
+2. Remove the seeded docs under your host mount (e.g., `.duskmantle/data/docs/*`).
+3. Copy or sync your real documentation/code/test assets into the same directory.
+4. Run `gateway-ingest rebuild --profile <name>` to index the new content.
 
 Override with environment variables (examples):
 
@@ -69,6 +87,11 @@ KM_DATA_DIR=/srv/km/config \
 KM_REPO_DIR=/srv/km/content \
 bin/km-run --detach
 ```
+
+> **Networking tip:** prefer Docker's default bridge network so port publishing
+> works without requiring extra privileges. When running on systems that block
+> `iptables` (e.g. locked-down CI hosts), either enable rootless Docker or fall
+> back to `--network host` and ensure ports 8000/6333/7687 are free.
 
 Verify readiness:
 
@@ -95,16 +118,15 @@ docker exec duskmantle gateway-ingest rebuild --profile local --dummy-embeddings
 
 For production, omit `--dummy-embeddings` (requires model download).
 
-**Automatic ingestion (optional):** set `KM_WATCH_ENABLED=true` (and optionally adjust `KM_WATCH_INTERVAL`, `KM_WATCH_PROFILE`,
-`KM_WATCH_USE_DUMMY`, `KM_WATCH_METRICS_PORT`) before launching `bin/km-run`. The container’s supervisor will run `bin/km-watch` internally,
-hashing `/workspace/repo` every interval and triggering `gateway-ingest` whenever files change. Fingerprints persist under
-`/opt/knowledge/var/watch/fingerprints.json`, and metrics are exposed on `KM_WATCH_METRICS_PORT` (default `9103`).
+**Automatic ingestion (optional):** run `bin/km-watch` on the host. It hashes `.duskmantle/data`, invokes `docker compose exec gateway`
+with your preferred profile, and exposes metrics via `--metrics-port` (default `9103`). Container-managed watchers were removed during
+hardening so all automation now runs outside the gateway process.
 
 ## 5. Health Checks & Observability
 
 - `curl http://localhost:8000/healthz` — overall status plus coverage/audit/scheduler details.
 - `curl http://localhost:8000/metrics` — Prometheus metrics (requires `KM_ADMIN_TOKEN` if auth enabled).
-- `curl http://localhost:8000/coverage` — latest coverage report (maintainer scope).
+- `curl http://localhost:8000/api/v1/coverage` — latest coverage report (maintainer scope).
 - `curl http://localhost:8000/lifecycle` — lifecycle snapshot (isolated nodes, stale docs, missing tests; maintainer scope).
 - `gateway-recipes list` — enumerate available automation recipes (use `km-recipe-run <name>` to execute).
 
@@ -118,7 +140,9 @@ Run the full pipeline locally before publishing:
 ./infra/smoke-test.sh duskmantle/km:dev
 ```
 
-The script builds the image, launches a disposable container, triggers a smoke ingest, validates `/coverage`, and tears down resources.
+or simply `make smoke` (uses the same script with the default image tag).
+
+The script builds the image, launches a disposable container, triggers a smoke ingest, validates `/api/v1/coverage`, and tears down resources.
 Pair it with `bin/km-watch` if you want continuous ingestion whenever `.duskmantle/data` changes.
 
 ## 7. Backups & Restore
@@ -129,20 +153,24 @@ Create a backup (tar.gz) of `/opt/knowledge/var`:
 bin/km-backup
 ```
 
-The archive lands in `.duskmantle/backups/km-backup-<timestamp>.tgz`. To restore:
+The archive lands in `.duskmantle/backups/archives/km-backup-<timestamp>.tgz`. To restore:
 
 ```bash
-tar -xzf .duskmantle/backups/km-backup-<timestamp>.tgz -C .duskmantle/config
+tar -xzf .duskmantle/backups/archives/km-backup-<timestamp>.tgz -C .duskmantle/config
 ```
 
 Restart the container to pick up restored state.
 
 ## 8. Environment & Authentication
 
-- Set `KM_AUTH_ENABLED=true`, `KM_READER_TOKEN`, and `KM_ADMIN_TOKEN` to secure APIs and CLIs. The gateway now fails fast on startup if
-`KM_ADMIN_TOKEN` is missing or `KM_NEO4J_PASSWORD` is left at a default value—generate fresh secrets via `bin/km-bootstrap` or rotate them
-manually before enabling auth. Maintainer tokens satisfy reader endpoints; reader tokens cannot invoke admin operations. MCP write helpers
-(`km-upload`, `km-storetext`) append JSON lines to `KM_STATE_PATH/audit/mcp_actions.log`, so include that file in your log rotation strategy.
+- Authentication is enabled by default. On first boot the container writes random tokens and a Neo4j password to `.duskmantle/config/secrets.env`
+  (inside the container this is `${KM_VAR}/secrets.env`). Override any value by exporting your own before launch, or run `bin/km-bootstrap`
+  to regenerate everything. Maintainer tokens satisfy reader endpoints; reader tokens cannot invoke admin operations. MCP write helpers
+  (`km-upload`, `km-storetext`) append JSON lines to `KM_STATE_PATH/audit/mcp_actions.log`, so include that file in your log rotation strategy.
+- Neo4j authentication is enabled by default. Use the generated `KM_NEO4J_PASSWORD` for `cypher-shell`/backups and only set
+  `KM_NEO4J_AUTH_ENABLED=false` for isolated development environments—the gateway logs a warning when you do.
+- Rotate credentials later with `bin/km-rotate-neo4j-password`; it stops the container, updates `.duskmantle/secrets.env`, and relaunches
+  the stack with the new Neo4j password.
 - Scheduler and `gateway-ingest` refuse to run without `KM_ADMIN_TOKEN` when auth is enabled.
 
 ## 9. Troubleshooting Highlights
@@ -154,18 +182,19 @@ manually before enabling auth. Maintainer tokens satisfy reader endpoints; reade
 mirror spans locally.
 - **Hybrid search tuning**: Adjust dense vs. lexical weighting with `KM_SEARCH_VECTOR_WEIGHT` / `KM_SEARCH_LEXICAL_WEIGHT` (defaults 1.0 /
 0.25). Increase `KM_SEARCH_HNSW_EF_SEARCH` for higher recall at the cost of latency.
+- **Symbol filters (optional)**: Run `gateway-graph migrate` to apply symbol constraints, set `KM_SYMBOLS_ENABLED=true`, and target results with CLI sugar such as `km-search --symbol Example.method --lang python` or query macros (`sym:Example.method`). The `/ui/search` console also adds chips for symbol kind and language so you can layer filters without crafting JSON payloads.
 
 For more detail, consult `docs/OBSERVABILITY_GUIDE.md` and the release playbook in `RELEASE.md`.
 
 ## 11. Upgrades & Rollback
 
 1. Review the release changelog for schema/config changes.
-2. Back up `/opt/knowledge/var` (`bin/km-backup`). Copy `.duskmantle/backups/km-backup-*.tgz` off-host.
+2. Back up `/opt/knowledge/var` (`bin/km-backup`). Copy `.duskmantle/backups/archives/km-backup-*.tgz` off-host.
 3. Stop the running container (`docker rm -f duskmantle`).
 4. Pull or build the new image (`docker pull duskmantle/km:<tag>` or `scripts/build-image.sh`). Relaunch with the same env vars
-(`KM_NEO4J_DATABASE=knowledge`, tokens, mounts).
+(`KM_NEO4J_DATABASE=neo4j`, tokens, mounts).
 5. Run ingest if needed (`docker exec duskmantle gateway-ingest rebuild --profile production`).
-6. Validate `/healthz`, `/coverage`, the smoke script, and `pytest -m mcp_smoke`.
+6. Validate `/healthz`, `/api/v1/coverage`, the smoke script, and `pytest -m mcp_smoke`.
 7. For rollback: stop the container, restore the archived backup to `.duskmantle/config/`, and start the previous image tag.
 
 See `docs/UPGRADE_ROLLBACK.md` for the detailed checklist.
@@ -197,9 +226,11 @@ Launch `gateway-mcp` to expose the gateway over the Model Context Protocol so ag
    | Tool | Scope | Purpose |
    |------|-------|---------|
    | `km-search` | reader | Hybrid search with scoring breakdown and optional graph context. |
+   | `km-graph-tests-of` | reader | List tests associated with a symbol via `EXERCISES` edges. |
    | `km-graph-node` | reader | Fetch a node and relationships by ID (`DesignDoc:docs/...`). |
    | `km-graph-subsystem` | reader | Inspect subsystem metadata, related nodes, and artifacts. |
    | `km-graph-search` | reader | Term search across graph entities. |
+   | `km-graph-tests-of` | reader | List tests associated with a symbol via `EXERCISES` edges. |
    | `km-coverage-summary` | reader | Retrieve the latest ingestion coverage snapshot. |
 
 | `km-lifecycle-report` | maintainer | Summarise isolated graph nodes, stale docs, and subsystems missing tests. |
@@ -207,6 +238,8 @@ Launch `gateway-mcp` to expose the gateway over the Model Context Protocol so ag
 | `km-recipe-run` | maintainer | Execute predefined automation workflows (e.g., release-prep). |
    | `km-backup-trigger` | maintainer | Invoke the backup helper to create a state archive. |
    | `km-feedback-submit` | maintainer | Record relevance votes for ranking telemetry. |
+
+   Tip: When symbol indexing is enabled, `km-search` accepts convenience flags (`--symbol`, `--kind`, `--lang`) in addition to structured `filters` JSON, so MC clients can target specific definitions without crafting payloads manually.
 
 3 In another terminal, validate the surface:
 

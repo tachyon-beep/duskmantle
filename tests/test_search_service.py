@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -56,6 +57,16 @@ class DummyGraphService(GraphService):  # type: ignore[misc]
 
     def shortest_path_depth(self, node_id: str, *, max_depth: int = 4) -> int | None:  # type: ignore[override]
         return 1
+
+
+class SlowGraphService(DummyGraphService):
+    def __init__(self, response: dict[str, Any], delay: float) -> None:
+        super().__init__(response)
+        self._delay = delay
+
+    def get_node(self, node_id: str, *, relationships: str, limit: int) -> dict[str, Any]:  # type: ignore[override]
+        time.sleep(self._delay)
+        return super().get_node(node_id, relationships=relationships, limit=limit)
 
 
 @pytest.fixture()
@@ -806,3 +817,74 @@ def test_search_service_ml_model_reorders_results() -> None:
     assert response.metadata["scoring_mode"] == "ml"
     assert all(result.scoring["mode"] == "ml" for result in response.results)
     assert "model" in response.results[0].scoring
+
+
+def test_search_service_limits_graph_results(graph_response: dict[str, Any]) -> None:
+    points = [
+        FakePoint(
+            {
+                "chunk_id": f"chunk::{index}",
+                "path": f"src/file{index}.py",
+                "artifact_type": "code",
+                "subsystem": "core",
+                "text": "body",
+            },
+            0.9,
+        )
+        for index in range(3)
+    ]
+
+    service = SearchService(
+        qdrant_client=FakeQdrantClient(points),
+        collection_name="collection",
+        embedder=FakeEmbedder(),
+        options=SearchOptions(graph_max_results=1, graph_time_budget_seconds=5.0),
+    )
+
+    response = service.search(
+        query="core",
+        limit=3,
+        include_graph=True,
+        graph_service=DummyGraphService(graph_response),
+    )
+
+    assert response.results[0].graph_context is not None
+    assert all(result.graph_context is None for result in response.results[1:])
+    assert any("graph context limited" in warning for warning in response.metadata["warnings"])
+
+
+def test_search_service_respects_graph_time_budget(graph_response: dict[str, Any]) -> None:
+    points = [
+        FakePoint(
+            {
+                "chunk_id": f"slow::{index}",
+                "path": f"src/slow{index}.py",
+                "artifact_type": "code",
+                "subsystem": "core",
+                "text": "body",
+            },
+            0.9,
+        )
+        for index in range(3)
+    ]
+
+    service = SearchService(
+        qdrant_client=FakeQdrantClient(points),
+        collection_name="collection",
+        embedder=FakeEmbedder(),
+        options=SearchOptions(graph_time_budget_seconds=0.05, graph_max_results=5),
+    )
+
+    skipped_before = _metric_value("km_search_graph_skipped_total", {"reason": "time"})
+    response = service.search(
+        query="core",
+        limit=3,
+        include_graph=True,
+        graph_service=SlowGraphService(graph_response, delay=0.06),
+    )
+    skipped_after = _metric_value("km_search_graph_skipped_total", {"reason": "time"})
+
+    assert skipped_after >= skipped_before + 1
+    assert response.results[0].graph_context is not None
+    assert response.results[1].graph_context is None
+    assert any("time budget" in warning for warning in response.metadata["warnings"])

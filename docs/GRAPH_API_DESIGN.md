@@ -267,7 +267,7 @@ All graph endpoints return:
 
 - Migrations live under `gateway/graph/migrations/` and are executed by `MigrationRunner` using Cypher statements.
 - Applied migrations are tracked in Neo4j via `(:MigrationHistory {id, applied_at})` nodes to ensure idempotency. Each migration ID is stored once, so history growth is bounded; if a rollback removes a migration from the codebase, delete the corresponding history node via `MATCH (m:MigrationHistory {id: 'xyz'}) DETACH DELETE m` to keep the ledger tidy (record the decision in release notes).
-- Run `gateway-graph migrate` to apply pending migrations (supports `--dry-run` to list operations).
+- Run `gateway-graph migrate` to apply pending migrations (supports `--dry-run` to list operations). Recent updates add `Symbol` labels/constraints for symbol-aware ingestion, so run the command before enabling `KM_SYMBOLS_ENABLED` in production.
 - The packaged container exports `KM_GRAPH_AUTO_MIGRATE=true`, so API startup performs a preflight (`pending_ids`) summary, logs IDs to be applied, and reports completion (or no-op) results. Failures emit stack traces but do not block the service from serving requests.
 - Production deployments may prefer to leave `KM_GRAPH_AUTO_MIGRATE` unset/`false` and invoke `gateway-graph migrate` as an explicit pipeline step to retain change-control windows.
 - Observability: the API now emits `km_graph_migration_last_status` (1=success, 0=failure, -1=skipped) and `km_graph_migration_last_timestamp` gauges so dashboards can track migration health.

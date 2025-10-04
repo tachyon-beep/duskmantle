@@ -18,6 +18,7 @@ except ModuleNotFoundError:  # pragma: no cover - fallback for older runtimes
     import tomli as tomllib  # type: ignore
 
 from gateway.ingest.artifacts import Artifact
+from gateway.ingest.symbols import SymbolRecord, extract_symbols
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,17 @@ _TEXTUAL_SUFFIXES = {
     ".sql",
 }
 
+_IMAGE_SUFFIXES = {
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".webp",
+    ".bmp",
+    ".gif",
+}
+
+_EXCLUDED_FILENAMES = {'.env'}
+
 _MESSAGE_PATTERN = re.compile(r"[A-Z]\w*Message")
 _TELEMETRY_PATTERN = re.compile(r"Telemetry\w+")
 
@@ -50,6 +62,7 @@ class DiscoveryConfig:
         "tests",
         ".codacy",
     )
+    symbols_enabled: bool = False
 
 
 _SUBSYSTEM_METADATA_CACHE: dict[Path, dict[str, Any]] = {}
@@ -71,14 +84,22 @@ def discover(config: DiscoveryConfig) -> Iterable[Artifact]:
             continue
         if not _should_include(path, repo_root, config.include_patterns):
             continue
-        if not _is_textual(path):
+        if _is_excluded(path):
             continue
-        try:
-            content = path.read_text(encoding="utf-8")
-        except UnicodeDecodeError:
-            logger.debug("Skipping non-utf8 file %s", path)
+        suffix = path.suffix.lower()
+        is_image = suffix in _IMAGE_SUFFIXES
+        if not is_image and not _is_textual(path):
             continue
+        if is_image:
+            content = ""
+        else:
+            try:
+                content = path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                logger.debug("Skipping non-utf8 file %s", path)
+                continue
 
+        relative_path = path.relative_to(repo_root)
         artifact_type = _infer_artifact_type(path, repo_root)
         inferred_subsystem = _infer_subsystem(path, repo_root, source_prefixes)
         catalog_entry = None
@@ -96,15 +117,28 @@ def discover(config: DiscoveryConfig) -> Iterable[Artifact]:
 
         git_commit, git_timestamp = _lookup_git_metadata(path, repo_root)
 
-        extra = {
-            "message_entities": sorted(set(_MESSAGE_PATTERN.findall(content))),
-            "telemetry_signals": sorted(set(_TELEMETRY_PATTERN.findall(content))),
+        extra: dict[str, Any] = {
+            "message_entities": sorted(set(_MESSAGE_PATTERN.findall(content))) if not is_image else [],
+            "telemetry_signals": sorted(set(_TELEMETRY_PATTERN.findall(content))) if not is_image else [],
             "subsystem_metadata": subsystem_meta,
             "subsystem_criticality": subsystem_meta.get("criticality"),
+            "media_type": suffix.lstrip(".") if is_image and suffix else None,
         }
 
+        if config.symbols_enabled:
+            relative_path = path.relative_to(repo_root)
+            symbols = _extract_symbols(relative_path, content)
+            if symbols:
+                symbol_payloads = [symbol.to_metadata(path=relative_path) for symbol in symbols]
+                extra["symbols"] = symbol_payloads
+                extra["symbol_count"] = len(symbol_payloads)
+                extra["symbol_names"] = [item["qualified_name"] for item in symbol_payloads]
+                extra["symbol_kinds"] = [item["kind"] for item in symbol_payloads]
+                extra["symbol_languages"] = [item["language"] for item in symbol_payloads]
+                extra["symbol_ids"] = [item["id"] for item in symbol_payloads]
+
         yield Artifact(
-            path=path.relative_to(repo_root),
+            path=relative_path,
             artifact_type=artifact_type,
             subsystem=subsystem_name,
             content=content,
@@ -112,6 +146,15 @@ def discover(config: DiscoveryConfig) -> Iterable[Artifact]:
             git_timestamp=git_timestamp,
             extra_metadata=extra,
         )
+
+
+def _is_excluded(path: Path) -> bool:
+    name = path.name
+    if name in _EXCLUDED_FILENAMES:
+        return True
+    if name.startswith('.env.') and not name.endswith('.env.example'):
+        return True
+    return False
 
 
 def _should_include(path: Path, repo_root: Path, include_patterns: tuple[str, ...]) -> bool:
@@ -174,6 +217,14 @@ def _lookup_git_metadata(path: Path, repo_root: Path) -> tuple[str | None, int |
     except (subprocess.CalledProcessError, FileNotFoundError, ValueError):
         logger.debug("Git metadata unavailable for %s", rel)
         return None, None
+
+
+def _extract_symbols(path: Path, content: str) -> list[SymbolRecord]:
+    try:
+        return extract_symbols(path, content)
+    except Exception:  # pragma: no cover - defensive guard
+        logger.debug("Failed to extract symbols for %s", path, exc_info=True)
+        return []
 
 
 def _load_subsystem_catalog(repo_root: Path) -> dict[str, Any]:

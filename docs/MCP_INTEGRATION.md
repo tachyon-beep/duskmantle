@@ -6,7 +6,7 @@ The Duskmantle gateway now exposes a first-class Model Context Protocol (MCP) su
 
 - Python 3.12 with the project installed locally (`pip install -e .[dev]`). The dev extras bring in FastMCP and `pytest-asyncio` for smoke tests.
 - A running gateway instance (local container via `bin/km-run` or remote deployment) reachable at the URL you provide to the MCP adapter.
-  - When using the turnkey container, export `KM_NEO4J_DATABASE=knowledge` before launching or invoking ingestion so graph queries succeed.
+  - When using the turnkey container, export `KM_NEO4J_DATABASE=neo4j` before launching or invoking ingestion so graph queries succeed.
 - Tokens if authentication is enabled:
   - `KM_READER_TOKEN` for read-only operations (search/graph/coverage).
   - `KM_ADMIN_TOKEN` for maintainer operations (ingest trigger, backups, feedback submission).
@@ -38,6 +38,7 @@ gateway-mcp --transport stdio
   - `km-graph-node`
   - `km-graph-subsystem`
   - `km-graph-search`
+  - `km-graph-tests-of`
   - `km-coverage-summary`
   - `km-ingest-status`
   - `km-ingest-trigger`
@@ -77,7 +78,12 @@ env = {
 
 Set `KM_MCP_CONTAINER` if your container uses a different name than `duskmantle`.
 
+> Once you mount real docs/source, update `KM_MCP_REPO_ROOT` (or remove the
+> `.km-sample-repo` marker created during seeding) so ingestion no longer warns
+> about the bundled demo files.
+
 Restart Codex CLI after editing the config. List available MCP servers with `/sys mcp list` and invoke tools via `/sys mcp run duskmantle km-search --query "ingestion pipeline"`.
+When symbol extraction is enabled you can append `--symbol`, `--kind`, or `--lang` to narrow the query without embedding a JSON `filters` object.
 
 #### FastMCP manifest example
 

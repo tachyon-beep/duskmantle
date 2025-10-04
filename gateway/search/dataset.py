@@ -1,3 +1,5 @@
+"""Utilities for reading and preparing search training datasets."""
+
 from __future__ import annotations
 
 import csv
@@ -15,6 +17,7 @@ class DatasetLoadError(RuntimeError):
 
 
 def load_dataset_records(path: Path) -> list[Mapping[str, object]]:
+    """Load dataset rows from disk, raising when the file is missing."""
     if not path.exists():
         raise DatasetLoadError(f"Dataset not found: {path}")
 
@@ -53,6 +56,7 @@ def build_feature_matrix(
     records: Iterable[Mapping[str, object]],
     feature_names: Sequence[str],
 ) -> tuple[list[list[float]], list[float], list[str]]:
+    """Convert dataset rows into numeric feature vectors and targets."""
     features: list[list[float]] = []
     targets: list[float] = []
     request_ids: list[str] = []

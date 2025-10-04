@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from functools import lru_cache
+import hashlib
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 SEARCH_WEIGHT_PROFILES: dict[str, dict[str, float]] = {
@@ -47,7 +48,7 @@ class AppSettings(BaseSettings):
     api_host: str = Field("0.0.0.0", alias="KM_API_HOST")
     api_port: int = Field(8000, alias="KM_API_PORT")
     auth_mode: Literal["secure", "insecure"] = Field("secure", alias="KM_AUTH_MODE")
-    auth_enabled: bool = Field(False, alias="KM_AUTH_ENABLED")
+    auth_enabled: bool = Field(True, alias="KM_AUTH_ENABLED")
     reader_token: str | None = Field(None, alias="KM_READER_TOKEN")
     maintainer_token: str | None = Field(None, alias="KM_ADMIN_TOKEN")
     rate_limit_requests: int = Field(120, alias="KM_RATE_LIMIT_REQUESTS")
@@ -62,24 +63,48 @@ class AppSettings(BaseSettings):
     qdrant_url: str = Field("http://localhost:6333", alias="KM_QDRANT_URL")
     qdrant_api_key: str | None = Field(None, alias="KM_QDRANT_API_KEY")
     qdrant_collection: str = Field("km_knowledge_v1", alias="KM_QDRANT_COLLECTION")
+    qdrant_timeout_seconds: float = Field(60.0, alias="KM_QDRANT_TIMEOUT_SECONDS")
+    image_qdrant_collection: str = Field("km_media_v1", alias="KM_QDRANT_COLLECTION_IMAGES")
 
     neo4j_uri: str = Field("bolt://localhost:7687", alias="KM_NEO4J_URI")
     neo4j_user: str = Field("neo4j", alias="KM_NEO4J_USER")
     neo4j_password: str = Field("neo4jadmin", alias="KM_NEO4J_PASSWORD")
     neo4j_database: str = Field("neo4j", alias="KM_NEO4J_DATABASE")
+    neo4j_auth_enabled: bool = Field(True, alias="KM_NEO4J_AUTH_ENABLED")
+    neo4j_readonly_uri: str | None = Field(None, alias="KM_NEO4J_READONLY_URI")
+    neo4j_readonly_user: str | None = Field(None, alias="KM_NEO4J_READONLY_USER")
+    neo4j_readonly_password: str | None = Field(None, alias="KM_NEO4J_READONLY_PASSWORD")
 
-    embedding_model: str = Field("sentence-transformers/all-MiniLM-L6-v2", alias="KM_EMBEDDING_MODEL")
+    embedding_model: str = Field("BAAI/bge-m3", alias="KM_EMBEDDING_MODEL")
+    text_embedding_model: str | None = Field(None, alias="KM_TEXT_EMBEDDING_MODEL")
+    image_embedding_model: str | None = Field("sentence-transformers/clip-ViT-L-14", alias="KM_IMAGE_EMBEDDING_MODEL")
     ingest_window: int = Field(1000, alias="KM_INGEST_WINDOW")
     ingest_overlap: int = Field(200, alias="KM_INGEST_OVERLAP")
     ingest_use_dummy_embeddings: bool = Field(False, alias="KM_INGEST_USE_DUMMY")
     ingest_incremental_enabled: bool = Field(True, alias="KM_INGEST_INCREMENTAL")
     ingest_parallel_workers: int = Field(2, alias="KM_INGEST_PARALLEL_WORKERS")
     ingest_max_pending_batches: int = Field(4, alias="KM_INGEST_MAX_PENDING_BATCHES")
+    symbols_enabled: bool = Field(False, alias="KM_SYMBOLS_ENABLED")
+    editor_uri_template: str | None = Field(None, alias="KM_EDITOR_URI_TEMPLATE")
     scheduler_enabled: bool = Field(False, alias="KM_SCHEDULER_ENABLED")
     scheduler_interval_minutes: int = Field(30, alias="KM_SCHEDULER_INTERVAL_MINUTES")
     scheduler_cron: str | None = Field(None, alias="KM_SCHEDULER_CRON")
     coverage_enabled: bool = Field(True, alias="KM_COVERAGE_ENABLED")
     coverage_history_limit: int = Field(5, alias="KM_COVERAGE_HISTORY_LIMIT")
+    audit_history_max_limit: int = Field(100, alias="KM_AUDIT_HISTORY_MAX_LIMIT")
+    backup_enabled: bool = Field(False, alias="KM_BACKUP_ENABLED")
+    backup_interval_minutes: int = Field(720, alias="KM_BACKUP_INTERVAL_MINUTES")
+    backup_cron: str | None = Field(None, alias="KM_BACKUP_CRON")
+    backup_retention_limit: int = Field(7, alias="KM_BACKUP_RETENTION_LIMIT")
+    backup_destination: Path | None = Field(None, alias="KM_BACKUP_DEST_PATH")
+    backup_script_path: Path | None = Field(None, alias="KM_BACKUP_SCRIPT")
+    strict_dependency_startup: bool = Field(True, alias="KM_STRICT_DEPENDENCY_STARTUP")
+
+    ui_login_enabled: bool = Field(False, alias="KM_UI_LOGIN_ENABLED")
+    ui_username: str = Field("admin", alias="KM_UI_USERNAME")
+    ui_password: str | None = Field(None, alias="KM_UI_PASSWORD")
+    ui_session_secret: str | None = Field(None, alias="KM_UI_SESSION_SECRET")
+    ui_session_secure_cookie: bool = Field(True, alias="KM_UI_SESSION_SECURE_COOKIE")
 
     lifecycle_report_enabled: bool = Field(True, alias="KM_LIFECYCLE_REPORT_ENABLED")
     lifecycle_stale_days: int = Field(30, alias="KM_LIFECYCLE_STALE_DAYS")
@@ -114,8 +139,25 @@ class AppSettings(BaseSettings):
     search_vector_weight: float = Field(1.0, alias="KM_SEARCH_VECTOR_WEIGHT")
     search_lexical_weight: float = Field(0.25, alias="KM_SEARCH_LEXICAL_WEIGHT")
     search_hnsw_ef_search: int | None = Field(128, alias="KM_SEARCH_HNSW_EF_SEARCH")
+    search_graph_max_results: int = Field(20, alias="KM_SEARCH_GRAPH_MAX_RESULTS")
+    search_graph_time_budget_ms: int = Field(750, alias="KM_SEARCH_GRAPH_TIME_BUDGET_MS")
+
+    feedback_log_max_bytes: int = Field(5 * 1024 * 1024, alias="KM_FEEDBACK_LOG_MAX_BYTES")
+    feedback_log_max_files: int = Field(5, alias="KM_FEEDBACK_LOG_MAX_FILES")
 
     dry_run: bool = Field(False, alias="KM_INGEST_DRY_RUN")
+
+    @model_validator(mode="after")
+    def _populate_embedding_models(cls, values: "AppSettings") -> "AppSettings":
+        if values.text_embedding_model is None:
+            values.text_embedding_model = values.embedding_model
+        if values.image_embedding_model is not None and not values.image_embedding_model.strip():
+            values.image_embedding_model = None
+        if values.ui_login_enabled and not (values.ui_password and values.ui_password.strip()):
+            raise ValueError(
+                "KM_UI_LOGIN_ENABLED=true but KM_UI_PASSWORD is unset; provide a UI password distinct from API tokens.",
+            )
+        return values
 
     model_config = {
         "env_file": ".env",
@@ -168,11 +210,61 @@ class AppSettings(BaseSettings):
             return 0
         return value
 
+    def resolved_ui_session_secret(self) -> str:
+        """Return a deterministic secret for UI sessions."""
+
+        seed = self.ui_session_secret or self.ui_password or self.maintainer_token or "duskmantle-ui"
+        return hashlib.sha256(seed.encode("utf-8")).hexdigest()
+
     @field_validator("graph_subsystem_cache_max_entries")
     @classmethod
     def _sanitize_graph_cache_max(cls, value: int) -> int:
         if value < 1:
             return 1
+        return value
+
+    @field_validator("backup_interval_minutes")
+    @classmethod
+    def _sanitize_backup_interval(cls, value: int) -> int:
+        if value < 1:
+            return 1
+        return value
+
+    @field_validator("backup_retention_limit")
+    @classmethod
+    def _sanitize_backup_retention(cls, value: int) -> int:
+        if value < 0:
+            return 0
+        return value
+
+    @field_validator("feedback_log_max_bytes")
+    @classmethod
+    def _sanitize_feedback_bytes(cls, value: int) -> int:
+        if value < 1024:
+            return 1024
+        return value
+
+    @field_validator("feedback_log_max_files")
+    @classmethod
+    def _sanitize_feedback_files(cls, value: int) -> int:
+        if value < 1:
+            return 1
+        if value > 20:
+            return 20
+        return value
+
+    @field_validator("search_graph_max_results")
+    @classmethod
+    def _sanitize_graph_max_results(cls, value: int) -> int:
+        if value < 1:
+            return 1
+        return value
+
+    @field_validator("search_graph_time_budget_ms")
+    @classmethod
+    def _sanitize_graph_budget(cls, value: int) -> int:
+        if value < 50:
+            return 50
         return value
 
     def resolved_search_weights(self) -> tuple[str, dict[str, float]]:
@@ -202,6 +294,16 @@ class AppSettings(BaseSettings):
             return f"{profile}+overrides", resolved
         return profile, resolved
 
+    def backup_trigger_config(self) -> dict[str, object]:
+        """Return trigger configuration for the automated backup job."""
+
+        if self.backup_cron and self.backup_cron.strip():
+            return {"type": "cron", "expression": self.backup_cron.strip()}
+        return {
+            "type": "interval",
+            "minutes": max(1, self.backup_interval_minutes),
+        }
+
     def scheduler_trigger_config(self) -> dict[str, object]:
         """Return trigger configuration for the ingestion scheduler."""
 
@@ -219,6 +321,15 @@ class AppSettings(BaseSettings):
             return 1
         if value > 100:
             return 100
+        return value
+
+    @field_validator("audit_history_max_limit")
+    @classmethod
+    def _validate_audit_history_limit(cls, value: int) -> int:
+        if value < 1:
+            return 1
+        if value > 500:
+            return 500
         return value
 
     @field_validator("lifecycle_stale_days")

@@ -4,7 +4,15 @@ All notable changes to this project will be documented in this file. The format 
 
 ## Unreleased
 
-- _Placeholder_ — upcoming changes will be listed here.
+### Changed
+
+- Hardened backup retention: backups now default to `${KM_STATE_PATH}/backups/archives`, the scheduler only prunes `km-backup-*.tgz` archives, and a new metric (`km_backup_retention_deletes_total`) tracks deletions while leaving operator-managed files untouched.
+- Authentication now defaults to enabled (`KM_AUTH_ENABLED=true`). Manual boots without credentials fail closed, and startup logs warn explicitly when auth is disabled.
+- Search feedback logging now supports size-based rotation (`KM_FEEDBACK_LOG_MAX_BYTES`, `KM_FEEDBACK_LOG_MAX_FILES`) with Prometheus metrics (`km_feedback_log_bytes`, `km_feedback_rotations_total`).
+- Graph enrichment is now bounded with configurable result/time budgets (`KM_SEARCH_GRAPH_MAX_RESULTS`, `KM_SEARCH_GRAPH_TIME_BUDGET_MS`) and exposes skip counts (`km_search_graph_skipped_total`).
+- Artifact ledger writes are now atomic and guarded with file locks to protect incremental ingest from corruption.
+- `/audit/history` requests are clamped to `KM_AUDIT_HISTORY_MAX_LIMIT` (default 100); excessive requests return a warning header and the CLI mirrors the cap to prevent unbounded SQLite dumps.
+- Introduced a versioned REST surface under `/api/v1/*` as the sole REST entry point; clients and tooling now rely on the versioned paths by default.
 
 ## 1.1.0 - 2025-10-01
 

@@ -24,7 +24,7 @@ The spike deliberately focused on read-only experiences, reusing existing API co
 ## 3. Follow-up Recommendations
 
 1. **Elevate to Work Package** – Promote the console to its own roadmap milestone (e.g., “WP7 Knowledge Console”) covering telemetry spark lines, MCP launch shortcuts, and accessibility polish.
-2. **Telemetry backlog** – Instrument lifecycle history so future chart components have real data (`km_lifecycle_*` gauges or paged `/lifecycle/history`).
+2. **Telemetry backlog** – Instrument lifecycle history so future chart components have real data (`km_lifecycle_*` gauges or paged `/api/v1/lifecycle/history`).
 3. **Docs & dashboards** – Extend `docs/OBSERVABILITY_GUIDE.md` and Grafana JSON to chart the new UI metrics.
 4. **QA automation** – Consider adding Playwright smoke tests once the views accept live data from the container.
 

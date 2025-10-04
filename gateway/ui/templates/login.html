@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}Duskmantle Console · Sign In{% endblock %}
+
+{% block content %}
+<section class="dm-card dm-card--form">
+  <h2>Sign in to the console</h2>
+  <p class="dm-help-text">Use the UI-specific password configured via <code>KM_UI_PASSWORD</code>. API tokens are not accepted here.</p>
+  {% if request.query_params.get('error') == 'invalid' %}
+    <div class="dm-alert" role="alert">Incorrect password, please try again.</div>
+  {% endif %}
+  <form method="post" class="dm-form">
+    <input type="hidden" name="next" value="{{ next or '/ui/' }}" />
+    <label class="dm-field">
+      <span class="dm-field__label">Password</span>
+      <input type="password" name="password" autocomplete="current-password" required autofocus />
+    </label>
+    <div class="dm-form__actions">
+      <button class="dm-button" type="submit">Sign in</button>
+    </div>
+  </form>
+</section>
+{% endblock %}

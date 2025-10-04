@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """Unit tests for the lightweight Neo4j writer integration layer."""
+
+from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace, TracebackType
@@ -74,6 +74,26 @@ def test_sync_artifact_creates_domain_relationships() -> None:
                 "dependencies": ["Kasmina"],
                 "tags": ["runtime"],
             },
+            "symbols": [
+                {
+                    "id": "src/project/nissa/handler.py::Example",
+                    "name": "Example",
+                    "kind": "class",
+                    "language": "python",
+                    "line_start": 1,
+                    "line_end": 10,
+                    "qualified_name": "Example",
+                },
+                {
+                    "id": "src/project/nissa/handler.py::Example.method",
+                    "name": "method",
+                    "kind": "method",
+                    "language": "python",
+                    "line_start": 2,
+                    "line_end": 3,
+                    "qualified_name": "Example.method",
+                },
+            ],
         },
     )
 
@@ -100,6 +120,7 @@ def test_sync_artifact_creates_domain_relationships() -> None:
     # Integration message relationships
     assert "IntegrationMessage" in cypher_text and "IMPLEMENTS" in cypher_text
     assert "DECLARES" in cypher_text
+    assert "DECLARES_SYMBOL" in cypher_text
 
     # Telemetry channel relationship
     assert "TelemetryChannel" in cypher_text and "EMITS" in cypher_text
@@ -156,3 +177,56 @@ def test_sync_chunks_links_chunk_to_artifact() -> None:
     cypher_text = "\n".join(query for query, _ in queries)
     assert "MERGE (c:Chunk" in cypher_text
     assert "HAS_CHUNK" in cypher_text
+
+
+def test_sync_artifact_ignores_missing_symbols() -> None:
+    """Artifacts without symbol metadata should not emit symbol queries."""
+    writer, driver = _make_writer()
+    artifact = Artifact(
+        path=Path("src/no/symbols.py"),
+        artifact_type="code",
+        subsystem=None,
+        content="",
+        git_commit=None,
+        git_timestamp=None,
+        extra_metadata={
+            "symbols": [],
+        },
+    )
+
+    writer.sync_artifact(artifact)
+
+    queries = driver.sessions[0].queries
+    assert all("DECLARES_SYMBOL" not in query for query, _ in queries)
+
+
+def test_delete_artifact_removes_declared_symbols() -> None:
+    """Deleting an artifact also removes its declared symbol nodes."""
+    writer, driver = _make_writer()
+    writer.delete_artifact("src/project/nissa/handler.py")
+
+    queries = driver.sessions[0].queries
+    delete_query = "\n".join(q for q, _ in queries)
+    assert "DECLARES_SYMBOL" in delete_query
+
+
+def test_sync_artifact_creates_exercises_relationships() -> None:
+    writer, driver = _make_writer()
+    artifact = Artifact(
+        path=Path("tests/test_example.py"),
+        artifact_type="test",
+        subsystem=None,
+        content="",
+        git_commit=None,
+        git_timestamp=None,
+        extra_metadata={
+            "exercises_symbols": ["src/project/module.py::Example.method"],
+        },
+    )
+
+    writer.sync_artifact(artifact)
+
+    queries = driver.sessions[0].queries
+    assert any("EXERCISES" in query for query, _ in queries)
+    delete_queries = [query for query, _ in queries if "DELETE r" in query]
+    assert delete_queries, "expected existing EXERCISES edges to be cleared before insertion"

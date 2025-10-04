@@ -53,7 +53,7 @@
 - **737e6d5**: lifecycle dashboard, subsystem explorer, lifecycle ingest module, UI metrics, UI spike documentation, tests.
 - **04182a6**: initial embedded UI scaffold (routes/templates/static assets) and UI route smoke tests.
 - **01fc404**: recipe runner CLI/executor, sample recipes, docs, and unit tests.
-- **f53c815**: lifecycle reporting CLI/module, `/lifecycle` endpoint, MCP integration, recipes executor enhancements, docs/tests.
+- **f53c815**: lifecycle reporting CLI/module, `/api/v1/lifecycle` endpoint, MCP integration, recipes executor enhancements, docs/tests.
 - **32c5d7a**: watcher command simplified in `supervisord.conf`.
 - **09e91e4**: upgraded graph service (multi-hop caching, orphan node endpoint, graph export), docs, tests.
 - **e189147**: incremental ingest pipeline, CLI flags, settings, and coverage tests.

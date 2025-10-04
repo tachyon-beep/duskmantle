@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from prometheus_client import REGISTRY
 
 from gateway.api.app import create_app
+from gateway.api.constants import API_V1_PREFIX
 from gateway.ingest.coverage import write_coverage_report
 from gateway.ingest.pipeline import IngestionConfig, IngestionPipeline, IngestionResult
 from gateway.observability.metrics import (
@@ -121,7 +122,7 @@ def test_coverage_endpoint_after_report_generation(
     client = TestClient(app)
 
     resp = client.get(
-        "/coverage",
+        f"{API_V1_PREFIX}/coverage",
         headers={"Authorization": "Bearer admin-token"},
     )
     assert resp.status_code == 200

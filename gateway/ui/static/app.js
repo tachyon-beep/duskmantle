@@ -116,6 +116,7 @@
     searchResults: scope.querySelector('[data-dm-search-results]'),
     searchList: scope.querySelector('[data-dm-search-list]'),
     searchFeedback: scope.querySelector('[data-dm-search-feedback]'),
+    searchFilters: scope.querySelector('[data-dm-search-filters]'),
     searchActions: scope.querySelector('[data-dm-search-actions]'),
     searchCopy: scope.querySelector('[data-dm-search-copy]'),
     searchDownload: scope.querySelector('[data-dm-search-download]'),
@@ -140,6 +141,8 @@
     lifecycleStale: scope.querySelector('[data-dm-lifecycle-stale] tbody'),
     lifecycleIsolated: scope.querySelector('[data-dm-lifecycle-isolated] tbody'),
     lifecycleMissing: scope.querySelector('[data-dm-lifecycle-missing] tbody'),
+    lifecycleSymbolPanel: scope.querySelector('[data-dm-lifecycle-symbol-panel]'),
+    lifecycleSymbolTests: scope.querySelector('[data-dm-lifecycle-symbol-tests] tbody'),
     lifecycleRemoved: scope.querySelector('[data-dm-lifecycle-removed] tbody'),
     lifecycleRefresh: scope.querySelector('[data-dm-lifecycle-refresh]'),
     lifecycleDownload: scope.querySelector('[data-dm-lifecycle-download]'),
@@ -162,6 +165,7 @@
       return;
     }
     lifecycleMetricMap.set(key, {
+      containerEl: metricEl,
       valueEl: metricEl.querySelector('.dm-metric__value'),
       sparkEl: metricEl.querySelector('[data-dm-lifecycle-spark]')
     });
@@ -327,6 +331,7 @@
     const query = (formData.get('query') || '').toString().trim();
     const limit = Number(formData.get('limit') || 5);
     const includeGraph = formData.get('include_graph') === 'on';
+    const filters = buildSearchFilters(formData);
 
     if (!validateSearchRequest(query)) {
       return;
@@ -339,6 +344,9 @@
       limit,
       include_graph: includeGraph
     };
+    if (filters) {
+      body.filters = filters;
+    }
 
     try {
       const response = await fetch('/search', {
@@ -350,7 +358,7 @@
         body: JSON.stringify(body)
       });
 
-      await processSearchResponse(response, { query, limit, includeGraph });
+      await processSearchResponse(response, { query, limit, includeGraph, filters });
     } catch (error) {
       await handleSearchException(error);
     }
@@ -361,6 +369,9 @@
       return;
     }
     elements.searchList.innerHTML = '';
+
+    const filtersApplied = payload?.metadata?.filters_applied || null;
+    renderActiveFilters(filtersApplied);
 
     const results = Array.isArray(payload?.results) ? payload.results : [];
     if (!results.length) {
@@ -380,8 +391,11 @@
       title.textContent = entry?.chunk?.title || entry?.chunk?.path || 'Untitled result';
       li.appendChild(title);
 
+      const symbolInfo = prepareSymbolEntries(entry?.chunk?.symbols);
+
       if (entry?.chunk?.snippet) {
-        const snippet = document.createElement('p');
+        const snippet = document.createElement('pre');
+        snippet.className = 'dm-result__snippet';
         snippet.textContent = entry.chunk.snippet;
         li.appendChild(snippet);
       }
@@ -397,6 +411,10 @@
         meta.appendChild(createMetaTag('Subsystem', entry.graph_context.subsystem));
       }
 
+      if (symbolInfo.lineLabel) {
+        meta.appendChild(createMetaTag('Lines', symbolInfo.lineLabel));
+      }
+
       const scoring = entry?.scoring || {};
       if (typeof scoring.vector_score === 'number') {
         meta.appendChild(createMetaTag('Vector', scoring.vector_score.toFixed(4)));
@@ -409,6 +427,11 @@
       }
 
       li.appendChild(meta);
+
+      if (symbolInfo.entries.length) {
+        li.appendChild(renderSymbolSection(symbolInfo.entries, entry?.chunk?.symbol_count));
+      }
+
       elements.searchList.appendChild(li);
     });
 
@@ -420,6 +443,307 @@
     }
 
     elements.searchResults.hidden = false;
+  }
+
+  function renderActiveFilters(filters) {
+    if (!elements.searchFilters) {
+      return;
+    }
+    elements.searchFilters.innerHTML = '';
+    if (!filters || typeof filters !== 'object') {
+      elements.searchFilters.hidden = true;
+      return;
+    }
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value === null || value === undefined) {
+        return;
+      }
+      const values = Array.isArray(value) ? value : [value];
+      values.forEach((entry) => {
+        const text = String(entry ?? '').trim();
+        if (!text) {
+          return;
+        }
+        elements.searchFilters.appendChild(createFilterPill(formatFilterLabel(key), text, key));
+      });
+    });
+    elements.searchFilters.hidden = elements.searchFilters.childElementCount === 0;
+  }
+
+  function formatFilterLabel(key) {
+    switch (key) {
+      case 'symbols':
+        return 'Symbol';
+      case 'symbol_kinds':
+        return 'Kind';
+      case 'symbol_languages':
+        return 'Language';
+      case 'artifact_types':
+        return 'Artifact';
+      case 'subsystems':
+        return 'Subsystem';
+      case 'namespaces':
+        return 'Namespace';
+      case 'tags':
+        return 'Tag';
+      case 'updated_after':
+        return 'Updated After';
+      case 'max_age_days':
+        return 'Max Age (days)';
+      default:
+        return key;
+    }
+  }
+
+  function createFilterPill(label, value, key) {
+    const pill = document.createElement('span');
+    pill.className = 'dm-pill';
+    pill.textContent = `${label}: ${formatFilterValue(key, value)}`;
+    return pill;
+  }
+
+  function formatFilterValue(key, value) {
+    if (!value) {
+      return value;
+    }
+    const lower = value.toLowerCase();
+    if (key === 'symbol_languages') {
+      return formatLanguageLabel(lower);
+    }
+    if (key === 'symbol_kinds') {
+      return formatKindLabel(lower);
+    }
+    return value;
+  }
+
+  function buildSearchFilters(formData) {
+    const filters = {};
+    const kinds = normaliseMultiSelect(formData.getAll('symbol_kinds'));
+    if (kinds.length) {
+      filters.symbol_kinds = kinds;
+    }
+    const languages = normaliseMultiSelect(formData.getAll('symbol_languages'));
+    if (languages.length) {
+      filters.symbol_languages = languages;
+    }
+    return Object.keys(filters).length ? filters : null;
+  }
+
+  function normaliseMultiSelect(values, options = {}) {
+    const lowercase = options.lowercase !== false;
+    const result = [];
+    const seen = new Set();
+    values.forEach((value) => {
+      if (value === null || value === undefined) {
+        return;
+      }
+      const text = String(value).trim();
+      if (!text) {
+        return;
+      }
+      const key = lowercase ? text.toLowerCase() : text;
+      if (seen.has(key)) {
+        return;
+      }
+      seen.add(key);
+      result.push(key);
+    });
+    return result;
+  }
+
+  function cloneFilters(filters) {
+    if (!filters || typeof filters !== 'object') {
+      return null;
+    }
+    const copy = {};
+    Object.entries(filters).forEach(([key, value]) => {
+      if (Array.isArray(value)) {
+        const entries = value
+          .map((item) => String(item ?? '').trim())
+          .filter((item) => item);
+        if (entries.length) {
+          copy[key] = entries;
+        }
+      } else if (value !== null && value !== undefined) {
+        const text = String(value).trim();
+        if (text) {
+          copy[key] = text;
+        }
+      }
+    });
+    return Object.keys(copy).length ? copy : null;
+  }
+
+  function prepareSymbolEntries(rawSymbols) {
+    const entries = [];
+    let minLine = Number.POSITIVE_INFINITY;
+    let maxLine = Number.NEGATIVE_INFINITY;
+
+    if (Array.isArray(rawSymbols)) {
+      rawSymbols.forEach((symbol) => {
+        if (!symbol || typeof symbol !== 'object') {
+          return;
+        }
+        const qualified = typeof symbol.qualified_name === 'string' ? symbol.qualified_name.trim() : '';
+        const name = typeof symbol.name === 'string' ? symbol.name.trim() : '';
+        const label = qualified || name;
+        if (!label) {
+          return;
+        }
+        const kind = typeof symbol.kind === 'string' ? symbol.kind.trim().toLowerCase() : '';
+        const language = typeof symbol.language === 'string' ? symbol.language.trim().toLowerCase() : '';
+        const lineStart = coerceNumber(symbol.line_start);
+        const lineEndRaw = coerceNumber(symbol.line_end);
+        const lineEnd = lineEndRaw !== null ? lineEndRaw : lineStart;
+        if (lineStart !== null && lineStart < minLine) {
+          minLine = lineStart;
+        }
+        if (lineEnd !== null && lineEnd > maxLine) {
+          maxLine = lineEnd;
+        }
+        entries.push({
+          qualified_name: qualified,
+          name,
+          kind,
+          language,
+          line_start: lineStart,
+          line_end: lineEnd,
+          editor_uri: typeof symbol.editor_uri === 'string' ? symbol.editor_uri : null
+        });
+      });
+    }
+
+    const lineLabel = entries.length && minLine !== Number.POSITIVE_INFINITY && maxLine !== Number.NEGATIVE_INFINITY
+      ? formatLineRange(minLine, maxLine)
+      : '';
+
+    return {
+      entries,
+      lineLabel
+    };
+  }
+
+  function renderSymbolSection(symbols, symbolCount) {
+    const container = document.createElement('div');
+    container.className = 'dm-result__symbols';
+
+    const total = typeof symbolCount === 'number' ? symbolCount : symbols.length;
+    const label = document.createElement('span');
+    label.className = 'dm-result__symbols-label';
+    label.textContent = `Symbols (${total})`;
+    container.appendChild(label);
+
+    const list = document.createElement('ul');
+    list.className = 'dm-symbol-list';
+
+    symbols.forEach((symbol) => {
+      const item = document.createElement('li');
+      item.className = 'dm-symbol';
+
+      const name = document.createElement('span');
+      name.className = 'dm-symbol__name';
+      name.textContent = symbol.qualified_name || symbol.name || 'Symbol';
+      item.appendChild(name);
+
+      if (symbol.kind || symbol.language) {
+        const badges = document.createElement('span');
+        badges.className = 'dm-symbol__badges';
+        if (symbol.kind) {
+          badges.appendChild(createBadge(formatKindLabel(symbol.kind), 'kind'));
+        }
+        if (symbol.language) {
+          badges.appendChild(createBadge(formatLanguageLabel(symbol.language), 'language'));
+        }
+        item.appendChild(badges);
+      }
+
+      const lineLabel = formatLineRange(symbol.line_start, symbol.line_end);
+      if (lineLabel) {
+        const lineEl = document.createElement('span');
+        lineEl.className = 'dm-symbol__lines';
+        lineEl.textContent = lineLabel;
+        item.appendChild(lineEl);
+      }
+
+      if (symbol.editor_uri) {
+        const link = document.createElement('a');
+        link.className = 'dm-symbol__link';
+        link.href = symbol.editor_uri;
+        link.target = '_blank';
+        link.rel = 'noreferrer';
+        link.textContent = 'Open in editor';
+        item.appendChild(link);
+      }
+
+      list.appendChild(item);
+    });
+
+    container.appendChild(list);
+
+    if (typeof total === 'number' && total > symbols.length) {
+      const more = document.createElement('span');
+      more.className = 'dm-symbol__more';
+      more.textContent = `+${total - symbols.length} more`;
+      container.appendChild(more);
+    }
+
+    return container;
+  }
+
+  function createBadge(text, variant) {
+    const badge = document.createElement('span');
+    badge.className = variant ? `dm-symbol__badge dm-symbol__badge--${variant}` : 'dm-symbol__badge';
+    badge.textContent = text;
+    return badge;
+  }
+
+  function formatKindLabel(value) {
+    if (!value) {
+      return '';
+    }
+    const lower = value.toLowerCase();
+    return lower.charAt(0).toUpperCase() + lower.slice(1);
+  }
+
+  function formatLanguageLabel(value) {
+    if (!value) {
+      return '';
+    }
+    const lower = value.toLowerCase();
+    const labels = {
+      python: 'Python',
+      typescript: 'TypeScript',
+      tsx: 'TSX',
+      javascript: 'JavaScript',
+      go: 'Go'
+    };
+    return labels[lower] || formatKindLabel(lower);
+  }
+
+  function formatLineRange(start, end) {
+    const startLine = coerceNumber(start);
+    const endLine = coerceNumber(end);
+    if (startLine === null && endLine === null) {
+      return '';
+    }
+    if (startLine !== null && endLine !== null) {
+      return startLine === endLine ? `Line ${startLine}` : `Lines ${startLine}–${endLine}`;
+    }
+    const line = startLine !== null ? startLine : endLine;
+    return line !== null ? `Line ${line}` : '';
+  }
+
+  function coerceNumber(value) {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return Math.trunc(value);
+    }
+    if (typeof value === 'string') {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) {
+        return Math.trunc(parsed);
+      }
+    }
+    return null;
   }
 
   function validateSearchRequest(query) {
@@ -436,6 +760,10 @@
       elements.searchFeedback.textContent = '';
       elements.searchFeedback.hidden = true;
       elements.searchFeedback.classList.remove('dm-alert-error');
+    }
+    if (elements.searchFilters) {
+      elements.searchFilters.hidden = true;
+      elements.searchFilters.innerHTML = '';
     }
     if (elements.searchResults) {
       elements.searchResults.hidden = true;
@@ -722,6 +1050,8 @@
     const staleDocs = Array.isArray(payload?.stale_docs) ? payload.stale_docs : [];
     const missingTests = Array.isArray(payload?.missing_tests) ? payload.missing_tests : [];
     const removedArtifacts = Array.isArray(payload?.removed_artifacts) ? payload.removed_artifacts : [];
+    const symbolTests = Array.isArray(payload?.symbol_tests) ? payload.symbol_tests : [];
+    const symbolGaps = Array.isArray(payload?.symbol_test_gaps) ? payload.symbol_test_gaps : [];
     const isolated = payload?.isolated || {};
     const isolatedCount = Object.values(isolated).reduce((total, nodes) => {
       if (!Array.isArray(nodes)) {
@@ -730,11 +1060,15 @@
       return total + nodes.length;
     }, 0);
 
+    const hasSymbolInsights = Boolean(symbolTests.length || symbolGaps.length || summary.symbol_tests !== undefined || summary.symbol_test_gaps !== undefined);
+
     return {
       stale_docs: Number(summary.stale_docs ?? staleDocs.length) || 0,
       isolated_nodes: Number(summary.isolated_nodes ?? isolatedCount) || 0,
       subsystems_missing_tests: Number(summary.subsystems_missing_tests ?? missingTests.length) || 0,
-      removed_artifacts: Number(summary.removed_artifacts ?? removedArtifacts.length) || 0
+      removed_artifacts: Number(summary.removed_artifacts ?? removedArtifacts.length) || 0,
+      symbol_tests: Number(summary.symbol_tests ?? symbolTests.length) || 0,
+      _has_symbol_insights: hasSymbolInsights
     };
   }
 
@@ -797,6 +1131,9 @@
     if (elements.lifecyclePanels) {
       elements.lifecyclePanels.hidden = true;
     }
+    if (elements.lifecycleSymbolPanel) {
+      elements.lifecycleSymbolPanel.hidden = true;
+    }
   }
 
   async function processLifecycleResponse(response) {
@@ -849,8 +1186,15 @@
     if (elements.lifecycleSummary) {
       elements.lifecycleSummary.hidden = false;
     }
+    const hasSymbolInsights = Boolean(counts._has_symbol_insights);
     lifecycleMetricMap.forEach((refs, key) => {
       if (!refs) {
+        return;
+      }
+      if (key === 'symbol_tests' && refs.containerEl) {
+        refs.containerEl.hidden = !hasSymbolInsights;
+      }
+      if (key === '_has_symbol_insights') {
         return;
       }
       const value = counts[key] ?? 0;
@@ -879,6 +1223,7 @@
     renderStaleDocsTable(payload, generatedAt);
     renderIsolatedNodesTable(payload);
     renderMissingTestsTable(payload);
+    renderSymbolTestsTable(payload);
     renderRemovedArtifactsTable(payload);
   }
 
@@ -919,6 +1264,96 @@
       const note = item?.note || item?.reason || 'Needs test coverage';
       appendCells(row, [name, note]);
     }, 2);
+  }
+
+  function renderSymbolTestsTable(payload) {
+    if (!elements.lifecycleSymbolTests) {
+      return;
+    }
+    const coverage = Array.isArray(payload?.symbol_tests) ? payload.symbol_tests : [];
+    const gaps = Array.isArray(payload?.symbol_test_gaps) ? payload.symbol_test_gaps : [];
+    const entries = [];
+
+    coverage.forEach((item) => {
+      entries.push(normaliseSymbolTestEntry(item, 'Covered'));
+    });
+    gaps.forEach((item) => {
+      entries.push(normaliseSymbolTestEntry(item, 'Missing'));
+    });
+
+    if (!entries.length) {
+      elements.lifecycleSymbolTests.innerHTML = '';
+      if (elements.lifecycleSymbolPanel) {
+        elements.lifecycleSymbolPanel.hidden = true;
+      }
+      return;
+    }
+
+    if (elements.lifecycleSymbolPanel) {
+      elements.lifecycleSymbolPanel.hidden = false;
+    }
+
+    renderListTable(elements.lifecycleSymbolTests, entries, (row, entry) => {
+      appendCells(row, [entry.symbol, entry.tests, entry.status]);
+    }, 3);
+  }
+
+  function normaliseSymbolTestEntry(item, fallbackStatus) {
+    const symbol = extractSymbolName(item);
+    const tests = extractSymbolTests(item);
+    const status = extractSymbolStatus(item, fallbackStatus);
+    return {
+      symbol,
+      tests: tests.length ? tests.join(', ') : '—',
+      status
+    };
+  }
+
+  function extractSymbolName(item) {
+    if (!item || typeof item !== 'object') {
+      return 'Symbol';
+    }
+    const candidates = [item.symbol, item.qualified_name, item.name, item.id];
+    for (const candidate of candidates) {
+      if (typeof candidate === 'string' && candidate.trim()) {
+        return candidate.trim();
+      }
+    }
+    return 'Symbol';
+  }
+
+  function extractSymbolTests(item) {
+    if (!item || typeof item !== 'object') {
+      return [];
+    }
+    const arrayCandidates = [item.tests, item.test_paths, item.test_cases, item.cases];
+    for (const candidate of arrayCandidates) {
+      if (Array.isArray(candidate)) {
+        return candidate
+          .map((entry) => String(entry ?? '').trim())
+          .filter((entry) => entry);
+      }
+    }
+    const singleCandidates = [item.test, item.case, item.path];
+    for (const candidate of singleCandidates) {
+      if (typeof candidate === 'string' && candidate.trim()) {
+        return [candidate.trim()];
+      }
+    }
+    return [];
+  }
+
+  function extractSymbolStatus(item, fallbackStatus) {
+    if (!item || typeof item !== 'object') {
+      return typeof fallbackStatus === 'string' ? fallbackStatus : '—';
+    }
+    const candidates = [item.status, item.note, item.reason, item.state];
+    for (const candidate of candidates) {
+      if (typeof candidate === 'string' && candidate.trim()) {
+        return candidate.trim();
+      }
+    }
+    return typeof fallbackStatus === 'string' ? fallbackStatus : '—';
   }
 
   function renderRemovedArtifactsTable(payload) {
@@ -969,9 +1404,7 @@
   }
 
   function renderLifecycleHistory(history) {
-    const metrics = ['stale_docs', 'isolated_nodes', 'subsystems_missing_tests', 'removed_artifacts'];
-    metrics.forEach((metric) => {
-      const refs = lifecycleMetricMap.get(metric);
+    lifecycleMetricMap.forEach((refs, metric) => {
       if (!refs?.sparkEl) {
         return;
       }
@@ -1115,6 +1548,10 @@
         };
         if (!lastSearchParams.includeGraph) {
           payload.include_graph = false;
+        }
+        const filters = cloneFilters(lastSearchParams.filters);
+        if (filters) {
+          payload.filters = filters;
         }
         const command = `km-search ${JSON.stringify(payload)}`;
         copyToClipboard(command, () => {

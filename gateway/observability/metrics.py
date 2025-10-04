@@ -4,6 +4,47 @@ from __future__ import annotations
 
 from prometheus_client import Counter, Gauge, Histogram
 
+BACKUP_RUNS_TOTAL = Counter(
+    "km_backup_runs_total",
+    "Backup job outcomes partitioned by result",
+    labelnames=["result"],
+)
+
+BACKUP_LAST_STATUS = Gauge(
+    "km_backup_last_status",
+    "Last backup status (1=success,0=failure)",
+)
+
+BACKUP_LAST_SUCCESS_TIMESTAMP = Gauge(
+    "km_backup_last_success_timestamp",
+    "Unix timestamp of the last successful backup run",
+)
+
+BACKUP_RETENTION_DELETES_TOTAL = Counter(
+    "km_backup_retention_deletes_total",
+    "Number of backup archives removed by retention pruning",
+)
+
+GRAPH_DEPENDENCY_STATUS = Gauge(
+    "km_graph_dependency_status",
+    "Neo4j connectivity status (1=healthy,0=unavailable)",
+)
+
+GRAPH_DEPENDENCY_LAST_SUCCESS = Gauge(
+    "km_graph_dependency_last_success_timestamp",
+    "Unix timestamp of the last successful Neo4j heartbeat",
+)
+
+QDRANT_DEPENDENCY_STATUS = Gauge(
+    "km_qdrant_dependency_status",
+    "Qdrant connectivity status (1=healthy,0=unavailable)",
+)
+
+QDRANT_DEPENDENCY_LAST_SUCCESS = Gauge(
+    "km_qdrant_dependency_last_success_timestamp",
+    "Unix timestamp of the last successful Qdrant heartbeat",
+)
+
 INGEST_DURATION_SECONDS = Histogram(
     "km_ingest_duration_seconds",
     "Duration of ingestion runs",
@@ -83,6 +124,22 @@ SEARCH_GRAPH_CACHE_EVENTS = Counter(
     labelnames=["status"],
 )
 
+SEARCH_GRAPH_SKIPPED_TOTAL = Counter(
+    "km_search_graph_skipped_total",
+    "Number of search results where graph enrichment was skipped",
+    labelnames=["reason"],
+)
+
+SEARCH_FEEDBACK_ROTATIONS_TOTAL = Counter(
+    "km_feedback_rotations_total",
+    "Number of times the search feedback log rotated due to size limits",
+)
+
+SEARCH_FEEDBACK_LOG_BYTES = Gauge(
+    "km_feedback_log_bytes",
+    "Current size of the primary search feedback log in bytes",
+)
+
 SEARCH_GRAPH_LOOKUP_SECONDS = Histogram(
     "km_search_graph_lookup_seconds",
     "Latency of graph lookups for search enrichment",
@@ -91,6 +148,18 @@ SEARCH_GRAPH_LOOKUP_SECONDS = Histogram(
 SEARCH_SCORE_DELTA = Histogram(
     "km_search_adjusted_minus_vector",
     "Distribution of adjusted minus vector scores",
+)
+
+SEARCH_SYMBOL_FILTERS_TOTAL = Counter(
+    "km_search_symbol_filters_total",
+    "Search requests with symbol filters, partitioned by filter type",
+    labelnames=["filter_type"],
+)
+
+GRAPH_CYPHER_DENIED_TOTAL = Counter(
+    "km_graph_cypher_denied_total",
+    "Maintainer Cypher requests blocked by read-only safeguards",
+    labelnames=["reason"],
 )
 
 GRAPH_MIGRATION_LAST_STATUS = Gauge(

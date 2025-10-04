@@ -50,7 +50,7 @@ Pending acceptance run.
 
 ## 4. Coverage Snapshot
 
-- **Endpoint status (`/coverage`):** 200 OK
+- **Endpoint status (`/api/v1/coverage`):** 200 OK
 - **Chunk count:** _TBD_
 - **Artifact total:** _TBD_
 - **Missing artifacts:** _TBD_

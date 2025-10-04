@@ -11,6 +11,8 @@ from urllib.parse import quote as _quote
 
 import httpx
 
+from gateway.api.constants import API_V1_PREFIX
+
 from .config import MCPSettings
 from .exceptions import GatewayRequestError, MissingTokenError
 
@@ -55,7 +57,7 @@ class GatewayClient:
         """Perform a search request against the gateway."""
         data = await self._request(
             "POST",
-            "/search",
+            f"{API_V1_PREFIX}/search",
             json_payload=payload,
             require_reader=True,
         )
@@ -65,7 +67,7 @@ class GatewayClient:
         """Fetch a graph node by ID."""
         data = await self._request(
             "GET",
-            f"/graph/nodes/{_quote_segment(node_id)}",
+            f"{API_V1_PREFIX}/graph/nodes/{_quote_segment(node_id)}",
             params={"relationships": relationships, "limit": limit},
             require_reader=True,
         )
@@ -90,7 +92,7 @@ class GatewayClient:
             params["cursor"] = cursor
         data = await self._request(
             "GET",
-            f"/graph/subsystems/{_quote_segment(name)}",
+            f"{API_V1_PREFIX}/graph/subsystems/{_quote_segment(name)}",
             params=params,
             require_reader=True,
         )
@@ -100,17 +102,27 @@ class GatewayClient:
         """Perform a graph search by term."""
         data = await self._request(
             "GET",
-            "/graph/search",
+            f"{API_V1_PREFIX}/graph/search",
             params={"q": term, "limit": limit},
             require_reader=True,
         )
         return _expect_dict(data, "graph-search")
 
+    async def symbol_tests(self, symbol_id: str) -> dict[str, Any]:
+        """Return tests linked to the provided symbol identifier."""
+        path = _quote_segment(symbol_id)
+        data = await self._request(
+            "GET",
+            f"{API_V1_PREFIX}/graph/symbols/{path}/tests",
+            require_reader=True,
+        )
+        return _expect_dict(data, "symbol-tests")
+
     async def coverage_summary(self) -> dict[str, Any]:
         """Fetch the coverage summary endpoint as a dict."""
         data = await self._request(
             "GET",
-            "/coverage",
+            f"{API_V1_PREFIX}/coverage",
             require_admin=True,
         )
         return _expect_dict(data, "coverage")
@@ -119,7 +131,7 @@ class GatewayClient:
         """Fetch the lifecycle report payload."""
         data = await self._request(
             "GET",
-            "/lifecycle",
+            f"{API_V1_PREFIX}/lifecycle",
             require_admin=True,
         )
         return _expect_dict(data, "lifecycle")
@@ -128,7 +140,7 @@ class GatewayClient:
         """Return recent audit history entries."""
         data = await self._request(
             "GET",
-            "/audit/history",
+            f"{API_V1_PREFIX}/audit/history",
             params={"limit": limit},
             require_admin=True,
         )

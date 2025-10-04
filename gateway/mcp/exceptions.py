@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from gateway.backup.exceptions import BackupExecutionError as _BackupExecutionError
+
 
 class MCPAdapterError(Exception):
     """Base error raised by the MCP bridge."""
@@ -26,7 +28,7 @@ class MissingTokenError(MCPAdapterError):
         self.scope = scope
 
 
-class BackupExecutionError(MCPAdapterError):
+class BackupExecutionError(_BackupExecutionError, MCPAdapterError):
     """Raised when the backup helper fails to produce an archive."""
 
 

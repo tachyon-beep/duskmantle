@@ -1,207 +1,312 @@
-# Roadmap
+## 1) Symbol‑aware code indexing (tree‑sitter + ctags fallback)
 
-This roadmap captures future enhancements aimed at making the knowledge gateway friendlier for MCP-driven workflows. Items are grouped from high to low priority, balancing expected impact (utility for LLM agents and maintainers) against implementation effort. “Quick win” tags highlight relatively low-effort tasks that deliver outsized value.
+**Why:** File‑level chunks are fine; symbol‑level results are magic for “jump to the thing I mean”.
 
-## Work Package: MCP Content Capture (Completed)
+**How to ship quickly**
 
-Deliverables for MCP-driven uploads and text capture shipped with the 1.1.0 milestone. The notes below remain for historical reference.
+* Add a **symbol extractor** pass during ingest:
 
-### Tasks
+  * Primary: `tree-sitter` per language (Python, TypeScript/JS, Go to start).
+  * Fallback: `universal-ctags` when a language has no parser.
+* Emit **symbol chunks** alongside normal chunks.
+* In Neo4j: `(:Symbol {id, name, kind, lang, file, start, end})` with `(:File)-[:DECLARES]->(:Symbol)` and optional `(:Symbol)-[:CALLS]->(:Symbol)` edges (you can grow CALLS later).
 
-1. **Shared Utilities**
-   - Extract reusable file-copy and slug-generation helpers from `bin/km-sweep` into a Python module (`gateway/mcp/utils/files.py`).
-   - Add settings entries for content root, default doc directory, and ingest defaults.
-   - Instrument telemetry counters for write-oriented tools (`km_mcp_upload_total`, etc.).
+**Qdrant payload (add to existing):**
 
-2. **km-upload Tool**
-   - Implement handler (`gateway/mcp/upload.py`) that validates source paths, copies into `.duskmantle/data/`, and optionally triggers ingest.
-   - Support controls: `destination`, `overwrite`, `ingest`, `metadata` map.
-   - Return structured result (`stored_path`, `ingest_triggered`, `ingest_run_id`, `next_steps`).
-   - Unit tests: success copy, overwrite prevention, missing files, ingest invocation.
+```json
+{
+  "kind": "function",
+  "symbol": "serialize_payload",
+  "lang": "python",
+  "file": "gateway/api/utils.py",
+  "line_start": 42,
+  "line_end": 87,
+  "repo": "km-core",
+  "subsystem": "api"
+}
+```
 
-3. **km-storetext Tool**
-   - Implement handler (`gateway/mcp/storetext.py`) that writes arbitrary text into `.duskmantle/data/docs/` (or destination) using generated filenames.
-   - Support optional `title`, `subsystem`, `tags`, `format`, `metadata`, `ingest`.
-   - Ensure metadata is captured (front matter or sidecar JSON) and collisions resolved.
-   - Unit tests: slug generation, metadata persistence, empty content guard, ingest flow.
+**Query operators**
 
-4. **Integration & Docs**
-   - Register new tools in the MCP server and update FastAPI dependency injection as needed.
-   - Update `docs/MCP_INTERFACE_SPEC.md`, `docs/MCP_RECIPES.md`, README “LLM Agent Workflow,” and `docs/MCP_AGENT_PLAYBOOK.md` (new).
-   - Add roadmap note, acceptance demo examples, and release checklist reminders.
+* `sym:serialize_payload`, `kind:function`, `lang:python`, `file:*/utils.py`
+* CLI sugar: `km-search --symbol serialize_payload`
 
-5. **Security & Audit**
-   - Require maintainer token for both tools; emit scope errors otherwise.
-   - Optionally append entries to an audit log (`/opt/knowledge/var/audit/mcp_actions.log`).
+**UI nudge**
 
-## Medium Priority
+* Chips for `kind`, `lang`, `repo`.
+* “Open in editor” button per hit (see #2).
 
-- **km-bundle** – Package MCP recipe outputs and lifecycle snapshots as downloadable archives (tracked alongside Knowledge Console work in WP7).
+**Complexity:** Medium (tree‑sitter wiring) / Big payoff.
 
-## Work Package: MCP Upload & StoreText Execution Plan *(Completed)*
+> Minimal Python extractor sketch (per‑file):
 
-### Phase 1 – Foundations & Utilities
+```python
+from tree_sitter import Language, Parser
+# Build once: Language.build_library('build/langs.so', ['vendor/tree-sitter-python', ...])
+PY_LANG = Language('build/langs.so', 'python')
+parser = Parser(); parser.set_language(PY_LANG)
 
-- **Step 1.1 Shared Helper Extraction**
-  - Task 1.1.1 Refactor `bin/km-sweep` logic into `gateway/mcp/utils/files.py` (copy routines, slug generator, extension allowlist).
-  - Task 1.1.2 Add new settings (content root, default doc folder, ingest defaults) and ensure MCP uses them.
-  - Task 1.1.3 Instrument Prometheus counters (`km_mcp_upload_total`, `km_mcp_storetext_total`, result labels).
-  - *Risk reduction:* write unit tests for the helper module to guard against path traversal and duplicate filename issues.
+def extract_symbols(code: bytes):
+    tree = parser.parse(code)
+    # walk the tree to collect (function|class) nodes; return name, kind, start_line, end_line
+    # keep it pragmatic: only top-level + class members for v1
+    return symbols
+```
 
-### Phase 2 – km-upload Tool
+---
 
-- **Step 2.1 Core Handler**
-  - Task 2.1.1 Implement handler (`gateway/mcp/upload.py`) with validation, copy, ingest trigger hook.
-  - Task 2.1.2 Extend MCP server registry and update tool schema/spec.
-  - Task 2.1.3 Cover tests: valid copy, overwrite error, missing file, ingest trigger path, permission errors.
-  - *Risk reduction:* add quarantine option or dry-run flag to preview actions; log audit entry.
+## 2) IDE deep links (one click → open at line)
 
-### Phase 3 – km-storetext Tool
+**Why:** Shortens the loop from “found it” to “fix it”.
 
-- **Step 3.1 Text Capture**
-  - Task 3.1.1 Implement handler (`gateway/mcp/storetext.py`) to write text files, apply metadata, and optionally ingest.
-  - Task 3.1.2 Support metadata serialization (front matter or sidecar) and slug collision handling.
-  - Task 3.1.3 Tests: empty content rejection, metadata persistence, ingest success/failure handling.
-  - *Risk reduction:* guard against excessive payload size, enforce UTF-8 encoding, add basic sanitizer if HTML allowed.
+**How to ship quickly**
 
-### Phase 4 – Integration & Documentation
+* Add `KM_EDITOR_URI_TEMPLATE` env (e.g., `vscode://file/{abs_path}:{line_start}`).
+* On the UI hit card, render a deep‑link built from Qdrant payload `file` + `line_start`.
 
-- **Step 4.1 Tool Wiring**
-  - Task 4.1.1 Register tools with MCP server, update FastAPI dependency injection if needed.
-  - Task 4.1.2 Update CLI (optional) to expose similar functionality for parity.
-- **Step 4.2 Documentation & Samples**
-  - Task 4.2.1 Update `docs/MCP_INTERFACE_SPEC.md` & `docs/MCP_RECIPES.md` with request/response schemas and examples.
-  - Task 4.2.2 Extend README + `docs/MCP_AGENT_PLAYBOOK.md` (new) with step-by-step agent flows.
-  - Task 4.2.3 Add bundle examples to `docs/ACCEPTANCE_DEMO_PLAYBOOK.md` once available.
-  - *Risk reduction:* prepare manual validation checklist (upload text, run ingest, confirm `/search` hit) before merging.
+**API/UI nudge**
 
-### Phase 5 – Security & Operational Hardening
+* Include `metadata.editor_uri` in `/search` responses if template is set.
 
-- **Step 5.1 Auth & Audit**
-  - Task 5.1.1 Ensure maintainer scope enforced; add explicit error messages for reader tokens.
-  - Task 5.1.2 Append optional audit entries (`mcp_upload`, `mcp_storetext`) with caller/tool metadata.
-- **Step 5.2 Failure Handling**
-  - Task 5.2.1 Define retry/backoff behaviour for ingest triggers; surface actionable errors to MCP clients.
-  - Task 5.2.2 Document operational impacts (e.g., storage growth, ingest throughput) and update runbook.
-  - *Risk reduction:* include targeted tests for race conditions (simultaneous uploads) and watch metrics to ensure triggers don’t overload scheduler.
+**Complexity:** Low.
 
-### Overall Risks & Mitigations
+---
 
-- **Path Traversal / Overwrite** – unit tests + helper utilities ensure normalized paths and require explicit `overwrite=true`.
-- **Unauthorized Writes** – maintainer-token enforcement, clear error messages, audit logging.
-- **Ingest Overload** – optional ingest flag defaults to `false`, plus backoff/retry guidance and watcher metric monitoring.
-- **Large Payloads** – configurable max file size for uploads/storetext; document limits to the agent.
-- **Consistency with Existing Tools** – shared helper module keeps CLI and MCP behaviour aligned; add regression tests that exercise both code paths.
+## 3) Diff‑aware ingest (“index only what changed”)
 
-## Work Package: Lifecycle & Reliability Hardening (Target: v1.1)
+**Why:** Keeps ingest snappy and avoids re‑embedding the world.
 
-### Phase 1 – Stabilize Existing Behaviour - COMPLETED
+**How to ship quickly**
 
-- **Step 1.1 Fix Neo4j relationship duplication**
-  - Task 1.1.1 Audit `Neo4jWriter.sync_artifact` to ensure subsystem edges are merged once.
-  - Task 1.1.2 Add regression tests verifying single `BELONGS_TO`/`IMPLEMENTS` edges per artifact.
-- **Step 1.2 Handle deletions/stale content**
-  - Task 1.2.1 Design a stale artifact detection strategy (hash ledger, git diff, or watcher).
-  - Task 1.2.2 Implement removal workflow (soft-delete or tombstones) and integrate with ingest result/coverage.
-  - Task 1.2.3 Extend coverage report/tests so removed files are flagged until cleaned up.
-- **Step 1.3 Harden security defaults**
-  - Task 1.3.1 Refuse secure-mode startup without required tokens/passwords.
-  - Task 1.3.2 Document the failure behaviour and migration guidance.
+* New CLI: `gateway-ingest changed --since <git-ref>` that:
 
-### Phase 2 – Monitoring & Insights - COMPLETED
+  * Runs `git diff --name-only <ref>...HEAD`.
+  * Re‑chunks/embeds only changed files (and deletes stale chunks).
+* For non‑Git content, support a **mtime cache** under `.duskmantle/.ingest-cache.json`.
 
-- **Step 2.1 Enhanced logging** *(completed)*
-  - Task 2.1.1 Introduce request IDs tied to search/feedback events.
-  - Task 2.1.2 Emit startup config summary (version, weight profile, ingest defaults).
-- **Step 2.2 Observability polish** *(completed)*
-  - Task 2.2.1 Add Prometheus counters for stale deletions resolved, ingest skips, watch-triggered ingests.
-  - Task 2.2.2 Update Grafana dashboards to surface new metrics.
+**API/UI nudge**
 
-## Work Package: Performance & Scale (Target: v1.2)
+* `/api/v1/coverage` shows “files scanned / files changed”.
+* Button: “Reindex changed since last run”.
 
-### Phase 3 – Ingestion Optimisation - COMPLETED
+**Complexity:** Low.
 
-- **Step 3.1 Batch Neo4j writes** *(completed)*
-  - Task 3.1.1 Profile current ingest to identify hot Cypher paths.
-  - Task 3.1.2 Refactor `Neo4jWriter` to batch MERGE operations via `UNWIND` or transaction batching.
-  - Task 3.1.3 Benchmark before/after; ensure transactional safety.
-- **Step 3.2 Incremental ingest** *(completed)*
-  - Task 3.2.1 Persist file digests/timestamps alongside chunks.
-  - Task 3.2.2 Skip unchanged files during discovery; re-embed only modified/new content.
-  - Task 3.2.3 Provide CLI flags for full rebuild vs incremental; update docs/tests.
-- **Step 3.3 Async/parallel execution** *(completed)*
-  - Task 3.3.1 Evaluate embedding and writer parallelism (asyncio worker pool, thread pools).
-  - Task 3.3.2 Implement backpressure to avoid memory spikes.
-  - Task 3.3.3 Load-test ingestion throughput with representative repositories.
+---
 
+## 4) Lightweight re‑ranking (ONNX cross‑encoder)
 
-## Work Package: Knowledge Console (Proposed WP7)
+**Why:** Big precision bump for top‑K with tiny code changes; ideal when your corpus is yours alone.
 
-### Phase 1 – Telemetry & Visuals
+**How to ship quickly**
 
-- **Step 1.1 Lifecycle trend emitters** **(Completed)**
-  - Task 1.1.1 Persist rolling history (per ingest) of stale docs, isolated nodes, subsystems without tests, and removed artifacts (JSON + Prometheus gauges). **(Completed)**
-  - Task 1.1.2 Expose `/lifecycle/history` (maintainer scope) returning the last N datapoints for UI consumption. **(Completed)**
-- **Step 1.2 Sparkline rendering** **(Completed)**
-  - Task 1.2.1 Introduce a lightweight chart helper (inline SVG/Canvas) that renders stale/isolated/missing/removed trends without external build tooling. **(Completed)**
-  - Task 1.2.2 Update the lifecycle view to call the history endpoint and populate spark lines with graceful fallbacks when history is absent. **(Completed)**
-- **Step 1.3 Observability integration** **(In Progress)**
-  - Task 1.3.1 Extend Grafana dashboards with `km_ui_requests_total`, `km_ui_events_total`, and lifecycle trend panels. *(Dashboard export pending; documentation updated in release 1.1.0)*
-  - Task 1.3.2 Document alerting thresholds in `docs/OBSERVABILITY_GUIDE.md` and ensure metrics are scraped in CI smoke jobs. **(Completed)**
+* Add an optional **re‑rank stage**:
 
-### Phase 2 – Agent Shortcuts
+  * Env: `KM_RERANK_MODE=cross`, `KM_RERANK_TOPK=50`, `KM_RERANK_MODEL_PATH=/models/cross-encoder.onnx`.
+  * Use `onnxruntime` CPU; batch the top‑K.
+* Return `scoring.rerank_score` alongside your current scores.
 
-- **Step 2.1 MCP launchers** **(Completed)**
-  - Task 2.1.1 Add console buttons that trigger `km-recipe-run` (via MCP) with prefilled variables for release prep, stale audit, and subsystem freshness. **(Completed)**
-  - Task 2.1.2 Surface copy-ready MCP command snippets and request IDs for downstream prompts. **(Completed)**
-- **Step 2.2 Context export** **(Completed)**
-  - Task 2.2.1 Provide download/export buttons (JSON/Markdown) for search results and subsystem tables to streamline issue filing. **(Completed)**
-  - Task 2.2.2 Audit audit-log entries to ensure UI-triggered actions remain traceable. **(Completed via `km_ui_events_total` instrumentation)**
+**API/UI nudge**
 
-### Phase 3 – Accessibility & Hardened UX
+* Toggle in UI: “Improve top‑K (CPU)”.
+* Display deltas: “Re‑rank moved this from #7 → #2”.
 
-- **Step 3.1 Accessibility audit** **(Completed)**
-  - Task 3.1.1 Ensure keyboard navigation, focus states, and ARIA roles cover all interactive elements. **(Completed)**
-  - Task 3.1.2 Add high-contrast and reduced-motion toggles with persisted preferences. **(Completed)**
-- **Step 3.2 Localisation & resilience** **(Completed)**
-  - Task 3.2.1 Centralise UI strings for future localisation; document token-handling behaviour in README/Quick Start. **(Completed)**
-  - Task 3.2.2 Improve error surfaces (offline, 401/403, 5xx) with retry and support guidance. **(Completed)**
-- **Step 3.3 Automated testing** **(Completed)**
-  - Task 3.3.1 Add Playwright smoke tests covering navigation, lifecycle refresh, and recipe launch buttons. **(Completed)**
-  - Task 3.3.2 Integrate UI tests into CI (nightly slice) with optional container spin-up. **(Completed – observability workflow runs `npx playwright test`)**
+**Complexity:** Low‑Medium.
 
-## Work Package: Knowledge UX & Automation (Target: v1.3)
+---
 
-### Phase 4 – Graph analytics & lifecycle views
+## 5) Time‑travel search (`as_of`) + corpus stamp
 
-- **Step 4.1 Multi-hop graph features**
-  - Task 4.1.1 Extend `/graph/subsystems` to prefetch multi-hop dependency chains with caching. **(Completed)**
-  - Task 4.1.2 Add endpoints for orphan nodes and subsystem dependency graphs. **(Completed)**
-  - Task 4.1.3 Document new graph queries and provide recipe examples. **(Completed)**
-- **Step 4.2 Coverage & lifecycle dashboards**
-  - Task 4.2.1 Generate reports highlighting isolated nodes, stale docs, missing tests. **(Completed)**
-  - Task 4.2.2 Expose summaries via MCP/CLI recipe (e.g., `km-lifecycle-report`). **(Completed)**
+**Why:** You will regret not being able to reproduce yesterday’s answer.
 
-### Phase 5 – “Knowledge recipes” & MCP automation
+**How to ship quickly**
 
-- **Step 5.1 Recipe design**
-  - Task 5.1.1 Catalogue common multi-step workflows (ingest → search → backup). **(Completed – see docs/MCP_RECIPES_DESIGN.md §1)**
-  - Task 5.1.2 Define recipe schema/execution harness (MCP script bundle or CLI). **(Completed – design baselined in docs/MCP_RECIPES_DESIGN.md §2)**
-- **Step 5.2 Implementation**
-  - Task 5.2.1 Build recipe runner to orchestrate chained MCP calls with logging/rollback. **(Completed – implemented via `gateway/recipes/` executor)**
-  - Task 5.2.2 Provide baseline recipes (stale-doc audit, subsystem freshness, release prep). **(Completed)**
-  - Task 5.2.3 Document recipes in MCP playbook and add validation tests. **(Completed)**
-- **Step 5.3 UI spike** *(completed – see docs/UI_SPIKE_REPORT.md)*
-  - Task 5.3.1 Prototype HTML report or lightweight UI for search/graph browsing. **(Completed)**
-  - Task 5.3.2 Evaluate integration cost; schedule standalone milestone if pursued. **(Completed – follow-up captured under WP7 Knowledge Console)**
+* Stamp each ingest with `KM_CORPUS_ID = <git_sha>.<chunker_hash>.<embedder_hash>`.
+* Add `?as_of=YYYY-MM-DDTHH:mm:ssZ` to `/search` to filter chunks and graph edges by valid‑time (store `since`/`until` on them).
 
-## Work Package: Documentation & Onboarding (Ongoing)
+**API/UI nudge**
 
-### Phase 6 – Search signal transparency & contributor experience
+* UI date‑picker: “Search as of…”.
+* Every answer footer: `Corpus: <stamp>` with a copy button.
 
-- **Step 6.1 Scoring transparency**
-  - Task 6.1.1 Annotate `SearchService` scoring pipeline with rationale per signal.
-  - Task 6.1.2 Expand documentation explaining weight profiles and ML scoring mode.
-- **Step 6.2 Contributor guide**
-  - Task 6.2.1 Update developer docs with architecture recap and ingest/search/graph overview.
-  - Task 6.2.2 Provide onboarding checklist (tests, linting, ingest automation, MCP smoke suite).
+**Complexity:** Low‑Medium.
+
+---
+
+## 6) Query macros & operators (tiny DSL)
+
+**Why:** Saves keystrokes and encodes your habits (“I always boost tests for bug hunts”).
+
+**How to ship quickly**
+
+* Load `~/.duskmantle/query_macros.yml` (or `.duskmantle/config/query_macros.yml`) with entries:
+
+```yaml
+bughunt: "error OR exception OR panic OR stacktrace -vendor -node_modules kind:file"
+symfind: "sym:{0} OR file:*{0}*.py"
+design:  "subsystem:{0} kind:doc doc:design OR adr"
+```
+
+* CLI: `km-search @bughunt serialization failure`
+
+**API/UI nudge**
+
+* UI drop‑down of macros, with preview of expanded query.
+
+**Complexity:** Low.
+
+---
+
+## 7) “Answer as patch” for code results
+
+**Why:** When the result is a function, you often want a starting patch, not prose.
+
+**How to ship quickly**
+
+* If a top hit is `kind:function` and you pass a short instruction, generate a **unified diff** for that file range (no LLM magic required for v1—simple text transform or templated TODO).
+* Expose as `PATCH` download (`.diff`) and copy‑to‑clipboard.
+
+**API/UI nudge**
+
+* `POST /tools/patch-skeleton` with `{file, line_start, line_end, note}` returns a basic diff header you can hand‑edit.
+
+**Complexity:** Low.
+
+---
+
+## 8) Tests ↔ symbols linking
+
+**Why:** Gold for debugging—“show me tests that hit this function”.
+
+**How to ship quickly**
+
+* During ingest, simple heuristics:
+
+  * For Python/pytest: parse `test_*` files; search for symbol names/imports; emit `(:Test)-[:EXERCISES]->(:Symbol)`.
+  * Capture markers/ids so you can run `pytest -k`.
+* CLI: `km-graph tests-of serialize_payload`.
+
+**API/UI nudge**
+
+* On a symbol hit card, list “Related tests (run)”.
+* Button emits `pytest -k 'serialize_payload'`.
+
+**Complexity:** Low‑Medium (heuristics first, refine later).
+
+---
+
+## 9) Local “file QA” (single‑file ephemeral index)
+
+**Why:** Sometimes you just want to interrogate a single doc or file without polluting the main index.
+
+**How to ship quickly**
+
+* `km-file-qa path/to/file`:
+
+  * Chunks + embeds to a **temp collection**.
+  * Runs the same hybrid search against only that collection.
+  * Auto‑expires after N minutes or on process exit.
+
+**API/UI nudge**
+
+* `/ui/` “Quick QA” pane with drag‑and‑drop.
+
+**Complexity:** Low.
+
+---
+
+## 10) “Focus mode” filters (current repo/subsystem)
+
+**Why:** Cuts noise when you’re buried in one area.
+
+**How to ship quickly**
+
+* Read current repo from a `.km-focus` file or infer from CWD in CLI.
+* Default all searches to `repo:<current>` (override with `--all`).
+
+**API/UI nudge**
+
+* Toggle chip: “Only my current repo”.
+
+**Complexity:** Low.
+
+---
+
+## 11) Snippet‑first result view (compact, copyable, line‑numbered)
+
+**Why:** Faster skim, fewer clicks.
+
+**How to ship quickly**
+
+* Add line‑number rendering with **context controls** (+/‑ lines) and a **copy snippet** button.
+* Provide a “token‑aware” trimming heuristic so snippets fit nicely in terminal/LLM prompts.
+
+**API/UI nudge**
+
+* Include `metadata.snippet_range` and `metadata.snippet_text` in `/search`.
+
+**Complexity:** Low.
+
+---
+
+## 12) One‑file “workbench” logs (portable search runs)
+
+**Why:** Keep a trail of what you asked and what you found—handy for write‑ups and handover.
+
+**How to ship quickly**
+
+* `--workbench my_session.jsonl` on CLI:
+
+  * Append `{ts, query, filters, corpus_id, top_hits[..]}` for every run.
+* UI toggle: “Record session”.
+
+**API/UI nudge**
+
+* Button: “Export session”.
+
+**Complexity:** Low.
+
+---
+
+# Minimal schema & CLI tweaks (copy/paste‑able)
+
+**Neo4j (new types/edges)**
+
+```cypher
+CREATE CONSTRAINT sym_id IF NOT EXISTS
+FOR (s:Symbol) REQUIRE s.id IS UNIQUE;
+
+CREATE INDEX sym_name IF NOT EXISTS
+FOR (s:Symbol) ON (s.name);
+
+CREATE INDEX sym_lang_kind IF NOT EXISTS
+FOR (s:Symbol) ON (s.lang, s.kind);
+```
+
+**Search filter grammar (augment yours)**
+
+```
+sym:<name>         # exact or wildcard
+kind:<function|class|method|test|file|doc>
+lang:<python|go|ts|...>
+repo:<name>        # focus mode default
+file:<glob>        # supports **/*.py
+as_of:<ISO8601>    # time travel
+```
+
+**ENV switches (keep it togglable)**
+
+```
+KM_SYMBOLS_ENABLED=true
+KM_EDITOR_URI_TEMPLATE=vscode://file/{abs_path}:{line_start}
+KM_RERANK_MODE=cross
+KM_RERANK_TOPK=50
+KM_WORKBENCH_PATH=.duskmantle/workbench.jsonl
+```
+
+---
+
+## Suggested “ship order” (utility‑first)
+
+1. **IDE deep links** → 2) **Snippet‑first view** → 3) **Focus mode** →
+2. **Diff‑aware ingest** → 5) **Symbol indexing (one language first)** →
+3. **Tests↔symbols** → 7) **Re‑ranking (optional)** → 8) **Time‑travel** → 9) **Macros** → 10) **File‑QA** → 11) **Workbench** → 12) **Answer‑as‑patch**.

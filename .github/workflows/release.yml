@@ -12,6 +12,8 @@ permissions:
 jobs:
   build-and-package:
     runs-on: ubuntu-latest
+    env:
+      KM_NEO4J_PASSWORD: ReleaseNeo4jPass123!
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -34,8 +36,52 @@ jobs:
           python -m pip install build
           scripts/build-wheel.sh dist/release
 
+      - name: Free disk space for Docker build
+        run: |
+          set -euxo pipefail
+          df -h
+          sudo rm -rf /usr/share/dotnet || true
+          sudo rm -rf /opt/ghc || true
+          sudo rm -rf /usr/local/lib/android || true
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"/CodeQL || true
+          docker system prune -af || true
+          df -h
+
       - name: Build docker image
         run: scripts/build-image.sh duskmantle/km:${{ github.ref_name }}
+
+      - name: Start Qdrant dependency
+        run: |
+          set -euxo pipefail
+          docker rm -f km-ci-qdrant || true
+          docker run -d --name km-ci-qdrant --network host qdrant/qdrant:v1.15.5
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:6333/healthz >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Qdrant failed to become ready" >&2
+          docker logs km-ci-qdrant || true
+          exit 1
+
+      - name: Start Neo4j dependency
+        run: |
+          set -euxo pipefail
+          docker rm -f km-ci-neo4j || true
+          docker run -d --name km-ci-neo4j \
+            --network host \
+            -e NEO4J_AUTH=neo4j/${KM_NEO4J_PASSWORD} \
+            neo4j:5.26.0
+          for i in {1..60}; do
+            if docker exec km-ci-neo4j cypher-shell -u neo4j -p ${KM_NEO4J_PASSWORD} "SHOW DATABASES" >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Neo4j failed to become ready" >&2
+          docker logs km-ci-neo4j || true
+          exit 1
 
       - name: Push image to GHCR
         env:
@@ -68,29 +114,38 @@ jobs:
       - name: Run Neo4j integration slice
         env:
           NEO4J_TEST_URI: bolt://127.0.0.1:7687
-          NEO4J_TEST_PASSWORD: neo4jadmin
+          NEO4J_TEST_PASSWORD: ${{ env.KM_NEO4J_PASSWORD }}
+          KM_ADMIN_TOKEN: maintainer-token
         run: |
           set -euo pipefail
           docker run -d --name km-gateway-ci \
             --network host \
             -e KM_GRAPH_AUTO_MIGRATE=true \
             -e KM_NEO4J_PASSWORD=${NEO4J_TEST_PASSWORD} \
+            -e KM_NEO4J_URI=${NEO4J_TEST_URI} \
+            -e KM_QDRANT_URL=http://127.0.0.1:6333 \
             duskmantle/km:${{ github.ref_name }}
           trap 'docker rm -f km-gateway-ci >/dev/null 2>&1 || true' EXIT
-          docker exec km-gateway-ci bash -lc '. /opt/knowledge/.venv/bin/activate && pip install -e "/opt/knowledge/app[dev]"'
+          ready=0
           for i in {1..60}; do
-            if docker exec km-gateway-ci curl -fsS http://127.0.0.1:8000/readyz >/dev/null; then
+            if curl -fsS http://127.0.0.1:8000/readyz >/dev/null; then
               ready=1
               break
             fi
             sleep 5
           done
-          if [ "${ready:-0}" != "1" ]; then
+          if [ "${ready}" != "1" ]; then
             docker logs km-gateway-ci || true
             echo "Gateway failed to become ready" >&2
             exit 1
           fi
-          docker exec -e NEO4J_TEST_URI="${NEO4J_TEST_URI}" km-gateway-ci bash -lc '. /opt/knowledge/.venv/bin/activate && cd /opt/knowledge/app && pytest -m neo4j -ra'
+          pytest -m neo4j -ra
+
+      - name: Clean integration dependencies
+        if: always()
+        run: |
+          docker rm -f km-ci-neo4j || true
+          docker rm -f km-ci-qdrant || true
 
       - name: Create or update GitHub Release
         env:

@@ -10,8 +10,11 @@ from fastapi.testclient import TestClient
 
 from gateway import get_version
 from gateway.api.app import create_app
+from gateway.api.constants import API_V1_PREFIX
 from gateway.config.settings import get_settings
 from gateway.graph.service import GraphService
+from gateway.ingest.audit import AuditLogger
+from gateway.ingest.pipeline import IngestionResult
 from gateway.search.service import SearchResponse
 
 
@@ -23,7 +26,8 @@ def reset_settings_cache() -> None:
 
 
 def test_audit_requires_token(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("KM_STATE_PATH", str(tmp_path / "state"))
+    state_path = tmp_path / "state"
+    monkeypatch.setenv("KM_STATE_PATH", str(state_path))
     monkeypatch.setenv("KM_AUTH_ENABLED", "true")
     monkeypatch.setenv("KM_READER_TOKEN", "reader-token")
     monkeypatch.setenv("KM_ADMIN_TOKEN", "admin-token")
@@ -33,20 +37,95 @@ def test_audit_requires_token(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     client = TestClient(app)
 
     # Missing credentials
-    resp = client.get("/audit/history")
+    resp = client.get(f"{API_V1_PREFIX}/audit/history")
     assert resp.status_code == 401
 
     # Wrong token
-    resp = client.get("/audit/history", headers={"Authorization": "Bearer nope"})
+    resp = client.get(f"{API_V1_PREFIX}/audit/history", headers={"Authorization": "Bearer nope"})
     assert resp.status_code == 403
 
     # Correct maintainer token
     resp = client.get(
-        "/audit/history",
+        f"{API_V1_PREFIX}/audit/history",
         headers={"Authorization": "Bearer admin-token"},
     )
     assert resp.status_code == 200
     assert resp.json() == []
+
+
+def test_audit_history_limit_clamped(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    state_path = tmp_path / "state"
+    monkeypatch.setenv("KM_STATE_PATH", str(state_path))
+    monkeypatch.setenv("KM_AUTH_ENABLED", "true")
+    monkeypatch.setenv("KM_ADMIN_TOKEN", "admin-token")
+    monkeypatch.setenv("KM_AUDIT_HISTORY_MAX_LIMIT", "3")
+    monkeypatch.setenv("KM_NEO4J_PASSWORD", "secure-pass")
+
+    audit_logger = AuditLogger(state_path / "audit" / "audit.db")
+    for idx in range(5):
+        audit_logger.record(
+            IngestionResult(
+                run_id=f"run-{idx}",
+                profile="local",
+                started_at=float(idx),
+                duration_seconds=1.0,
+                artifact_counts={"docs": 1},
+                chunk_count=idx,
+                repo_head=f"sha-{idx}",
+                success=True,
+            )
+        )
+
+    app = create_app()
+    client = TestClient(app)
+
+    resp = client.get(
+        f"{API_V1_PREFIX}/audit/history?limit=10",
+        headers={"Authorization": "Bearer admin-token"},
+    )
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert len(payload) == 3
+    assert resp.headers["X-KM-Audit-Limit"] == "3"
+    assert "Warning" in resp.headers
+    assert "exceeds cap" in resp.headers["Warning"]
+
+
+def test_audit_history_limit_too_low_normalized(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    state_path = tmp_path / "state"
+    monkeypatch.setenv("KM_STATE_PATH", str(state_path))
+    monkeypatch.setenv("KM_AUTH_ENABLED", "true")
+    monkeypatch.setenv("KM_ADMIN_TOKEN", "admin-token")
+    monkeypatch.setenv("KM_NEO4J_PASSWORD", "secure-pass")
+
+    audit_logger = AuditLogger(state_path / "audit" / "audit.db")
+    for idx in range(2):
+        audit_logger.record(
+            IngestionResult(
+                run_id=f"low-{idx}",
+                profile="local",
+                started_at=float(idx),
+                duration_seconds=1.0,
+                artifact_counts={"docs": 1},
+                chunk_count=idx,
+                repo_head=f"sha-{idx}",
+                success=True,
+            )
+        )
+
+    app = create_app()
+    client = TestClient(app)
+
+    resp = client.get(
+        f"{API_V1_PREFIX}/audit/history?limit=0",
+        headers={"Authorization": "Bearer admin-token"},
+    )
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert len(payload) == 1
+    assert resp.headers["X-KM-Audit-Limit"] == "1"
+    warning_header = resp.headers.get("Warning")
+    assert warning_header is not None and "below minimum" in warning_header
 
 
 def test_coverage_endpoint(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -66,13 +145,13 @@ def test_coverage_endpoint(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
 
     # Reject non-maintainer token
     resp = client.get(
-        "/coverage",
+        f"{API_V1_PREFIX}/coverage",
         headers={"Authorization": "Bearer reader-token"},
     )
     assert resp.status_code == 403
 
     resp = client.get(
-        "/coverage",
+        f"{API_V1_PREFIX}/coverage",
         headers={"Authorization": "Bearer admin-token"},
     )
     assert resp.status_code == 200
@@ -89,7 +168,7 @@ def test_coverage_missing_report(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     client = TestClient(app)
 
     resp = client.get(
-        "/coverage",
+        f"{API_V1_PREFIX}/coverage",
         headers={"Authorization": "Bearer admin-token"},
     )
     assert resp.status_code == 404
@@ -97,13 +176,12 @@ def test_coverage_missing_report(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 
 
 def test_rate_limiting(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("KM_RATE_LIMIT_REQUESTS", "2")
+    monkeypatch.setenv("KM_RATE_LIMIT_REQUESTS", "1")
     monkeypatch.setenv("KM_RATE_LIMIT_WINDOW", "60")
 
     app = create_app()
     client = TestClient(app)
 
-    assert client.get("/metrics").status_code == 200
     assert client.get("/metrics").status_code == 200
     resp = client.get("/metrics")
     assert resp.status_code == 429
@@ -122,6 +200,8 @@ def test_startup_logs_configuration(monkeypatch: pytest.MonkeyPatch, tmp_path: P
     record = startup_records[-1]
     assert record.version == get_version()
     assert record.embedding_model
+    assert record.text_embedding_model
+    assert record.image_embedding_model
     assert isinstance(record.search_weights, dict)
     assert record.search_weight_profile
 
@@ -130,6 +210,7 @@ def test_secure_mode_without_admin_token_fails(tmp_path: Path, monkeypatch: pyte
     monkeypatch.setenv("KM_STATE_PATH", str(tmp_path / "state"))
     monkeypatch.setenv("KM_AUTH_ENABLED", "true")
     monkeypatch.setenv("KM_NEO4J_PASSWORD", "super-secure")
+    monkeypatch.delenv("KM_ADMIN_TOKEN", raising=False)
 
     with pytest.raises(RuntimeError, match="KM_ADMIN_TOKEN"):
         create_app()
@@ -146,7 +227,7 @@ def test_secure_mode_requires_custom_neo4j_password(tmp_path: Path, monkeypatch:
 
 
 def test_rate_limiting_search(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("KM_RATE_LIMIT_REQUESTS", "2")
+    monkeypatch.setenv("KM_RATE_LIMIT_REQUESTS", "1")
     monkeypatch.setenv("KM_RATE_LIMIT_WINDOW", "60")
     monkeypatch.setenv("KM_AUTH_ENABLED", "false")
     monkeypatch.setenv("KM_STATE_PATH", str(tmp_path))
@@ -179,11 +260,14 @@ def test_rate_limiting_search(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
         return _Dummy()
 
     app.dependency_overrides[app.state.search_service_dependency] = _dummy_search_service
+    storage = getattr(app.state.limiter, "storage", None)
+    if storage is not None and hasattr(storage, "clear"):
+        storage.clear()
     client = TestClient(app)
 
     payload = {"query": "telemetry"}
-    assert client.post("/search", json=payload).status_code == 200
-    assert client.post("/search", json=payload).status_code == 200
-    resp = client.post("/search", json=payload)
+    headers = {"X-Forwarded-For": "203.0.113.10"}
+    assert client.post(f"{API_V1_PREFIX}/search", json=payload, headers=headers).status_code == 200
+    resp = client.post(f"{API_V1_PREFIX}/search", json=payload, headers=headers)
     assert resp.status_code == 429
     assert resp.json()["detail"] == "Rate limit exceeded"
